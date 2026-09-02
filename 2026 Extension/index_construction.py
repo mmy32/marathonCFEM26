@@ -502,10 +502,17 @@ def plot_index_vs_cdli_returns(
     cdli_col: str = "CDLI",
     title: str = "Sector Index Returns QoQ(%)",
     figsize=(10, 5),
-    ylims=(1, 4)
+    ylims=(1, 4),
+    start_idx: int = 1
 ):
     """
     Plot QoQ returns of flow-based index vs CDLI benchmark.
+
+    The index's first quarter has no prior-quarter FV to difference against,
+    so its return is structurally undefined; any non-zero value there comes
+    from same-quarter duplicate rows standing in for a prior period. start_idx
+    drops that leading row, matching plot_quarterly_return_decomposition and
+    compute_tracking_error.
     """
 
     # Load CDLI data
@@ -515,6 +522,11 @@ def plot_index_vs_cdli_returns(
     # Ensure pandas
     if not isinstance(index_df, pd.DataFrame):
         index_df = index_df.to_pandas()
+
+    index_df = index_df.iloc[start_idx:]
+    # Align CDLI to the same quarters as the (now-truncated) index line so the
+    # shared categorical x-axis stays chronologically ordered.
+    cdli_returns = cdli_returns[cdli_returns[quarter_col].isin(index_df[quarter_col])]
 
     plt.figure(figsize=figsize)
 
@@ -671,29 +683,33 @@ def plot_index_cdli_sofr(
     plot_df: pd.DataFrame,
     title: str = "Index Returns Comparison with SOFR Quarterly Averages",
     ylim=(0.5, 4),
-    figsize=(10, 5)
+    figsize=(10, 5),
+    start_idx: int = 2
 ):
     """
     Plot index returns, CDLI returns, and SOFR quarterly averages.
+
+    start_idx drops the leading rates-only row and the structurally
+    undefined first index quarter, matching compute_tracking_error.
     """
 
     plt.figure(figsize=figsize)
 
     plt.plot(
-        plot_df["Quarter"],
-        plot_df["IndexReturn"] * 100,
+        plot_df["Quarter"].iloc[start_idx:],
+        plot_df["IndexReturn"].iloc[start_idx:] * 100,
         label="Index Return"
     )
 
     plt.plot(
-        plot_df["Quarter"],
-        plot_df["CDLI_Return"] * 100,
+        plot_df["Quarter"].iloc[start_idx:],
+        plot_df["CDLI_Return"].iloc[start_idx:] * 100,
         label="CDLI Return"
     )
 
     plt.plot(
-        plot_df["Quarter"].iloc[1:],
-        plot_df["SOFR_avg"].iloc[1:] * 100,
+        plot_df["Quarter"].iloc[start_idx:],
+        plot_df["SOFR_avg"].iloc[start_idx:] * 100,
         label="SOFR Average",
         linestyle="--"
     )

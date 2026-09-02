@@ -1,0 +1,3 @@
+2026-08-13 18:23:17,845 INFO Loaded: C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\data\ixbrl\combined\wide_all.csv (rows=745279)
+2026-08-13 18:23:17,846 INFO Wrote clean output -> C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\data\processed\ixbrl_clean.csv (rows=573640)
+[PREPROCESS FULL] done.
