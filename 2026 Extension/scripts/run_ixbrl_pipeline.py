@@ -13,6 +13,7 @@ from ixbrl_utils import (
     normalize_interest_columns,
     convert_currencies,
     normalize_value_scale,
+    flag_filer_quarter_outliers,
     initialize_clean_dataframe,
     classify_rate_types,
     perform_initial_swap,
@@ -79,6 +80,15 @@ def run_pipeline(
 
     df = convert_currencies(df, fx_path)
     df = normalize_value_scale(df)
+
+    # A handful of filings mis-tag fair value, cost, and principal together (all wrong
+    # by the same non-round factor), which normalize_value_scale() cannot see -- it only
+    # catches a value mis-tagged relative to its own row's principal, and here principal
+    # is wrong too, so the ratio still looks "plausible". See flag_filer_quarter_outliers()
+    # docstring for the full finding (TCW Direct Lending VIII LLC's 2023Q1 filing, CIK
+    # 1825265, reporting individual loan positions at $30-46B each).
+    df = flag_filer_quarter_outliers(df)
+    df = df.loc[~df["filer_quarter_outlier"]].drop(columns=["filer_quarter_outlier"])
 
     df = initialize_clean_dataframe(df)
     df = classify_rate_types(df)

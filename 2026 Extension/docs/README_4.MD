@@ -162,6 +162,10 @@ compute_position_level_flows()
 - Computes flow-based position returns:  
   - ret_pos_flow  
 
+**Known limitation**: the quarter-over-quarter lag is grouped by `(cik, investment_identifier)`
+only, with no tiebreaker for two distinct positions that share identical description text within
+one quarter — see "Known Limitations — Open" below.
+
 ---
 
 ### 5. Panel Structure Diagnostics
@@ -267,6 +271,12 @@ plot_index_vs_cdli_returns()
 
 - Plots quarterly index returns against CDLI benchmark returns  
 - Ensures consistent quarter alignment  
+- Return y-axes start at zero (`ylims=(0.0, 4.0)`, and `ylim=(0.0, 4.0)` in
+  `plot_index_cdli_sofr`), so bar and line heights are read against a true zero baseline rather
+  than an offset one that visually exaggerates differences  
+- The default title is `"Index Returns QoQ(%)"`. It is deliberately not "Sector Index ...": this
+  function plots the *market-level* index. The sector and senior-loan variants pass their own
+  title explicitly  
 
 ---
 
@@ -283,6 +293,28 @@ compute_tracking_error()
 - Annualized volatility  
 - Correlation with CDLI  
 - Quarterly and annualized tracking error  
+
+**The first index quarter is excluded from all four.**
+The index's first quarter has no prior-quarter fair value to difference against, so its return is
+structurally undefined; any non-zero value there comes from same-quarter duplicate rows standing in
+for a prior period. Every consumer of the return series drops it, via a `start_idx` argument:
+
+| function | `start_idx` | drops |
+|---|---|---|
+| `compute_annualized_return_and_vol` | 1 | first index quarter |
+| `plot_index_vs_cdli_returns` | 1 | first index quarter |
+| `compute_tracking_error` | 2 | leading rates-only row + first index quarter |
+| `plot_index_cdli_sofr` | 2 | leading rates-only row + first index quarter |
+
+`compute_tracking_error` and `plot_index_cdli_sofr` operate on `plot_df`, which carries one extra
+leading row from the quarterly-rates file, so `start_idx=2` there is the same cut as `start_idx=1`
+on the raw index series. Pass `start_idx=0` to keep the full series.
+
+On the current 14-quarter panel (2023Q1-2026Q2), excluding 2023Q1 moves the headline figures from
+10.84% / 1.54% to **10.29% annualized return / 1.25% annualized volatility**. Volatility falls
+more than the return does because that quarter's 4.28% was a large outlier against a series that
+otherwise sits in the 0.9-3.3% band. Correlation with CDLI (96.2%) and tracking error (0.36%) are
+unchanged, since those already excluded it.
 
 ---
 
@@ -329,17 +361,60 @@ an entire quarter's aggregate return — this was traced back as the primary cau
 divergence between the index and CDLI in a specific quarter. `ixbrl_utils.normalize_value_scale()`
 now catches and corrects this upstream, before the data ever reaches this pipeline.
 
-**`compute_annualized_return_and_vol()` — don't hardcode `num_years`.** Pass
-`num_years=len(returns) / periods_per_year` rather than a fixed constant. A hardcoded value that
-doesn't match how many periods are actually in `returns` silently produces the wrong annualized
-return — e.g. passing `10` for a 10-*quarter* (2.5-year) series annualizes over 10 years instead,
-compressing an 11% return down to ~3%.
+**`compute_annualized_return_and_vol()` — `num_years` is derived, not hardcoded.** It used to
+default to a fixed `10`, which silently produced the wrong annualized return whenever that did not
+match how many periods were actually in `returns` — passing `10` for a 10-*quarter* (2.5-year)
+series annualizes over 10 years instead, compressing an 11% return down to ~3%. It now defaults to
+`None` and is computed from the returns actually used, i.e. **after `start_idx` is applied**. Do
+not pass it explicitly unless you mean to override that: computing `len(returns) / 4` at the call
+site and passing it in re-introduces the bug in a subtler form, annualizing a 13-quarter series
+over a 14-quarter span.
 
 **Selecting `cols` vs `cols_llm` when `flag_llm=True`.** When loading the LLM-enriched dataset
 (`OUTPUT_PATH_LLM`), select `cols_llm` (which includes `sector` and `instrument_seniority`), not
 the base `cols` list — otherwise those columns get dropped immediately after loading, and the
 sector/seniority sub-index sections fail with a `ColumnNotFoundError` despite the enrichment step
 having run successfully.
+
+---
+
+### Known Limitations — Open (not fixed)
+
+**`compute_position_level_flows()` — same-quarter duplicate `(cik, investment_identifier)` keys
+make `FV_prev` order-dependent.** `FV_prev = pl.col("FV").shift(1).over(["cik",
+"investment_identifier"])` lags each position within its own group, sorted by quarter. The group
+key doesn't disambiguate two *different* positions that happen to share identical description text
+within the same filer and the same quarter — a real, observed pattern (e.g. two tranches of the
+same facility disclosed with byte-identical `investment_identifier` text). When that happens,
+`.sort()`'s tie-break for same-quarter rows is not guaranteed stable across runs whose upstream row
+order differs — a new, entirely unrelated filing landing anywhere earlier in the combined wide
+table can reshuffle it — so one of the two rows can get the *other's* fair value treated as its
+"prior quarter," even though both are the same quarter.
+
+For any quarter after a position's true first appearance, this only misattributes a small amount of
+return between the two duplicate siblings; the aggregate quarterly return is essentially unaffected.
+Confirmed by re-running the full pipeline after adding 74 unrelated new 2026Q2 filings: total fair
+value per quarter matched to floating-point precision for every quarter except the one that actually
+gained new rows, and position-level differences elsewhere were on the order of 1–3bp.
+
+**2023Q1 is fully exposed to this.** It's the index's first quarter, so no position in it has a
+*genuine* prior-quarter fair value at all — the entire market-level "return" reported for 2023Q1 is
+built up from this same duplicate-tie mechanism, applied across every affected group, with nothing
+real behind it. Confirmed empirically: the same 2026Q2-only re-run, with zero change to any 2023Q1
+row's own data, moved 2023Q1's reported return from +4.28% to +6.35%. This is why every stats-facing
+consumer of the return series (`compute_tracking_error`, `compute_annualized_return_and_vol`,
+`plot_index_vs_cdli_returns`, `plot_index_cdli_sofr`) already excludes 2023Q1 via `start_idx` — that
+convention predates this finding, but the finding is concrete proof it was the right call, not just
+a theoretical one.
+
+**Scope, measured on the 493,364-row cleaned dataset (2026-09-07):** 4,957 `(cik,
+investment_identifier, cal_q)` triples share a key with at least one other row — 10,787 rows, 2.19%
+of the panel.
+
+**The fix, not yet applied:** add a stable secondary key to `group_cols` in
+`compute_position_level_flows()` — `context_id` or `accession` — so genuinely distinct positions
+never share a lag group even when their description text collides. Left open since it changes index
+construction output, which was out of scope for the pass that found it.
 
 ---
 

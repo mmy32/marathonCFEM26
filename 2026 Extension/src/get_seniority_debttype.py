@@ -24,7 +24,7 @@ import anthropic
 def build_final_dataset_with_seniority_and_sector(
     input_csv_path: str,
     output_csv_path: str = "FINAL_CLEANED_DATA_with_seniority_and_sector.csv",
-    conf_thresh: float = 0.90,
+    conf_thresh: float = 0.70,
     llm_model: str = "claude-haiku-4-5",
     batch_size: int = 32,
     anthropic_api_key: Optional[str] = None,
@@ -48,7 +48,9 @@ def build_final_dataset_with_seniority_and_sector(
 
     conf_thresh : float
         Minimum LLM confidence required to accept LLM sector classification
-        when rules-based sector is unresolved. Typical values: 0.70 or 0.90.
+        when rules-based sector is unresolved. Typical values: 0.70 or 0.90;
+        the dataset shipped in data/processed/data_private_credit_FINAL_enriched.csv
+        was built at 0.70 (default), which trades some precision for coverage.
 
     llm_model : str
         Claude model name used for LLM sector classification (e.g., "claude-haiku-4-5").
@@ -798,7 +800,7 @@ if __name__ == "__main__":
     build_final_dataset_with_seniority_and_sector(
         input_csv_path="data_1105.csv",
         output_csv_path="data_1105_FINAL_enriched.csv",
-        conf_thresh=0.90,
+        conf_thresh=0.70,
         llm_model="claude-haiku-4-5",
         batch_size=32,
         anthropic_api_key=None,  # uses env var ANTHROPIC_API_KEY
