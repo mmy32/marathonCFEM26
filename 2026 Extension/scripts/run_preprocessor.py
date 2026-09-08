@@ -4,8 +4,8 @@ import sys
 from pathlib import Path
 import logging
 
-ROOT = Path(__file__).resolve().parents[0]  # final/
-sys.path.append(str(ROOT))
+ROOT = Path(__file__).resolve().parents[1]  # 2026 Extension/
+sys.path.append(str(ROOT / "src"))
 
 from preprocessor import run_preprocess, PreprocessConfig
 from paths import IXBRL_WIDE_ALL_CSV, PROCESSED_DIR

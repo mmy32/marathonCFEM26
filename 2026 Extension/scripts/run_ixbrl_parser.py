@@ -10,8 +10,8 @@ from typing import Optional, Iterable
 
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[0]  # final/
-sys.path.append(str(ROOT))
+ROOT = Path(__file__).resolve().parents[1]  # 2026 Extension/
+sys.path.append(str(ROOT / "src"))
 
 from paths import METADATA_CSV, IXBRL_WIDE_ALL_CSV
 from ixbrl_parser import parse_accession_from_index_url

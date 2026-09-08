@@ -5,8 +5,8 @@ from typing import Optional
 
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[0]  # final/
-sys.path.append(str(ROOT))
+ROOT = Path(__file__).resolve().parents[1]  # 2026 Extension/
+sys.path.append(str(ROOT / "src"))
 
 from filings import download_for_cik, download_failures_only
 from paths import PROCESSED_DIR

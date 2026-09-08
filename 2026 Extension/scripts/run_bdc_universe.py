@@ -2,9 +2,9 @@ import os
 import sys
 from pathlib import Path
 
-# Add final/ to sys.path so "import src.*" works when running from scripts/
-ROOT = Path(__file__).resolve().parents[0]  # final/
-sys.path.append(str(ROOT))
+# Add src/ to sys.path so sibling module imports below resolve
+ROOT = Path(__file__).resolve().parents[1]  # 2026 Extension/
+sys.path.append(str(ROOT / "src"))
 
 from bdc import build_bdc_filings_from_masteridx, build_bdc_intervals_from_filings
 from paths import PROCESSED_DIR

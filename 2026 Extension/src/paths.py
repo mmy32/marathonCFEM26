@@ -2,7 +2,7 @@
 from pathlib import Path
 
 # ========= Project root =========
-ROOT = Path(__file__).resolve().parents[0]   # final/
+ROOT = Path(__file__).resolve().parents[1]   # 2026 Extension/
 
 # ========= Data =========
 DATA_DIR = ROOT / "data"

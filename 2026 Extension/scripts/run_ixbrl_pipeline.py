@@ -1,6 +1,12 @@
+import sys
+from pathlib import Path
+
 import pandas as pd
 import warnings
 warnings.filterwarnings("ignore")
+
+ROOT = Path(__file__).resolve().parents[1]  # 2026 Extension/
+sys.path.append(str(ROOT / "src"))
 
 from ixbrl_utils import (
     # --- core cleaning ---
