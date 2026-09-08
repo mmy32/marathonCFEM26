@@ -1,6 +1,6 @@
 import polars as pl
 import pandas as pd
-from typing import Callable
+from typing import Callable, Optional
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
@@ -500,9 +500,9 @@ def plot_index_vs_cdli_returns(
     quarter_col: str = "cal_q",
     index_return_col: str = "IndexReturn",
     cdli_col: str = "CDLI",
-    title: str = "Sector Index Returns QoQ(%)",
+    title: str = "Index Returns QoQ(%)",
     figsize=(10, 5),
-    ylims=(1, 4),
+    ylims=(0.0, 4.0),
     start_idx: int = 1
 ):
     """
@@ -555,8 +555,9 @@ def plot_index_vs_cdli_returns(
 def compute_annualized_return_and_vol(
     returns,
     periods_per_year: int = 4,
-    num_years: float = 10,
-    ddof: int = 1
+    num_years: Optional[float] = None,
+    ddof: int = 1,
+    start_idx: int = 1
 ):
     """
     Compute annualized return and annualized volatility.
@@ -567,10 +568,19 @@ def compute_annualized_return_and_vol(
         Periodic returns (e.g., quarterly returns in decimal form)
     periods_per_year : int
         Number of return periods per year (4 for quarterly)
-    num_years : float
-        Total number of years covered by the returns
+    num_years : float, optional
+        Total number of years covered by the returns. If None (default), it is
+        derived from the returns actually used, i.e. after start_idx is applied.
+        Pass a value only to override that.
     ddof : int
         Degrees of freedom for volatility calculation
+    start_idx : int
+        Number of leading periods to drop. The index's first quarter has no
+        prior-quarter fair value to difference against, so its return is
+        structurally undefined; including it inflates both the geometric return
+        and the volatility. Defaults to 1 to drop it, matching
+        plot_quarterly_return_decomposition, plot_index_vs_cdli_returns and
+        compute_tracking_error. Pass 0 to keep the full series.
 
     Returns
     -------
@@ -580,7 +590,10 @@ def compute_annualized_return_and_vol(
         Annualized volatility
     """
 
-    r = np.asarray(returns)
+    r = np.asarray(returns)[start_idx:]
+
+    if num_years is None:
+        num_years = len(r) / periods_per_year
 
     # Geometric annualized return
     annual_return = np.prod(1 + r) ** (1 / num_years) - 1
@@ -682,7 +695,7 @@ import matplotlib.pyplot as plt
 def plot_index_cdli_sofr(
     plot_df: pd.DataFrame,
     title: str = "Index Returns Comparison with SOFR Quarterly Averages",
-    ylim=(0.5, 4),
+    ylim=(0.0, 4.0),
     figsize=(10, 5),
     start_idx: int = 2
 ):

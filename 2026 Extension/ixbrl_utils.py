@@ -208,7 +208,23 @@ def convert_currencies(df: pd.DataFrame, fx_path: str) -> pd.DataFrame:
 # =====================
 
 VALUE_SCALE_CANDIDATES = (1, 1_000, 1_000_000)
+
+# Pass-through band: a value/principal ratio in here is plausible as reported and
+# is left alone. The floor stays at 0 because deeply marked-down positions legitimately
+# sit near zero.
 VALUE_RATIO_RANGE = (0.0, 3.0)  # FV or Cost is implausible beyond ~3x the position's own principal
+
+# Landing band a rescale must hit to be believable.
+#
+# NOTE: the floor is currently 0.0, which makes this band identical to
+# VALUE_RATIO_RANGE and therefore accepts *any* rescale: dividing by 1000 lands any
+# out-of-band ratio inside the band, so a ratio of 5 -- which is not a units-tagging
+# error -- is silently "corrected" to 0.005, shrinking a real position by ~1000x.
+# Raising the floor (0.3 was measured) restricts rescaling to genuine ~1000x / ~1e6x
+# mistags and flags the rest "unresolved", but costs ~0.30pp of correlation against
+# CDLI because those rows then enter the index at full weight instead of being
+# shrunk to near-zero. Kept at 0.0 pending a decision on how to handle those rows.
+VALUE_RESCALE_TARGET_RANGE = (0.0, 3.0)
 
 
 def _choose_value_scale(ratio_abs: float, valid_range: Tuple[float, float]):
@@ -259,7 +275,7 @@ def normalize_value_scale(
             lo, hi = VALUE_RATIO_RANGE
             if lo <= ratio_abs <= hi:
                 vals.append(v); flags.append("unchanged"); continue
-            scale = _choose_value_scale(ratio_abs, VALUE_RATIO_RANGE)
+            scale = _choose_value_scale(ratio_abs, VALUE_RESCALE_TARGET_RANGE)
             if scale is None:
                 vals.append(v); flags.append("unresolved")
             else:
@@ -267,6 +283,75 @@ def normalize_value_scale(
                 flags.append(f"div{scale}" if scale != 1 else "unchanged")
         out[f"{col}_scale_flag"] = flags
         out[col] = vals
+    return out
+
+# =====================
+# Filer-quarter outlier detection (FV/Cost/Principal wrong together)
+# =====================
+
+FILER_QUARTER_OUTLIER_RATIO = 20.0
+
+def flag_filer_quarter_outliers(
+    df: pd.DataFrame,
+    value_col: str = "InvestmentOwnedAtFairValue_normalized",
+    group_cols=("cik", "cal_q"),
+    filer_col: str = "cik",
+    ratio_threshold: float = FILER_QUARTER_OUTLIER_RATIO,
+    min_other_quarters: int = 2,
+) -> pd.DataFrame:
+    """
+    Flags every row belonging to a single filer's single quarter whose *aggregate*
+    reported fair value is wildly out of line with that same filer's other quarters --
+    a signature normalize_value_scale() cannot see, because it only catches a value
+    mis-tagged relative to its *own* row's principal. When a filing mis-tags fair value,
+    cost, and principal together (all three wrong by the same non-round factor), every
+    row's internal ratio still looks "plausible" and nothing gets corrected.
+
+    Found via TCW Direct Lending VIII LLC's 2023Q1 filing (CIK 1825265): individual
+    positions reported at $30-46B each -- larger than the entire BDC industry's typical
+    quarterly total -- while the same filer's other 13 quarters, and its own principal
+    tagged in the same filing, all sit in the tens-of-millions range per position.
+    Confirmed by checking every filer for a quarter whose total reported fair value
+    exceeds `ratio_threshold` times the median of its *other* quarters: 5 (filer, quarter)
+    pairs cleared 20x, all by a wide margin (39x-431x), with the next-highest ratio for
+    any filer far below that line -- a clean separation, not an arbitrary cutoff. This
+    also does not accidentally catch positions that are genuinely large and simply
+    persist: a real large position recurs at a consistent scale across many quarters for
+    that filer, so it never produces a single quarter wildly larger than its own others.
+
+    No rescale is attempted (unlike normalize_value_scale): the ratio between the
+    affected fields was not a round power of ten, so there is no way to recover the
+    filer's actually-intended value. Flagged rows are meant to be dropped rather than
+    guessed at.
+    """
+    out = df.copy()
+    if value_col not in out.columns:
+        out["filer_quarter_outlier"] = False
+        return out
+
+    group_cols = list(group_cols)
+    totals = (
+        out.groupby(group_cols)[value_col]
+        .apply(lambda s: s.abs().sum(skipna=True))
+        .rename("_qtotal")
+        .reset_index()
+    )
+
+    bad_rows = []
+    for _, sub in totals.groupby(filer_col):
+        if len(sub) <= min_other_quarters:
+            continue
+        for idx, row in sub.iterrows():
+            others = sub.loc[sub.index != idx, "_qtotal"]
+            med_others = others.median()
+            if med_others and med_others > 0 and row["_qtotal"] / med_others > ratio_threshold:
+                bad_rows.append(row[group_cols])
+
+    bad_keys = pd.DataFrame(bad_rows, columns=group_cols).drop_duplicates() if bad_rows else pd.DataFrame(columns=group_cols)
+    bad_keys["filer_quarter_outlier"] = True
+
+    out = out.merge(bad_keys, on=group_cols, how="left")
+    out["filer_quarter_outlier"] = out["filer_quarter_outlier"].fillna(False)
     return out
 
 # =====================
