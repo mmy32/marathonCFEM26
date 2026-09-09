@@ -1,0 +1,9 @@
+polars
+pyarrow
+pandas
+numpy
+matplotlib
+requests
+beautifulsoup4
+lxml
+anthropic
