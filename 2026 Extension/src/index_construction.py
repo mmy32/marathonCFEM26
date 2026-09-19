@@ -1,6 +1,7 @@
 import polars as pl
+import polars.selectors as cs
 import pandas as pd
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
@@ -69,7 +70,7 @@ def interest_rate_null_combinations(
     df: pl.DataFrame,
     interest_cols: list[str],
     as_pandas: bool = True
-):
+) -> Union[pd.DataFrame, pl.DataFrame]:
     """
     Compute row counts for all combinations of null / non-null
     across interest rate columns.
@@ -82,7 +83,7 @@ def interest_rate_null_combinations(
             for c in interest_cols
         ])
         .group_by(null_flag_cols)
-        .agg(pl.count().alias("rows"))
+        .agg(pl.len().alias("rows"))
         .sort(null_flag_cols)
     )
 
@@ -150,6 +151,7 @@ def qsort_expr():
     y = pl.col("cal_q").str.slice(0, 4).cast(pl.Int32)
     q = pl.col("cal_q").str.slice(-1).cast(pl.Int32)
     return (y * 4 + q).alias("qsort")
+
 def safe_div(x, y):
     return pl.when(y.is_null() | (y == 0)).then(0.0).otherwise(x / y)
 
@@ -170,12 +172,15 @@ def compute_position_level_flows(
         df.with_columns([
             pl.col("FV").shift(1).over(group_cols).alias("FV_prev"),
             pl.col("COST").shift(1).over(group_cols).alias("COST_prev"),
+            pl.col("PAR").shift(1).over(group_cols).alias("PAR_prev"),
+            pl.col("PIC_Final").shift(1).over(group_cols).alias("PIC_Final_prev"),
+            pl.col("PIK_Final").shift(1).over(group_cols).alias("PIK_Final_prev"),
         ])
         .with_columns([
             (pl.col("FV") - pl.col("FV_prev")).alias("dFV"),
             (pl.col("COST") - pl.col("COST_prev")).alias("dCOST"),
-            (pl.col("PIC_Final").fill_null(0) * pl.col("PAR").fill_null(0) / 4).alias("cash_income"),
-            (pl.col("PIK_Final").fill_null(0) * pl.col("PAR").fill_null(0) / 4).alias("pik_income"),
+            (pl.col("PIC_Final_prev").fill_null(0) * pl.col("PAR_prev").fill_null(0) / 4).alias("cash_income"),
+            (pl.col("PIK_Final_prev").fill_null(0) * pl.col("PAR_prev").fill_null(0) / 4).alias("pik_income"),
         ])
         .with_columns(
             safe_div(
@@ -195,7 +200,8 @@ def quarter_count_distribution(
     quarter_col: str = "qsort"
 ) -> pl.DataFrame:
     """
-    Compute distribution of number of unique quarters per (cik, investment_identifier).
+    Compute distribution of number of unique quarters per (cik, investment_identifier)
+    i.e., distribution of position longevity.
     """
 
     summary = (
@@ -236,52 +242,38 @@ def quarterly_cik_entry_exit_aum(
           .sort([cik_col, qsort_col])
     )
 
-    # Identify entry / exit quarters
-    aum_cik_q = aum_cik_q.with_columns([
-        pl.col(qsort_col).shift(1).over(cik_col).alias("qsort_prev"),
-        pl.col(cal_q_col).shift(1).over(cik_col).alias("cal_q_prev"),
-        pl.col(qsort_col).shift(-1).over(cik_col).alias("qsort_next"),
-        pl.col(cal_q_col).shift(-1).over(cik_col).alias("cal_q_next"),
-    ])
-
-    # Entries: first appearance of a CIK
-    cik_entries = (
-        aum_cik_q
-        .filter(pl.col("qsort_prev").is_null())
-        .select([cal_q_col, cik_col, "aum_m"])
-    )
+    # Entries: first appearance of a CIK (frame is sorted chronologically)
+    cik_entries = aum_cik_q.group_by(cik_col).first()
 
     # Exits: last appearance of a CIK
-    cik_exits = (
-        aum_cik_q
-        .filter(pl.col("qsort_next").is_null())
-        .select([cal_q_col, cik_col, "aum_m"])
-    )
+    cik_exits = aum_cik_q.group_by(cik_col).last()
 
-    # Aggregate entries / exits by quarter
+    # Aggregate entries by quarter
     aum_in_cik = (
         cik_entries.group_by(cal_q_col)
                    .agg(
                        pl.sum("aum_m").alias("aum_in_m_cik"),
-                       pl.col(cik_col).n_unique().alias("unique_cik_in")
+                       pl.len().alias("unique_cik_in")
                    )
     )
 
+    # Aggregate exits by quarter
     aum_out_cik = (
         cik_exits.group_by(cal_q_col)
                  .agg(
                      pl.sum("aum_m").alias("aum_out_m_cik"),
-                     pl.col(cik_col).n_unique().alias("unique_cik_out")
+                     pl.len().alias("unique_cik_out")
                  )
     )
 
     # Final quarterly summary
+    # 'full' join keeps quarters with exits but no entries (and vice versa)
     quarterly_summary = (
         aum_in_cik
-        .join(aum_out_cik, on=cal_q_col, how="left")
+        .join(aum_out_cik, on=cal_q_col, how="full", coalesce=True)
         .fill_null(0)
         .sort(cal_q_col)
-        .with_columns(pl.col(pl.NUMERIC_DTYPES).round(2))
+        .with_columns(cs.numeric().round(2))
     )
 
     return quarterly_summary
@@ -297,33 +289,28 @@ def compute_market_weights(
     Compute validity flags, quarterly FV_prev sums, and market weights.
     """
 
-    df = df.with_columns(
-        (
-            pl.col(ret_col).is_finite()
-            & pl.col(fv_prev_col).is_finite()
-            & (pl.col(fv_prev_col) > 0)
-        ).alias("is_valid")
-    )
+    is_valid_expr = (
+        pl.col(ret_col).is_finite()
+        & pl.col(fv_prev_col).is_finite()
+        & (pl.col(fv_prev_col) > 0)
+    ).fill_null(False)
 
-    df = df.with_columns(
+    valid_fv_expr = (
         pl.when(pl.col("is_valid"))
           .then(pl.col(fv_prev_col))
           .otherwise(0.0)
-          .sum()
-          .over(quarter_col)
-          .alias("FV_prev_sum_q")
     )
 
-    df = df.with_columns(
-        safe_div(
-            pl.when(pl.col("is_valid"))
-              .then(pl.col(fv_prev_col))
-              .otherwise(0.0),
-            pl.col("FV_prev_sum_q")
-        ).alias("w_mkt")
+    return (
+        df
+        .with_columns(is_valid_expr.alias("is_valid"))
+        .with_columns(
+            valid_fv_expr.sum().over(quarter_col).alias("FV_prev_sum_q")
+        )
+        .with_columns(
+            safe_div(valid_fv_expr, pl.col("FV_prev_sum_q")).alias("w_mkt")  # market weight of position in quarter
+        )
     )
-
-    return df
 
 
 def aggregate_return_decomposition(
@@ -335,26 +322,31 @@ def aggregate_return_decomposition(
     Aggregate market-level quarterly return decomposition.
     """
 
+    def calc_contrib(numerator: pl.Expr, name: str) -> pl.Expr:
+        return (pl.col("w_mkt") * safe_div(numerator, pl.col("FV_prev"))).sum().alias(name)
+
+    def calc_weighted_avg(rate_col: str, name: str) -> pl.Expr:
+        # PIC_Final / PIK_Final (unlike raw rate_cash / rate_pik) are always
+        # non-null after compute_final_interest_rates, and are the same rate
+        # series cash_income / pik_income (and hence contrib_cash / contrib_pik
+        # above) are built from -- so no null-renormalization is needed here.
+        return (pl.col(rate_col) * pl.col("w_mkt")).sum().alias(name)
+
     df_decomp = (
         df
         .filter(pl.col("w_mkt") > 0)
         .group_by(quarter_col)
-        .agg([
+        .agg(
             # weighted return contributions
-            (pl.col("w_mkt") * safe_div(pl.col("dFV") - pl.col("dCOST"), pl.col("FV_prev")))
-                .sum().alias("contrib_price"),
+            calc_contrib(pl.col("dFV") - pl.col("dCOST"), "contrib_price"),
+            calc_contrib(pl.col("cash_income"), "contrib_cash"),
+            calc_contrib(pl.col("pik_income"), "contrib_pik"),
 
-            (pl.col("w_mkt") * safe_div(pl.col("cash_income"), pl.col("FV_prev")))
-                .sum().alias("contrib_cash"),
-
-            (pl.col("w_mkt") * safe_div(pl.col("pik_income"), pl.col("FV_prev")))
-                .sum().alias("contrib_pik"),
-
-            # counts and averages
-            pl.count().alias("n_investments"),
-            pl.col("rate_cash").mean().alias("avg_rate_cash"),
-            pl.col("rate_pik").mean().alias("avg_rate_pik"),
-        ])
+            # counts and value-weighted average rates
+            pl.len().alias("n_investments"),
+            calc_weighted_avg("PIC_Final", "avg_rate_cash"),
+            calc_weighted_avg("PIK_Final", "avg_rate_pik"),
+        )
         .sort(quarter_col)
     )
 
@@ -363,11 +355,14 @@ def aggregate_return_decomposition(
 def plot_quarterly_return_decomposition(
     df_decomp_pd,
     title: str,
-    figsize=(14, 8)
+    figsize=(14, 8),
+    save_path: str = None,
 ):
     """
     Plot stacked quarterly return decomposition:
     price (±), cash interest, and PIK interest.
+
+    Pass save_path to also write the figure to disk (e.g. a .png path).
     """
 
     plt.figure(figsize=figsize)
@@ -381,12 +376,23 @@ def plot_quarterly_return_decomposition(
 
     for q, p, c, pi, t in zip(quarters, price, cash, pik, total):
 
+        # Stack cash/PIK on top of price when price is non-negative (so the
+        # bars sit end-to-end and the visual top matches the true total);
+        # when price is negative it dips below the axis, so cash/PIK still
+        # stack from 0 upward.
+        if p >= 0:
+            c_bottom = p
+            pi_bottom = p + c
+        else:
+            c_bottom = 0
+            pi_bottom = c
+
         # --- Price return (positive / negative) ---
         if p < 0:
-            ax.bar(q, p, color="red", alpha=0.7,
+            ax.bar(q, p, bottom=0, color="red", alpha=0.7,
                    edgecolor="darkred", linewidth=1)
         else:
-            ax.bar(q, p, color="green", alpha=0.7,
+            ax.bar(q, p, bottom=0, color="green", alpha=0.7,
                    edgecolor="darkgreen", linewidth=1)
 
         if p != 0:
@@ -395,22 +401,22 @@ def plot_quarterly_return_decomposition(
                     fontsize=12, fontweight="bold")
 
         # --- Cash interest ---
-        ax.bar(q, c, bottom=0,
+        ax.bar(q, c, bottom=c_bottom,
                color="grey", alpha=0.6,
                edgecolor="black", linewidth=1)
 
         if c != 0:
-            ax.text(q, c / 2, f"{c*100:.2f}%",
+            ax.text(q, c_bottom + (c / 2), f"{c*100:.2f}%",
                     ha="center", va="center",
                     fontsize=12, fontweight="bold")
 
         # --- PIK interest ---
-        ax.bar(q, pi, bottom=c,
+        ax.bar(q, pi, bottom=pi_bottom,
                color="orange", alpha=0.6,
                edgecolor="black", linewidth=1)
 
         if pi != 0:
-            ax.text(q, c + pi / 2, f"{pi*100:.2f}%",
+            ax.text(q, pi_bottom + (pi / 2), f"{pi*100:.2f}%",
                     ha="center", va="center",
                     fontsize=12, fontweight="bold")
 
@@ -451,9 +457,9 @@ def plot_quarterly_return_decomposition(
     ax.set_ylim(y_min, y_max)
 
     plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=150)
     plt.show()
-
-import polars as pl
 
 def compute_flow_based_market_index(
     df: pl.DataFrame,
@@ -479,20 +485,48 @@ def compute_flow_based_market_index(
             .alias("IndexReturn")
         )
         .sort(quarter_col)
-        .with_columns([
+        .with_columns(
             pl.col("IndexReturn")
-              .fill_nan(0)
-              .fill_null(0)
-              .clip(clip_min, clip_max),
-
+              .fill_nan(0.0)
+              .fill_null(0.0)
+              .clip(clip_min, clip_max)
+        )
+        .with_columns(
             ((1 + pl.col("IndexReturn")).cum_prod() * base_level)
               .alias("IndexLevel"),
 
             pl.lit(index_name).alias("IndexName"),
-        ])
+        )
     )
 
     return index_df
+
+def _ensure_pandas(df):
+    """Coerce a Polars or pandas frame to pandas."""
+    return df.to_pandas() if not isinstance(df, pd.DataFrame) else df
+
+def load_cdli_returns(cdli_csv_path: str, quarter_col: str = "cal_q") -> pd.DataFrame:
+    """
+    Load the CDLI benchmark CSV and rename its Quarter column to quarter_col.
+    """
+    cdli_returns = pd.read_csv(cdli_csv_path)
+    cdli_returns[quarter_col] = cdli_returns["Quarter"].astype(str)
+    return cdli_returns
+
+def _finish_return_plot(title, ylabel, ylim, grid=False, save_path=None):
+    """Shared tail for QoQ return/rate line plots: legend, axes, labels, layout."""
+    plt.legend()
+    plt.ylim(*ylim)
+    plt.xticks(rotation=45)
+    plt.xlabel("Quarter")
+    plt.ylabel(ylabel)
+    plt.title(title)
+    if grid:
+        plt.grid(True)
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=150)
+    plt.show()
 
 def plot_index_vs_cdli_returns(
     index_df,
@@ -503,7 +537,8 @@ def plot_index_vs_cdli_returns(
     title: str = "Index Returns QoQ(%)",
     figsize=(10, 5),
     ylims=(0.0, 4.0),
-    start_idx: int = 1
+    start_idx: int = 1,
+    save_path: str = None,
 ):
     """
     Plot QoQ returns of flow-based index vs CDLI benchmark.
@@ -513,17 +548,12 @@ def plot_index_vs_cdli_returns(
     from same-quarter duplicate rows standing in for a prior period. start_idx
     drops that leading row, matching plot_quarterly_return_decomposition and
     compute_tracking_error.
+
+    Pass save_path to also write the figure to disk (e.g. a .png path).
     """
 
-    # Load CDLI data
-    cdli_returns = pd.read_csv(cdli_csv_path)
-    cdli_returns[quarter_col] = cdli_returns["Quarter"].astype(str)
-
-    # Ensure pandas
-    if not isinstance(index_df, pd.DataFrame):
-        index_df = index_df.to_pandas()
-
-    index_df = index_df.iloc[start_idx:]
+    cdli_returns = load_cdli_returns(cdli_csv_path, quarter_col)
+    index_df = _ensure_pandas(index_df).iloc[start_idx:]
     # Align CDLI to the same quarters as the (now-truncated) index line so the
     # shared categorical x-axis stays chronologically ordered.
     cdli_returns = cdli_returns[cdli_returns[quarter_col].isin(index_df[quarter_col])]
@@ -542,16 +572,11 @@ def plot_index_vs_cdli_returns(
         label="CDLI Returns"
     )
 
-    plt.legend()
-    plt.ylim(*ylims)
-    plt.xticks(rotation=45)
-    plt.xlabel("Quarter")
-    plt.ylabel("Returns QoQ (%)")
-    plt.title(title)
+    _finish_return_plot(title, "Returns QoQ (%)", ylims, save_path=save_path)
 
-    plt.tight_layout()
-    plt.show()
-
+### annualized volatility on raw marks understates true risk (see
+### unsmooth_ar1_returns / compute_unsmoothed_return_and_vol below, and
+### compute_max_drawdown as a smoothing-immune alternative)
 def compute_annualized_return_and_vol(
     returns,
     periods_per_year: int = 4,
@@ -604,7 +629,86 @@ def compute_annualized_return_and_vol(
 
     return annual_return, annual_vol
 
-import pandas as pd
+
+def lag1_autocorrelation(returns, start_idx: int = 1) -> float:
+    """
+    Lag-1 autocorrelation of a periodic return series -- the standard
+    diagnostic for appraisal/model-mark "smoothing" (Geltner 1991,
+    Getmansky-Lo-Makarov 2004). Private-credit FV marks are infrequent and
+    often model-based rather than transaction prices, so true economic
+    shocks bleed into the next quarter's mark instead of showing up fully
+    in the quarter they occur; this shows up as strong positive
+    autocorrelation and mechanically shrinks measured volatility (and
+    inflates Sharpe) without reducing real risk. A value near 0 implies
+    marks are close to i.i.d.; the CDLI benchmark itself typically prints
+    ~0.6-0.7 here, since it is also built from valuation-based marks.
+    """
+    r = np.asarray(returns, dtype=float)[start_idx:]
+    return np.corrcoef(r[:-1], r[1:])[0, 1]
+
+
+def unsmooth_ar1_returns(returns, start_idx: int = 1, theta: Optional[float] = None):
+    """
+    Geltner/Getmansky-Lo-Makarov-style AR(1) de-smoothing. Models the
+    observed return as r_obs_t = (1-theta)*r_true_t + theta*r_obs_{t-1}
+    (this quarter's mark is a blend of the true shock and last quarter's
+    mark) and inverts it:
+
+        r_true_t = (r_obs_t - theta * r_obs_{t-1}) / (1 - theta)
+
+    theta defaults to the series' own lag-1 autocorrelation (the standard
+    simple estimator under this model), clipped to [0, 0.95] to avoid a
+    degenerate divide-by-~0 from a noisy negative estimate. With only a
+    handful of quarters of history, theta itself is a noisy estimate --
+    treat the de-smoothed vol as an order-of-magnitude correction, not a
+    precise number.
+
+    Returns (r_unsmoothed, theta_used); r_unsmoothed has one fewer
+    observation than the (start_idx-trimmed) input series.
+    """
+    r = np.asarray(returns, dtype=float)[start_idx:]
+    if theta is None:
+        theta = np.clip(lag1_autocorrelation(r, start_idx=0), 0.0, 0.95)
+    r_unsmoothed = (r[1:] - theta * r[:-1]) / (1 - theta)
+    return r_unsmoothed, theta
+
+
+def compute_unsmoothed_return_and_vol(
+    returns,
+    periods_per_year: int = 4,
+    start_idx: int = 1,
+    theta: Optional[float] = None,
+    ddof: int = 1,
+):
+    """
+    compute_annualized_return_and_vol(), but first passes the series
+    through unsmooth_ar1_returns() -- use this alongside (not instead of)
+    the raw figure to see how much of the raw Sharpe ratio is an artifact
+    of valuation smoothing rather than real risk-adjusted performance.
+    """
+    r_unsmoothed, theta_used = unsmooth_ar1_returns(returns, start_idx=start_idx, theta=theta)
+    annual_return, annual_vol = compute_annualized_return_and_vol(
+        r_unsmoothed, periods_per_year=periods_per_year, ddof=ddof, start_idx=0
+    )
+    return annual_return, annual_vol, theta_used
+
+
+def compute_max_drawdown(level) -> float:
+    """
+    Maximum peak-to-trough decline of an index level series -- a
+    smoothing-immune complement to volatility. It doesn't rely on the
+    period-to-period variance of marks at all, so it isn't distorted the
+    same way: it only requires that a real loss eventually shows up as a
+    level below a prior peak, however long the smoothing delays it. A
+    monotonically rising level (0% drawdown) across a multi-year window
+    that included real rate and credit cycles is itself a red flag that
+    the marks aren't capturing realized risk.
+    """
+    lvl = np.asarray(level, dtype=float)
+    running_max = np.maximum.accumulate(lvl)
+    drawdown = (lvl - running_max) / running_max
+    return float(drawdown.min())
+
 
 def load_quarterly_rates(
     excel_path: str,
@@ -639,12 +743,8 @@ def build_quarterly_comparison_df(
     """
     Merge index returns, CDLI returns, and quarterly SOFR / EFFR averages.
     """
-    cdli_returns = pd.read_csv(cdli_csv_path)
-    cdli_returns["cal_q"] = cdli_returns["Quarter"].astype(str)
-    if not isinstance(index_mkt_flow, pd.DataFrame):
-        index_mkt_flow = index_mkt_flow.to_pandas()
-
-    cdli_returns = cdli_returns.rename(columns={"CDLI": "CDLI_Return"})
+    cdli_returns = load_cdli_returns(cdli_csv_path).rename(columns={"CDLI": "CDLI_Return"})
+    index_mkt_flow = _ensure_pandas(index_mkt_flow)
 
     plot_df = (
         pd.DataFrame({
@@ -665,8 +765,6 @@ def build_quarterly_comparison_df(
 
     return plot_df
 
-
-import numpy as np
 
 def compute_tracking_error(
     plot_df: pd.DataFrame,
@@ -689,8 +787,6 @@ def compute_tracking_error(
 
     return corr, te_q, te_a
 
-
-import matplotlib.pyplot as plt
 
 def plot_index_cdli_sofr(
     plot_df: pd.DataFrame,
@@ -727,12 +823,59 @@ def plot_index_cdli_sofr(
         linestyle="--"
     )
 
-    plt.legend()
-    plt.ylim(*ylim)
-    plt.xticks(rotation=45)
-    plt.xlabel("Quarter")
-    plt.ylabel("Returns / Rates (%)")
-    plt.title(title)
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
+    _finish_return_plot(title, "Returns / Rates (%)", ylim, grid=True)
+
+
+if __name__ == "__main__":
+    from paths import PROCESSED_DIR
+
+    CSV_PATH = PROCESSED_DIR / "data_private_credit_FINAL_enriched.csv"
+    CDLI_CSV_PATH = PROCESSED_DIR / "cdli.csv"
+
+    print("=== index_construction.py: whole-market flow-based pipeline ===")
+    df = load_and_prepare_investment_data(str(CSV_PATH))
+    df = compute_final_interest_rates(df)
+    print(f"rows after load + rate resolution: {df.height}")
+
+    flows = compute_position_level_flows(df, qsort_expr, safe_div)
+    weighted = compute_market_weights(flows, safe_div)
+    decomp = aggregate_return_decomposition(weighted, safe_div)
+    print("\n--- quarterly return decomposition ---")
+    print(decomp)
+
+    index_df = compute_flow_based_market_index(weighted)
+    print("\n--- flow-based market index ---")
+    print(index_df.select(["cal_q", "IndexReturn", "IndexLevel"]))
+
+    # vs. actual CDLI
+    cdli_returns = load_cdli_returns(str(CDLI_CSV_PATH))
+    cmp_df = (
+        index_df.to_pandas()[["cal_q", "IndexReturn"]]
+        .merge(
+            cdli_returns.rename(columns={"CDLI": "CDLI_Return"})[["cal_q", "CDLI_Return"]],
+            on="cal_q", how="inner",
+        )
+    )
+    corr, te_q, te_a = compute_tracking_error(cmp_df, start_idx=1)
+    print("\n--- vs. actual CDLI ---")
+    print(f"correlation: {corr.loc['IndexReturn', 'CDLI_Return']:.4f}")
+    print(f"tracking error (quarterly): {te_q:.4%}   (annualized): {te_a:.4%}")
+
+    # annualized return/vol, smoothing diagnostics, and drawdown -- see
+    # unsmooth_ar1_returns / compute_max_drawdown docstrings for why raw
+    # volatility on appraisal-based marks understates true risk
+    returns = index_df.sort("cal_q")["IndexReturn"].to_numpy()
+    level = index_df.sort("cal_q")["IndexLevel"].to_numpy()
+    ann_ret, ann_vol = compute_annualized_return_and_vol(returns)
+    rho = lag1_autocorrelation(returns)
+    un_ret, un_vol, theta = compute_unsmoothed_return_and_vol(returns)
+    mdd = compute_max_drawdown(level)
+    print(f"\nannualized return: {ann_ret:.4%}   annualized vol (raw marks): {ann_vol:.4%}")
+    print(f"lag-1 autocorrelation: {rho:.3f}   de-smoothed vol: {un_vol:.4%} (theta={theta:.3f})")
+    print(f"max drawdown: {mdd:.4%}")
+
+    plot_index_vs_cdli_returns(index_df, str(CDLI_CSV_PATH), save_path="index_vs_cdli_returns.png")
+    plot_quarterly_return_decomposition(
+        decomp.to_pandas(), title="Quarterly Return Decomposition",
+        save_path="quarterly_return_decomposition.png",
+    )
