@@ -13,6 +13,10 @@ Combine wide outputs (append + dedup)
 Preprocess & normalize (prefix merge, quarter labels, filtering, scaling fixes)
    ↓
 Analysis-ready dataset (`ixbrl_clean.csv`)
+   ↓
+Rate, currency & value cleaning (`run_ixbrl_pipeline.py`, see `README_2.md`)
+   ↓
+Loan-level cleaned dataset (`ixbrl_cleaned_out.csv`)
 
 ---
 
@@ -31,6 +35,7 @@ Analysis-ready dataset (`ixbrl_clean.csv`)
 ├── filings.py           # SEC submissions -> metadata + download primary docs
 ├── ixbrl_parser.py      # Parse iXBRL instance XML + combine wide outputs
 ├── preprocessor.py      # Cleaning & normalization (final dataset)
+├── ixbrl_utils.py       # Rate / currency / value cleaning rules (see README_2.md)
 ├── paths.py             # Centralized path definitions
 └── helpers.py           # Shared helper utilities (e.g., quarter labels)
 
@@ -42,7 +47,8 @@ Analysis-ready dataset (`ixbrl_clean.csv`)
 ├── run_bdc_universe.py
 ├── run_download.py
 ├── run_ixbrl_parser.py
-└── run_preprocessor.py
+├── run_preprocessor.py
+└── run_ixbrl_pipeline.py
 
 ```
 
@@ -221,7 +227,7 @@ Optional diagnostics:
   - Adds `*_normalized` and `*_scale_flag`
   - Attempts divide-by-100 or divide-by-10000 to fit valid ranges
   - Forces PIC/PIK/Floor normalized values non-negative (flags `|sign_error`)
-- `TERM_COLS` includes `InvestmentInterestRateFloor` — it was missing before, which meant `select_analysis_columns` dropped the raw column before the normalization logic above (which already handled it) ever got a chance to run, silently discarding all loan floor-rate data and misclassifying Floor-only contexts as `empty` instead of `terms_only`. The downstream cleaning stage (`ixbrl_utils.py`, `run_ixbrl_pipeline.py`) already expected this column to be present.
+- `TERM_COLS` includes `InvestmentInterestRateFloor` — it was missing before, which meant `select_analysis_columns` dropped the raw column before the normalization logic above (which already handled it) ever got a chance to run, silently discarding all loan floor-rate data and misclassifying Floor-only contexts as `empty` instead of `terms_only`. The downstream cleaning stage (`ixbrl_utils.py`, `run_ixbrl_pipeline.py`) normalizes this column too, so it needs to be present.
 
 ### Main APIs
 - `run_preprocess(...)`: reads input in row chunks (default C engine — `engine="pyarrow"` doesn't support `chunksize`), runs transforms per chunk, appends each cleaned chunk directly to the output CSV. Previously read the whole input via `pd.read_csv(..., engine="pyarrow")` in one shot, which OOM'd trying to load the full ~1.5GB/1,746-column combined table. Every transform in the pipeline (calendar-quarter tagging, prefix-merge, column selection, the quarter/share/context-type filters, rate normalization) is row-local, so chunking is exact, not an approximation — verified by comparing chunked vs. single-chunk output on a sample (identical). The one aggregate step (non-null diagnostics) is summed incrementally across chunks instead of computed on the whole frame. The returned DataFrame is read back from the written output only if it's under `reload_max_bytes` (default 500MB) — for a large output, reloading it would recreate the same OOM risk, so an empty DataFrame is returned instead with a logged warning; read the CSV directly (in chunks, if needed) in that case.
@@ -282,3 +288,23 @@ Modes:
 Outputs:
 - `data/processed/ixbrl_clean.csv`
 - (optional) `data/processed/preprocess_nonnull_stats.csv`
+
+## `run_ixbrl_pipeline.py`
+Takes `ixbrl_clean.csv` plus `FX.csv` and `SOFR_augmented.csv` and produces the loan-level cleaned dataset:
+USD conversion, dollar-scale fixes, filer-quarter outlier removal, and rule-based interest-rate
+repair (`IR = PIC + PIK`, `IR ≈ base rate + spread`). See `README_2.md` for the rules and output columns.
+
+`SOFR_augmented.csv` is built by `augment_rates.py`, which adds quarterly EURIBOR 3M, SONIA, CORRA
+and BBSW 3M columns to `SOFR.csv` from the ECB, Bank of England (via FRED), Bank of Canada and RBA:
+
+```bash
+python augment_rates.py SOFR.csv SOFR_augmented.csv
+```
+
+```python
+from run_ixbrl_pipeline import run_pipeline
+df = run_pipeline("ixbrl_clean.csv", "FX.csv", "SOFR_augmented.csv")
+```
+
+Outputs (when run as a script):
+- `ixbrl_cleaned_out.csv`

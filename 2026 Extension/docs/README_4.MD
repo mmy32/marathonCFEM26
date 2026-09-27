@@ -378,24 +378,44 @@ having run successfully.
 
 ---
 
-### Known Limitations — Open (not fixed)
+### Known Limitations — Partially Fixed
 
 **`compute_position_level_flows()` — same-quarter duplicate `(cik, investment_identifier)` keys
-make `FV_prev` order-dependent.** `FV_prev = pl.col("FV").shift(1).over(["cik",
-"investment_identifier"])` lags each position within its own group, sorted by quarter. The group
-key doesn't disambiguate two *different* positions that happen to share identical description text
-within the same filer and the same quarter — a real, observed pattern (e.g. two tranches of the
-same facility disclosed with byte-identical `investment_identifier` text). When that happens,
-`.sort()`'s tie-break for same-quarter rows is not guaranteed stable across runs whose upstream row
-order differs — a new, entirely unrelated filing landing anywhere earlier in the combined wide
-table can reshuffle it — so one of the two rows can get the *other's* fair value treated as its
-"prior quarter," even though both are the same quarter.
+made `FV_prev` order-dependent; now deterministic, but not economically resolved.**
+`FV_prev = pl.col("FV").shift(1).over(["cik", "investment_identifier"])` lags each position within
+its own group, sorted by quarter. The group key doesn't disambiguate two *different* positions that
+happen to share identical description text within the same filer and the same quarter — a real,
+observed pattern (e.g. two tranches of the same facility disclosed with byte-identical
+`investment_identifier` text; ~1% of rows on the current panel, down from the ~2.2% originally
+measured here as the dataset has grown). When that happens, `.sort()`'s tie-break for same-quarter
+rows was not guaranteed stable across runs whose upstream row order differs — a new, entirely
+unrelated filing landing anywhere earlier in the combined wide table could reshuffle it — so one of
+the two rows could get the *other's* fair value treated as its "prior quarter," even though both are
+the same quarter.
 
-For any quarter after a position's true first appearance, this only misattributes a small amount of
-return between the two duplicate siblings; the aggregate quarterly return is essentially unaffected.
-Confirmed by re-running the full pipeline after adding 74 unrelated new 2026Q2 filings: total fair
-value per quarter matched to floating-point precision for every quarter except the one that actually
-gained new rows, and position-level differences elsewhere were on the order of 1–3bp.
+**Fix applied:** `compute_position_level_flows()` now sorts on `context_id` as a tertiary tiebreaker
+(verified to fully disambiguate every duplicate group in the current panel — it is never itself
+repeated within one), making the result a deterministic function of each row's own data instead of
+incidental row order. Confirmed empirically: shuffling the full input's row order before this call
+no longer changes any position's `FV_prev`/return, anywhere, whereas before the fix it did. **What
+this does not fix:** which of the two duplicate siblings' histories the *other* one inherits is
+still not economically determined — `context_id` disambiguates rows within one quarter, it is not a
+stable identifier for either sibling *across* quarters, and no field in this pipeline is, so a
+misattribution between the two siblings can still occur, just consistently (the same way every run)
+rather than incidentally.
+
+For any quarter after a position's true first appearance, this misattributes a small amount of
+return between the two duplicate siblings at the whole-market level; the aggregate quarterly return
+is essentially unaffected. Confirmed by re-running the full pipeline after adding 74 unrelated new
+2026Q2 filings: total fair value per quarter matched to floating-point precision for every quarter
+except the one that actually gained new rows, and position-level differences elsewhere were on the
+order of 1–3bp. This is NOT true at narrow-bucket granularity, however — confirmed directly while
+building a per-BDC breakdown (`risk_1.py`'s `compute_cik_return_dispersion`, one CIK's own book per
+quarter): under the pre-fix order-dependent behavior, 102 of 1,406 individual `(cik, quarter)`
+returns changed depending on input row order alone, by as much as 21 percentage points for one
+BDC-quarter (CIK 1825248, 2025Q4: -17.1% vs. +4.0%). The tiebreak fix eliminates that instability
+(0 of 1,406 changed after the fix); it does not eliminate the underlying sibling-misattribution risk
+for the CIKs actually holding a duplicated pair.
 
 **2023Q1 is fully exposed to this.** It's the index's first quarter, so no position in it has a
 *genuine* prior-quarter fair value at all — the entire market-level "return" reported for 2023Q1 is
