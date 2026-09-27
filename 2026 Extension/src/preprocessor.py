@@ -51,7 +51,14 @@ RATE_RANGE = (0.02, 0.50)    # 2% ~ 50%
 @dataclass
 class PreprocessConfig:
     quarter_from: str = "2023Q1"
-    quarter_to: str = "2025Q3"
+    # No upper bound by default. A hardcoded quarter_to here is a landmine: the
+    # panel keeps growing every quarter, so a fixed cutoff silently truncates
+    # every quarter filed after it the next time this runs without an explicit
+    # end_q override -- exactly what would happen today if this were still
+    # pinned at its old "2025Q3" value while the data on disk already runs
+    # through 2026Q2. Pass quarter_to (or end_q to run_preprocess()) only when
+    # a caller genuinely wants to bound the analysis window.
+    quarter_to: Optional[str] = None
     keep_share_col: str = "InvestmentOwnedBalanceShares"
 
     # Filters
@@ -301,12 +308,29 @@ def run_preprocess(
 
         if "cal_q" in chunk.columns:
             chunk["cal_q"] = chunk["cal_q"].astype(str)
-            chunk = chunk[chunk["cal_q"].between(cfg.quarter_from, cfg.quarter_to)].copy()
+            in_range = chunk["cal_q"] >= cfg.quarter_from
+            if cfg.quarter_to is not None:
+                in_range &= chunk["cal_q"] <= cfg.quarter_to
+            chunk = chunk[in_range].copy()
 
         chunk["context_type"] = classify_context(chunk)
 
         if cfg.only_no_shares and cfg.keep_share_col in chunk.columns:
-            chunk = chunk[chunk[cfg.keep_share_col].isna()].copy()
+            # A non-null share count is normally a reliable equity signal, but not
+            # always: HPS Corporate Lending Fund's 2026Q1 10-Q tagged
+            # InvestmentOwnedBalanceShares on 696 of 1,092 positions (63.7% of that
+            # filing) vs. 0-3.8% in every one of its other 13 quarters -- and 539 of
+            # those 696 are ordinary term loans with a real InvestmentInterestRate/
+            # BasisSpreadVariableRate *and* Cost/FairValue (context_type == "mixed"),
+            # not equity. Excluding every non-null-shares row regardless of context
+            # silently cut that filer's reported AUM by ~80% for one quarter. A row
+            # with real debt-instrument data is never actually an equity position,
+            # even if it also carries a spurious/duplicate shares tag, so only the
+            # amounts_only/terms_only/empty rows -- context_type's actual "no term
+            # + amount pair together" cases -- are excluded here.
+            has_shares = chunk[cfg.keep_share_col].notna()
+            is_debt_like = chunk["context_type"] == "mixed"
+            chunk = chunk[~has_shares | is_debt_like].copy()
 
         if cfg.drop_amounts_only:
             chunk = chunk[chunk["context_type"] != "amounts_only"].copy()

@@ -1,163 +1,60 @@
 import sys
+import warnings
 from pathlib import Path
 
 import pandas as pd
-import warnings
-warnings.filterwarnings("ignore")
 
 ROOT = Path(__file__).resolve().parents[1]  # 2026 Extension/
 sys.path.append(str(ROOT / "src"))
 
 from ixbrl_utils import (
-    # --- core cleaning ---
     normalize_interest_columns,
     convert_currencies,
     normalize_value_scale,
     flag_filer_quarter_outliers,
-    initialize_clean_dataframe,
-    classify_rate_types,
-    perform_initial_swap,
-    clean_fixed_rate_data,
-    perform_additional_corrections,
-    clean_additional_rate_issues,
-    fix_pic_from_ir_minus_pik,
-    fix_ir_lt_pic,
-    apply_spread_rate_rules,
-    drop_fully_missing_rate_rows,
-
-    # --- unresolved logic ---
-    unresolved_rate_pic,
-    unresolved_rate_pik_pic,
-    unresolved_pik,
-    unresolved_spread_rate_pic_pik,
-    unresolved_pic,
-    unresolved_spread_pik_pic,
-    unresolved2_spread_rate_pik,
-    unresolved_spread_rate_pic,
-    unresolved_spread,
-    unresolved_spread_rate,
-    unresolved_spread_pik,
-    unresolved_spread_pic,
-    unresolved_spread_rate_pik,
-
-
-    # --- SOFR & helpers ---
-    determine_currency,
-    add_estimate_with_sofr,
-    percentile_range,
-    RATE,
-    SPREAD,
-    add_check_2
+    drop_subtotal_rows,
+    load_base_rates,
+    resolve_rates,
 )
 
+warnings.filterwarnings("ignore")
 
-def run_pipeline(
-    data_path: str,
-    fx_path: str,
-    sofr_path: str = "SOFR.csv",
-) -> pd.DataFrame:
 
+def run_pipeline(data_path: str, fx_path: str, sofr_path: str = "SOFR_augmented.csv") -> pd.DataFrame:
     # -------------------------
-    # Load base data
+    # Load & filter
     # -------------------------
-    df = pd.read_csv(data_path)
-
+    df = pd.read_csv(data_path, low_memory=False)
     df["cal_qe"] = pd.to_datetime(df["cal_qe"], errors="coerce")
     df["cal_q"] = df["cal_qe"].dt.to_period("Q").astype(str)
-    
-    # Filter rows without shares but with meaningful term info
-    df = df.loc[df["InvestmentOwnedBalanceShares"].isna()]
+
+    # Shares are normally an equity signal, but HPS Corporate Lending Fund's 2026Q1 10-Q
+    # tagged shares on 63.7% of positions (mostly term loans with real rate/FV data), so
+    # rows whose context_type is "mixed" are kept even when shares are present.
+    has_shares = df["InvestmentOwnedBalanceShares"].notna()
+    df = df.loc[~has_shares | df["context_type"].eq("mixed")]
     df = df.loc[~df["context_type"].isin(["amounts_only", "empty"])]
 
     # -------------------------
-    # Normalize & classify
+    # Normalise units, currency, dollar scale
     # -------------------------
     df = normalize_interest_columns(df)
-
-    df["RateType"] = df[
-        "InvestmentVariableInterestRateTypeExtensibleEnumeration"
-    ].apply(lambda x: x.split("#")[-1] if isinstance(x, str) and "#" in x else x)
-
-    df = convert_currencies(df, fx_path)
+    df = convert_currencies(df, fx_path)            # also sets df["currency"]
     df = normalize_value_scale(df)
 
-    # A handful of filings mis-tag fair value, cost, and principal together (all wrong
-    # by the same non-round factor), which normalize_value_scale() cannot see -- it only
-    # catches a value mis-tagged relative to its own row's principal, and here principal
-    # is wrong too, so the ratio still looks "plausible". See flag_filer_quarter_outliers()
-    # docstring for the full finding (TCW Direct Lending VIII LLC's 2023Q1 filing, CIK
-    # 1825265, reporting individual loan positions at $30-46B each).
+    # Filings that mis-tag FV, cost and principal together (e.g. TCW Direct Lending VIII,
+    # 2023Q1) -- see flag_filer_quarter_outliers() docstring.
     df = flag_filer_quarter_outliers(df)
-    df = df.loc[~df["filer_quarter_outlier"]].drop(columns=["filer_quarter_outlier"])
+    df = df.loc[~df["filer_quarter_outlier"]].drop(columns="filer_quarter_outlier")
 
-    df = initialize_clean_dataframe(df)
-    df = classify_rate_types(df)
-
-    # -------------------------
-    # Core cleaning passes
-    # -------------------------
-    df = perform_initial_swap(df)
-    df = clean_fixed_rate_data(df)
-    df = perform_additional_corrections(df)
-    df = clean_additional_rate_issues(df)
-    df = fix_pic_from_ir_minus_pik(df)
-    df = fix_ir_lt_pic(df)
+    # Subtotal / heading rows that would double-count FV (see drop_subtotal_rows()).
+    df = drop_subtotal_rows(df)
 
     # -------------------------
-    # Unresolved rate logic
+    # Rates: role repairs -> fills -> base-rate estimate -> flags
     # -------------------------
-    df = apply_spread_rate_rules(df)
-    df = drop_fully_missing_rate_rows(df)
-
-    df = add_check_2(df)
-
-    df = unresolved_rate_pic(df)
-    df = unresolved_rate_pik_pic(df)
-    df = unresolved_pik(df)
-    df = unresolved_spread_rate_pic_pik(df)
-    df = unresolved_pic(df)
-    df = unresolved_spread_pik_pic(df)
-    df = unresolved_spread_rate_pik(df)
-    df = unresolved_spread_rate_pic(df)
-
-    # -------------------------
-    # SOFR + estimation
-    # -------------------------
-    sofr = pd.read_csv(sofr_path)
-    sofr.rename(columns={sofr.columns[2]: "sofr"}, inplace=True)
-    sofr["TIME PERIOD"] = sofr["TIME PERIOD"].astype(str).str.strip()
-    sofr["sofr"] = sofr["sofr"] / 100
-
-    df["currency"] = df.apply(determine_currency, axis=1)
-
-    rate_range = percentile_range(df[RATE], 0.05)
-    spread_range = percentile_range(df[SPREAD], 0.05)
-
-    df = add_estimate_with_sofr(
-        df,
-        sofr_df=sofr,
-        rate_range=rate_range,
-        spread_range=spread_range,
-    )
-
-    # -------------------------
-    # Final unresolved handling
-    # -------------------------
-    df = unresolved_spread(df)
-    df = unresolved_spread_rate(df)
-    df = unresolved_spread_pik(df)
-    df = unresolved_spread_pic(df)
-    df = unresolved2_spread_rate_pik(df)
-
-    #print(df["check_1"].value_counts(dropna=False))
-    return df
+    return resolve_rates(df, load_base_rates(sofr_path))
 
 
-# if __name__ == "__main__":
-#     df_clean = run_pipeline(
-#         data_path="ixbrl_clean.csv",
-#         fx_path="FX.csv",
-#         sofr_path="SOFR.csv",
-#     )
-
-#     df_clean.to_csv("ixbrl_cleaned_out.csv", index=False)
+if __name__ == "__main__":
+    run_pipeline("ixbrl_clean.csv", "FX.csv", "SOFR_augmented.csv").to_csv("ixbrl_cleaned_out.csv", index=False)
