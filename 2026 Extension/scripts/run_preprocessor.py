@@ -38,7 +38,7 @@ def main():
     elif mode == "full":
         cfg = PreprocessConfig(
             quarter_from="2023Q1",
-            quarter_to="2026Q4",  # extended to cover newly downloaded filings through 2026; update as new data arrives
+            quarter_to=None,  # no upper bound; a fixed cutoff silently drops every later quarter
             only_no_shares=True,
             drop_amounts_only=True,
             write_stats_csv=False,
