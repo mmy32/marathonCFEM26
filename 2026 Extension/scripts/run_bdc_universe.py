@@ -1,4 +1,5 @@
 import os
+from datetime import date
 import sys
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from paths import PROCESSED_DIR
 def run_bdc_universe(
     user_agent: str,
     start_year: int = 2001,
-    end_year: int = 2026,
+    end_year: int = date.today().year,
     out_dir: Path = PROCESSED_DIR,
 ):
     out_dir.mkdir(parents=True, exist_ok=True)
