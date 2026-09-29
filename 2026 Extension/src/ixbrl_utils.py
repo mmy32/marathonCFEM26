@@ -4,36 +4,35 @@ IXBRL cleaning utilities: currency, dollar-scale and interest-rate cleaning.
 The rate logic rests on two identities:
 
     (I1)  IR = PIC + PIK                      coupon identity (all loans)
-    (I2)  IR ~= SOFR_q + Spread               floating-rate identity, SOFR_q from SOFR.csv
+    (I2)  IR ~= Base_q + Spread, with floors  floating-rate identity, Base_q = the loan
+                                              currency's rate from SOFR_augmented.csv
 
-Every repair is one of three things:
+Every repair is one of two things:
     1. a *role repair*  - a field holds a value that belongs in another field, detected
                           because moving it makes I1 or I2 hold;
-    2. a *fill*         - one term of I1 / I2 is missing and the others are present;
-    3. a *flag*         - the row contradicts I1 / I2 and no move fixes it (value left alone).
+    2. a *fill*         - one term of I1 / I2 is missing and the others are present.
+A row that contradicts I1 / I2 with no move that fixes it is left as reported.
 
 Rules live in one ordered table (RATE_RULES). Each rule is (tag, condition, assignment);
 `apply_rules` handles masking, tagging and bookkeeping in one place, so a rule is ~5 lines.
+Every rule is kept only because removing it breaks I1, I2 or a sign on a measurable share of
+rows (see README_2.md, "Why each rule is kept").
 
 Output columns:
     rate_config   which of spread/rate/pik/pic were present on input   (also written as check_2)
     rate_source   reported | derived | estimated | zero | none
     check_1       'resolved' iff the row ends with a usable non-zero IR
-    estimate      SOFR + spread for USD floating/untyped rows with a spread
-    rate_flags    pipe-joined data-quality flags, never auto-"resolved"
+    estimate      base + spread (with floors) for floating/untyped rows with a spread
     change_tracker  pipe-joined tags of every rule that fired
     RateType      base-rate member from the XBRL enumeration (e.g. 'FixedRateMember')
     is_fixed      True / False from RateType, <NA> when the filer did not tag it
-
-A row is only flagged when no identity pins down the right value, so what reaches the
-index through rate_flags is ambiguous-but-plausible, not known-wrong.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Callable, Dict, Iterable, Optional, Tuple
+from typing import Callable, Iterable, Tuple
 
 import numpy as np
 import pandas as pd
@@ -65,18 +64,11 @@ RATE_SCALES = (100, 10_000)             # percent / basis-point tagging errors
 
 TOL = 1e-6                              # float-equality tolerance, used everywhere
 BASE_TOL = 0.005                        # 50bp: "differs by the base rate" test
-MISMATCH_FLAG = 0.02                    # |IR - (base + spread)| above this is flagged
 PRIME_OVER_SOFR = 0.032                 # Prime ~ SOFR + 3.2% (2023-2026 quarterly averages)
 SPREAD_LIKE_RANGE = (0.02, 0.09)        # untagged spread == IR: a value in here is a spread,
                                         # above it a coupon (tagged loans: floating <= 7.5%, fixed >= 10%)
 _PRIME_TEXT = r"(?i)\bprime\s*(?:rate\s*)?[+\-–]"   # "Prime + 1.35%", "Prime - 1.15%"
 
-CURRENCY_CODES = [
-    "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD", "CNY", "HKD", "SGD",
-    "SEK", "NOK", "DKK", "KRW", "INR", "RUB", "BRL", "MXN", "ZAR", "TRY",
-    "PLN", "CZK", "HUF", "ILS", "SAR", "AED", "CLP", "COP", "THB", "MYR",
-    "IDR", "PHP", "TWD", "ARS", "PEN", "EGP", "NGN", "VND", "PKR", "BDT",
-]
 COUNTRY_TO_CURRENCY = {
     "United States": "USD", "Australia": "AUD", "Canada": "CAD", "Singapore": "SGD",
     "Hong Kong": "HKD", "New Zealand": "NZD", "United Kingdom": "GBP", "Euro Area": "EUR",
@@ -90,6 +82,7 @@ COUNTRY_TO_CURRENCY = {
     "Vietnam": "VND", "Pakistan": "PKR", "Bangladesh": "BDT", "Russia": "RUB",
     "Nigeria": "NGN", "Egypt": "EGP",
 }
+CURRENCY_CODES = sorted(set(COUNTRY_TO_CURRENCY.values()))
 
 
 # ============================================================
@@ -109,11 +102,13 @@ def append_tag(df: pd.DataFrame, mask: pd.Series, tag: str, col: str = "change_t
     df.loc[mask, col] = np.where(prev.eq(""), tag, prev + "|" + tag)
 
 
-def rescale_to_range(x: pd.Series, lo: float, hi: float, scales: Iterable[float]) -> Tuple[pd.Series, pd.Series]:
+def rescale_to_range(x: pd.Series, lo: float, hi: float,
+                     scales: Iterable[float]) -> Tuple[pd.Series, pd.Series, pd.Series]:
     """
     Vectorised power-of-ten rescaling shared by rate and dollar-value normalisation.
     In-range values pass through; otherwise the candidate scale whose result lands
     closest to the band midpoint wins; nothing lands -> 'unresolved'.
+    Returns (rescaled values, flag, divisor applied or NaN).
     """
     a = x.abs()
     ok = a.between(lo, hi)
@@ -130,7 +125,7 @@ def rescale_to_range(x: pd.Series, lo: float, hi: float, scales: Iterable[float]
     flag[ok] = "unchanged"
     flag[best_scale.notna()] = "div" + best_scale[best_scale.notna()].astype(int).astype(str)
     flag[x.isna()] = "na"
-    return out, flag
+    return out, flag, best_scale
 
 
 # ============================================================
@@ -153,12 +148,42 @@ def normalize_interest_columns(df: pd.DataFrame) -> pd.DataFrame:
     for col, (lo, hi) in RATE_COLS.items():
         if col not in out:
             continue
-        v, f = rescale_to_range(out[col], lo, hi, RATE_SCALES)
+        v, f, _ = rescale_to_range(out[col], lo, hi, RATE_SCALES)
         if col in SIGN_FIX_COLS:
             neg = v < 0
             v = v.abs()
             f = f.where(~neg, f + "|sign_error")
         out[f"{col}_normalized"], out[f"{col}_scale_flag"] = v, f
+    return fix_component_scale(out)
+
+
+COMPONENT_EXCESS = 0.10    # a component this far above the row's coupon is a percent-tagging error
+
+
+def fix_component_scale(out: pd.DataFrame) -> pd.DataFrame:
+    """
+    Row-level scale check for PIC / PIK. Each column is rescaled on its own above, so a raw
+    0.50 meaning 0.50% ("(including 50 PIK)") passes through as 50%, and a row can mix a
+    percent-tagged IR (8.96 -> 8.96%) with a PIK left at 0.48. A component that exceeds the
+    row's coupon (IR, or spread + 6% when IR is missing) by more than COMPONENT_EXCESS, and
+    fits under it once divided by 100, was tagged in percent.
+
+    "50/50 Cash/PIK" tagged as PIC = PIK = 0.5 is a split, not two 50% rates: each half of IR.
+    """
+    if not {RATE, PIC, PIK} <= set(out.columns):
+        return out
+    rate = out[RATE]
+    split = close(out[PIC], 0.5) & close(out[PIK], 0.5) & rate.between(0, RATE_RANGE[1] / 2)
+    for c in (PIC, PIK):
+        out.loc[split, c] = rate[split] / 2
+        fc = c.replace("_normalized", "_scale_flag")
+        out.loc[split, fc] = out.loc[split, fc].astype(str) + "|split_50_50"
+    ref = rate.fillna(out[SPREAD] + 0.06) if SPREAD in out else rate
+    for c in (PIC, PIK):
+        bad = (out[c] > 0.2) & (out[c] > ref + COMPONENT_EXCESS) & (out[c] / 100 <= ref)
+        out.loc[bad, c] = out.loc[bad, c] / 100
+        fc = c.replace("_normalized", "_scale_flag")
+        out.loc[bad, fc] = out.loc[bad, fc].astype(str) + "|row_div100"
     return out
 
 
@@ -195,12 +220,32 @@ def convert_currencies(df: pd.DataFrame, fx_path: str) -> pd.DataFrame:
     out = df.copy()
     out["cal_q"] = out["cal_q"].astype(str)
     fx = prepare_fx_data(fx_path).set_index(["cal_q", "currency_norm"])["fx_to_usd"]
+    to_usd = lambda x, ccy: x.where(ccy.isna() | ccy.eq("USD"),
+                                    x / pd.Series(pd.MultiIndex.from_arrays([out["cal_q"], ccy]).map(fx),
+                                                  index=out.index))
     for v, u in zip(VALUE_COLS, UNIT_COLS):
         ccy = normalize_currency(out[u])
         out[u + "_normalized"] = ccy
-        rate = pd.Series(pd.MultiIndex.from_arrays([out["cal_q"], ccy]).map(fx), index=out.index)
-        usd = ccy.isna() | ccy.eq("USD")
-        out[v + "_normalized"] = out[v].where(usd, out[v] / rate)
+        out[v + "_normalized"] = to_usd(out[v], ccy)
+
+    # Principal in a different unit from FV and cost is normal (a EUR loan reported in USD).
+    # It is a filer unit error only when converting it is what breaks it: read in the FV / cost
+    # currency the principal sits within 3x of FV, converted it does not (CIK 1976336 tags USD
+    # principal as U_EGP; left alone, the loan is labelled EGP and the value-scale check then
+    # divides FV and cost by 1000).
+    pu = out[PRIN_RAW + "-unitRef_normalized"]
+    fu, cu = out[FV_RAW + "-unitRef_normalized"], out[COST_RAW + "-unitRef_normalized"]
+    pv, fvn = out[PRIN_RAW + "_normalized"], out[FV_RAW + "_normalized"]
+    alt = to_usd(out[PRIN_RAW], fu)
+    # Only where the two currencies are at least 2x apart (EGP, NOK, SEK, DKK, CNY, JPY vs USD);
+    # for EUR / GBP the FX move is too small to tell a unit error from a marked-down loan.
+    within = lambda r: r.abs().between(1 / 3, 3)
+    far_fx = ~(pv / alt).abs().between(0.5, 2)
+    odd = (fu.notna() & fu.eq(cu) & pu.notna() & pu.ne(fu) & fvn.ne(0) & far_fx
+           & within(alt / fvn) & ~within(pv / fvn)).fillna(False).astype(bool)
+    out.loc[odd, PRIN_RAW + "_normalized"] = alt[odd]
+    out.loc[odd, PRIN_RAW + "-unitRef_normalized"] = fu[odd]
+    out["unit_mismatch_fixed"] = odd
     out["currency"] = determine_currency(out)
     return out
 
@@ -245,9 +290,8 @@ def normalize_value_scale(df, value_cols=(FV_RAW + "_normalized", COST_RAW + "_n
         v = out[col]
         ratio = (v / a).abs()
         ok = ratio.between(*VALUE_RATIO_RANGE)
-        lo, hi = VALUE_RESCALE_TARGET_RANGE
-        _, flag = rescale_to_range(ratio.where(~ok), lo, hi, VALUE_SCALE_CANDIDATES)
-        scale = flag.str.extract(r"div(\d+)", expand=False).astype(float)
+        _, flag, scale = rescale_to_range(ratio.where(~ok), *VALUE_RESCALE_TARGET_RANGE,
+                                          VALUE_SCALE_CANDIDATES)
         scales[col] = scale.where(has_anchor & ~ok)
         flags[col] = flag.where(~ok, "unchanged").where(has_anchor & v.notna(), "na")
 
@@ -273,8 +317,7 @@ def normalize_value_scale(df, value_cols=(FV_RAW + "_normalized", COST_RAW + "_n
     if cost in out:
         p, c = out[anchor_col], out[cost]
         big = c.abs() >= PRINCIPAL_CHECK_MIN_COST
-        _, cflag = rescale_to_range((p / c).where(big), *PRINCIPAL_COST_RANGE, VALUE_SCALE_CANDIDATES)
-        s = cflag.str.extract(r"div(\d+)", expand=False).astype(float)
+        _, cflag, s = rescale_to_range((p / c).where(big), *PRINCIPAL_COST_RANGE, VALUE_SCALE_CANDIDATES)
         out[anchor_col] = p.where(s.isna(), p / s)
         pflag = pflag.where(s.isna(), cflag)
     out[f"{anchor_col}_scale_flag"] = pflag
@@ -308,6 +351,42 @@ def flag_filer_quarter_outliers(df, value_col=FV_RAW + "_normalized", filer_col=
     idx = pd.MultiIndex.from_frame(out[[filer_col, quarter_col]])
     out["filer_quarter_outlier"] = key.reindex(idx).fillna(False).astype(bool).to_numpy()
     return out
+
+
+OUTLIER_POSITION_SHARE = 0.25   # one position above this share of the fund's typical total
+                                # FV, inside an outlier quarter, is tagged in the wrong units
+
+
+def rescale_filer_quarter_outliers(df, value_col=FV_RAW + "_normalized", filer_col="cik",
+                                   quarter_col="cal_q", share=OUTLIER_POSITION_SHARE,
+                                   scale=1_000):
+    """
+    Row-level repair for filer-quarter outliers. In every case on this data only a few
+    positions (2-14) carry FV, cost AND principal 1000x too large together, so the ratio
+    checks in normalize_value_scale cannot see them, and dropping the whole quarter also
+    drops the correctly scaled rows. Here, inside a flagged quarter, a position larger than
+    `share` of the fund's median quarterly total in its other quarters has all three value
+    fields divided by `scale`. flag_filer_quarter_outliers() is still run afterwards as a
+    fallback, so a quarter that is still an outlier after this repair is dropped.
+    """
+    out = flag_filer_quarter_outliers(df, value_col, filer_col, quarter_col)
+    flagged = out["filer_quarter_outlier"]
+    if not flagged.any():
+        return out.drop(columns="filer_quarter_outlier")
+    tot = out[value_col].abs().groupby([out[filer_col], out[quarter_col]]).sum()
+    ref = pd.Series(np.nan, index=out.index)
+    for (f, q) in out.loc[flagged, [filer_col, quarter_col]].drop_duplicates().itertuples(index=False):
+        others = tot.loc[f].drop(q)
+        m = flagged & out[filer_col].eq(f) & out[quarter_col].eq(q)
+        ref[m] = others.median()
+    big = flagged & (out[value_col].abs() > share * ref)
+    cols = [c + "_normalized" for c in VALUE_COLS]
+    for c in cols:
+        out.loc[big, c] = out.loc[big, c] / scale
+        fc = c + "_scale_flag"
+        if fc in out:
+            out.loc[big, fc] = out.loc[big, fc].astype(str) + f"|filer_quarter_div{scale}"
+    return out.drop(columns="filer_quarter_outlier")
 
 
 _CHILD_SEP = re.compile(r"\s*[-–|,:;(]")
@@ -349,12 +428,6 @@ def drop_subtotal_rows(df, value_col=FV_RAW + "_normalized", filing_cols=("cik",
 # 5. Rate resolution: one rule table, two identities
 # ============================================================
 
-def load_sofr(sofr_path: str) -> pd.Series:
-    """SOFR file -> Series indexed by cal_q ('2024Q3'), in decimal. Third column holds the rate."""
-    sofr = pd.read_csv(sofr_path)
-    return (sofr.iloc[:, 2] / 100).set_axis(sofr["TIME PERIOD"].astype(str).str.strip()).rename("sofr")
-
-
 def load_base_rates(path: str) -> pd.DataFrame:
     """
     Base-rate file -> DataFrame indexed by cal_q, one column per currency, in decimal.
@@ -371,9 +444,10 @@ def load_base_rates(path: str) -> pd.DataFrame:
 @dataclass
 class Rule:
     tag: str
-    when: Callable[[pd.DataFrame], pd.Series]            # row mask
-    then: Callable[[pd.DataFrame, pd.Series], None]      # in-place assignment on masked rows
-    flag_only: bool = False                              # True -> tag rate_flags, change nothing
+    when: Callable[[pd.DataFrame], pd.Series]                  # row mask
+    then: Callable[[pd.DataFrame, pd.Series], None]            # in-place assignment on masked rows
+    moves_ir: bool = False     # the reported IR value is moved to another field, so the
+                               # final IR is derived rather than reported
 
 
 def _set(**assign):
@@ -396,12 +470,16 @@ untagged = lambda d: d["is_fixed"].isna()
 
 
 def est(d: pd.DataFrame) -> pd.Series:
-    """All-in floating coupon: max(base + spread, floor). A base-rate floor (0.5-2%) never
-    binds against base + spread, so one formula covers base floors and all-in floors."""
+    """All-in floating coupon. A floor below the spread is a base-rate floor (0.5-2%):
+    max(base, floor) + spread. A floor at or above it is an all-in floor ("Floor rate 9.85%"):
+    max(base + spread, floor). Base-rate floors only bind where the base is near zero (SARON
+    from 2025Q3: CHF loans with a 0.75% floor report exactly spread + 0.75%)."""
     s = d["_base"] + d[SPREAD]
     if FLOOR not in d:
         return s
-    return s.where(~(d[FLOOR] > s), d[FLOOR])
+    base_floor = d[FLOOR] < d[SPREAD]
+    s = s.where(~(base_floor & (d[FLOOR] > d["_base"])), d[FLOOR] + d[SPREAD])
+    return s.where(~(~base_floor & (d[FLOOR] > s)), d[FLOOR])
 
 
 def spread_like(d: pd.DataFrame) -> pd.Series:
@@ -411,27 +489,21 @@ def spread_like(d: pd.DataFrame) -> pd.Series:
 
 RATE_RULES = [
     # ---------- rate-type repairs (need the XBRL rate-type tag) ----------
-    # Fixed loan with spread == IR: the value is the coupon (median 13.6% on this data),
-    # the spread tag is spurious.
-    Rule("clear_spread_fixed_rate",
-         lambda d: fixed(d) & live(d) & close(d[RATE], d[SPREAD]),
-         _set(**{SPREAD: np.nan})),
-
     # Fixed loan with only a "spread": it is the coupon (no base rate on a fixed loan).
     Rule("fixed_spread_is_rate",
          lambda d: fixed(d) & isna(d, RATE) & has(d, SPREAD) & isna(d, PIC) & isna(d, PIK),
-         _set(**{RATE: lambda d: d[SPREAD], SPREAD: np.nan})),
+         _set(**{RATE: lambda d: d[SPREAD], SPREAD: np.nan}), moves_ir=True),
 
     # Floating loan with spread == IR: the value is the spread (median 6.25%), IR = base + spread.
     Rule("rate_is_spread_floating",
          lambda d: floating(d) & live(d) & close(d[RATE], d[SPREAD]) & d["_base"].notna(),
-         _set(**{RATE: est, "_est": True})),
+         _set(**{RATE: est, "_est": True}), moves_ir=True),
 
     # Untagged loan with spread == IR: decide by size, using the split the tagged loans show.
     Rule("rate_is_spread_untagged",
          lambda d: untagged(d) & live(d) & close(d[RATE], d[SPREAD]) & spread_like(d)
                    & d["_base"].notna(),
-         _set(**{RATE: est, "_est": True})),
+         _set(**{RATE: est, "_est": True}), moves_ir=True),
     Rule("clear_spread_untagged_coupon",
          lambda d: untagged(d) & live(d) & close(d[RATE], d[SPREAD]) & (d[RATE] > SPREAD_LIKE_RANGE[1]),
          _set(**{SPREAD: np.nan})),
@@ -441,14 +513,15 @@ RATE_RULES = [
     Rule("spread_is_allin_rate",
          lambda d: live(d) & isna(d, RATE) & has(d, SPREAD) & (has(d, PIC) | has(d, PIK))
                    & close(d[SPREAD], comp(d)),
-         _set(**{RATE: lambda d: d[SPREAD], SPREAD: np.nan})),
+         _set(**{RATE: lambda d: d[SPREAD], SPREAD: np.nan}), moves_ir=True),
 
     # IR field actually holds the spread: IR < PIC. Keep an existing spread; IR = PIC + PIK.
     # (An IR of 0 next to a real PIC is just empty, not a spread.)
     Rule("rate_is_spread",
          lambda d: live(d) & has(d, RATE) & has(d, PIC) & (d[RATE] < d[PIC] - TOL)
                    & (comp(d) <= RATE_RANGE[1]),
-         _set(**{SPREAD: lambda d: d[SPREAD].fillna(d[RATE].where(d[RATE] > 0)), RATE: comp})),
+         _set(**{SPREAD: lambda d: d[SPREAD].fillna(d[RATE].where(d[RATE] > 0)), RATE: comp}),
+         moves_ir=True),
 
     # PIC field actually holds the spread: IR - PIC == base rate (no spread, no PIK reported).
     Rule("pic_is_spread",
@@ -456,26 +529,19 @@ RATE_RULES = [
                    & close(d[RATE] - d[PIC], d["_base"], BASE_TOL),
          _set(**{SPREAD: lambda d: d[PIC], PIC: lambda d: d[RATE]})),
 
-    # IR present, PIC+PIK exceed it, no spread: old IR was the spread.
+    # IR present, PIC + PIK exceed it, no spread: old IR was the spread
+    # ("1M SOFR + 16.00% (0.00% Cash + 20.65% PIK)" tagged IR=16%, PIC=0%, PIK=20.65%).
     Rule("rate_is_spread_components_exceed",
          lambda d: live(d) & has(d, RATE) & has(d, PIC) & has(d, PIK) & isna(d, SPREAD)
                    & (comp(d) > d[RATE] + TOL),
-         _set(**{SPREAD: lambda d: d[RATE], RATE: comp})),
+         _set(**{SPREAD: lambda d: d[RATE], RATE: comp}), moves_ir=True),
 
-    # PIK > IR, no PIC, and PIK == base + IR: IR holds the spread, PIK holds the all-in
-    # rate (e.g. "3M SOFR + 5.00% | 9.33%" tagged IR=5%, PIK=9.33%).
-    Rule("rate_is_spread_pik_is_allin",
-         lambda d: live(d) & has(d, RATE) & has(d, PIK) & isna(d, PIC) & (d[PIK] > d[RATE] + TOL)
-                   & (isna(d, SPREAD) | close(d[RATE], d[SPREAD]))
-                   & close(d[PIK], d["_base"] + d[RATE], BASE_TOL),
-         _set(**{SPREAD: lambda d: d[SPREAD].fillna(d[RATE]), RATE: lambda d: d[PIK]})),
-
-    # Otherwise PIK > IR with no PIC: IR holds the cash part ("2% cash + 9% PIK").
+    # PIK > IR with no PIC: IR holds the cash part ("2% cash + 9% PIK").
     # Without this the downstream PIC = IR - PIK goes negative.
     Rule("rate_is_cash_component",
          lambda d: live(d) & has(d, RATE) & has(d, PIK) & isna(d, PIC) & (d[PIK] > d[RATE] + TOL)
                    & (d[RATE] + d[PIK] <= RATE_RANGE[1]),
-         _set(**{PIC: lambda d: d[RATE], RATE: lambda d: d[RATE] + d[PIK]})),
+         _set(**{PIC: lambda d: d[RATE], RATE: lambda d: d[RATE] + d[PIK]}), moves_ir=True),
 
     # IR < spread with no components is impossible for a floating loan (base >= 0);
     # the IR field holds a floor or the base rate (median 0.5-1%) -> IR = base + spread.
@@ -511,35 +577,11 @@ RATE_RULES = [
          lambda d: live(d) & has(d, RATE) & has(d, PIK) & isna(d, PIC) & (d[PIK] <= d[RATE] + TOL),
          _set(**{PIC: lambda d: (d[RATE] - d[PIK]).clip(lower=0)})),
 
-    # IR > PIC with no PIK and not explained by the base rate: ambiguous (PIK? fee? spread?)
-    Rule("pic_below_rate_unexplained",
-         lambda d: live(d) & has(d, RATE) & has(d, PIC) & isna(d, PIK) & ~d["_est"]
-                   & (d[PIC] < d[RATE] - TOL),
-         None, flag_only=True),
-
     # ---------- reconcile I1 when all three present ----------
     Rule("pic_from_rate_minus_pik_reconcile",
          lambda d: live(d) & has(d, RATE) & has(d, PIC) & has(d, PIK) & ~close(comp(d), d[RATE])
                    & (d[PIK] <= d[RATE] + TOL),
          _set(**{PIC: lambda d: d[RATE] - d[PIK]})),
-
-    # ---------- flags only (no value changes) ----------
-    Rule("coupon_identity_broken",
-         lambda d: has(d, RATE) & has(d, PIC) & has(d, PIK) & ~close(comp(d), d[RATE]),
-         None, flag_only=True),
-    Rule("spread_equals_rate",            # which field is wrong is ambiguous -> flag only
-         lambda d: live(d) & close(d[RATE], d[SPREAD]),
-         None, flag_only=True),
-    Rule("rate_below_spread",
-         lambda d: live(d) & has(d, RATE) & has(d, SPREAD) & (d[RATE] < d[SPREAD] - TOL),
-         None, flag_only=True),
-    Rule("rate_vs_base_plus_spread_gt_2pct",
-         lambda d: live(d) & has(d, RATE) & has(d, SPREAD) & (d[RATE] >= d[SPREAD])
-                   & ((d[RATE] - est(d)).abs() > MISMATCH_FLAG),
-         None, flag_only=True),
-    Rule("spread_out_of_range",
-         lambda d: has(d, SPREAD) & ~d[SPREAD].between(*SPREAD_RANGE),
-         None, flag_only=True),
 ]
 
 
@@ -573,11 +615,10 @@ def apply_rules(df: pd.DataFrame, rules=RATE_RULES) -> pd.DataFrame:
         m = r.when(df).fillna(False).astype(bool)
         if not m.any():
             continue
-        if r.flag_only:
-            append_tag(df, m, r.tag, col="rate_flags")
-        else:
-            r.then(df, m)
-            append_tag(df, m, r.tag)
+        r.then(df, m)
+        append_tag(df, m, r.tag)
+        if r.moves_ir:
+            df.loc[m, "_moved_ir"] = True
     return df
 
 
@@ -585,16 +626,13 @@ def resolve_rates(df: pd.DataFrame, base_rates, currency_col: str = "currency",
                   drop_empty: bool = True) -> pd.DataFrame:
     """
     base_rates: DataFrame indexed by cal_q (e.g. '2024Q3') with one column per currency, in
-    decimal (see load_base_rates); a Series is taken as USD SOFR (see load_sofr).
+    decimal (see load_base_rates).
     Each floating/untagged row uses its own currency's base rate; rows in a currency without
     one, and fixed rows, can still be resolved via I1.
     """
-    if isinstance(base_rates, pd.Series):
-        base_rates = base_rates.to_frame("USD")
     out = classify_rate_type(df)
-    for c in ("change_tracker", "rate_flags"):
-        if c not in out:
-            out[c] = pd.NA
+    if "change_tracker" not in out:
+        out["change_tracker"] = pd.NA
     out["rate_config"] = rate_config(out)
     if drop_empty:
         out = out[out["rate_config"].ne("none")].copy()
@@ -604,25 +642,30 @@ def resolve_rates(df: pd.DataFrame, base_rates, currency_col: str = "currency",
     for c in base_rates.columns:
         m = ccy.eq(c)
         base[m] = out.loc[m, "cal_q"].map(base_rates[c])
+    # Negative SARON / TONA are real, but loans floor the benchmark at 0% (market standard;
+    # no reported CHF coupon passes a negative SARON through), so the loan's base is >= 0.
+    base = base.clip(lower=0)
     prime = out["is_prime"] & ccy.eq("USD")            # Prime ~ SOFR + 3.2% is a USD relation
     out["_base"] = base.where(~prime, base + PRIME_OVER_SOFR).where(~fixed(out))
     out["_est"] = False
+    out["_moved_ir"] = False
     # Unfunded revolvers / '—%' rows: IR is 0 and no component carries a coupon either.
     out["_zero"] = out[RATE].eq(0) & comp(out).eq(0)
     reported = out[RATE].notna() & ~out["_zero"]
 
     out = apply_rules(out)
 
+    # Rows whose IR ends at exactly 0 after the rules (IR missing, PIC / PIK reported as 0:
+    # non-accrual loans, equity units) carry no coupon either.
+    final_zero = out["_zero"] | out[RATE].eq(0)
+
     # A rule that moved the IR value to another field makes the final IR derived, not reported.
-    tr = out["change_tracker"].astype("string").fillna("")
-    moved_ir = tr.str.contains("rate_is_spread|spread_is_allin|rate_is_cash_component|fixed_spread_is_rate")
-    conds = [out["_zero"], out["_est"], reported & ~moved_ir, out[RATE].notna()]
+    conds = [final_zero, out["_est"], reported & ~out["_moved_ir"], out[RATE].notna()]
     out["rate_source"] = np.select(
         [c.fillna(False).to_numpy(bool) for c in conds],
         ["zero", "estimated", "reported", "derived"], default="none")
-    out["estimate"] = est(out)                     # max(base + spread, floor), USD rows with a spread
+    out["estimate"] = est(out)                     # base + spread with floors, rows with a spread
     # Status columns
     out["check_2"] = out["rate_config"]
-    out["check_1"] = np.where(out[RATE].notna() & ~out["_zero"], "resolved", "unresolved")
-    append_tag(out, out["_zero"], "zero_rate_unfunded", col="rate_flags")
-    return out.drop(columns=["_base", "_zero", "_est"])
+    out["check_1"] = np.where(out[RATE].gt(0) & ~final_zero, "resolved", "unresolved")
+    return out.drop(columns=["_base", "_zero", "_est", "_moved_ir"])
