@@ -11,6 +11,7 @@ from ixbrl_utils import (
     normalize_interest_columns,
     convert_currencies,
     normalize_value_scale,
+    cap_equity_unit_principal,
     flag_filer_quarter_outliers,
     rescale_filer_quarter_outliers,
     drop_subtotal_rows,
@@ -42,6 +43,7 @@ def run_pipeline(data_path: str, fx_path: str, sofr_path: str = "SOFR_augmented.
     df = normalize_interest_columns(df)
     df = convert_currencies(df, fx_path)            # also sets df["currency"]
     df = normalize_value_scale(df)
+    df = cap_equity_unit_principal(df)              # equity unit counts reported as principal
 
     # Filings that mis-tag FV, cost and principal together (e.g. TCW Direct Lending VIII,
     # 2023Q1): rescale the mis-tagged positions first; drop the quarter only if it is still
