@@ -1,6 +1,6 @@
 """
-Augment SOFR.csv with EUR, GBP, CAD, AUD, SEK, JPY, CHF, NOK, KRW, DKK and CNY base-rate
-quarterly averages.
+Augment SOFR.csv with EUR, GBP, CAD, AUD, SEK, JPY, CHF, NOK, KRW, DKK, CNY, NZD and SGD base
+rates by calendar quarter.
 
 Every series is pulled from the official publisher (or a US-government mirror of it)
 and aggregated the same way as the SOFR column: the simple average of daily
@@ -19,11 +19,14 @@ observations within each calendar quarter.
   CD 91-day  : Bank of Korea ECOS, table 721Y001 item 2010000 (already a quarterly average)
   CIBOR 3M   : OECD Main Economic Indicators via FRED, IR3TIB01DKM156N (monthly averages)
   SHIBOR 3M  : National Interbank Funding Center (shibor.org / chinamoney.com.cn), PBoC-authorised
+  BKBM 3M    : OECD Main Economic Indicators via FRED, IR3TIB01NZM156N (monthly averages)
+  SORA 3M    : MAS via SingStat Table Builder, M700071 series 23 (compounded 3-month SORA,
+               end of month); the quarter-end value compounds the quarter's overnight SORA
 
 The benchmarks follow what the BDC filings tag (STIBOR, NIBOR, CIBOR, SARON, TONA and the Korean
 short-term rate). STIBOR / NIBOR / CIBOR are licensed by their administrators (SFBF, NoRe, DFBF) and
 no central bank republishes them, so the OECD monthly averages of the daily fixings are used; the
-quarterly value is the mean of the three monthly averages. No filing tags a CNY benchmark; SHIBOR
+quarterly value is the mean of the three monthly averages (BKBM likewise). No filing tags a CNY benchmark; SHIBOR
 3M is used as the interbank term rate analogous to EURIBOR 3M. ECOS is queried with its public
 "sample" key (10 rows per call) unless ECOS_API_KEY is set.
 
@@ -132,6 +135,21 @@ def parse_shibor(js: dict, tenor: str = "3M") -> pd.Series:
     return pd.Series([r[tenor] for r in recs], index=pd.to_datetime([r["showDateCN"] for r in recs]))
 
 
+def parse_singstat(js: dict, series_no: str = "23") -> pd.Series:
+    """SingStat Table Builder JSON -> the series' monthly values indexed by month."""
+    row = next(r for r in js["Data"]["row"] if str(r["seriesNo"]) == series_no)
+    cols = row["columns"]
+    return pd.Series([c["value"] for c in cols],
+                     index=pd.to_datetime([c["key"] for c in cols], format="%Y %b"))
+
+
+def quarter_end_value(s: pd.Series) -> pd.Series:
+    """Value in each quarter's last month (a compounded-in-arrears rate at quarter end)."""
+    s = pd.to_numeric(s, errors="coerce").dropna()
+    s = s[(s.index >= START) & s.index.month.isin([3, 6, 9, 12])]
+    return pd.Series(s.values, index=s.index.to_period("Q"))
+
+
 def quarterly_mean_of_monthly(s: pd.Series) -> pd.Series:
     """Mean of the monthly averages in each quarter; quarters missing a month are dropped."""
     s = pd.to_numeric(s, errors="coerce").dropna()
@@ -185,6 +203,15 @@ def nibor3m():
 
 def cibor3m():
     return quarterly_mean_of_monthly(_fred("IR3TIB01DKM156N"))
+
+
+def bkbm3m():
+    return quarterly_mean_of_monthly(_fred("IR3TIB01NZM156N"))
+
+
+def sora3m():
+    url = "https://tablebuilder.singstat.gov.sg/api/table/tabledata/M700071"
+    return quarter_end_value(parse_singstat(_get(url).json(), "23"))
 
 
 def tona():
@@ -246,6 +273,10 @@ COLUMNS = {
     "average of monthly averages through period (IR3TIB01DKM156N)": cibor3m,
     "CNY Shanghai Interbank Offered Rate SHIBOR 3-month - National Interbank Funding Center - "
     "average of daily observations through period (ShiborHis 3M)": shibor3m,
+    "NZD Bank Bill Benchmark Rate BKBM 3-month - NZFMA via OECD MEI (FRED) - "
+    "average of monthly averages through period (IR3TIB01NZM156N)": bkbm3m,
+    "SGD Compounded Singapore Overnight Rate Average SORA 3-month - MAS via SingStat - "
+    "value at quarter end, compounding the quarter (M700071 series 23)": sora3m,
 }
 
 
