@@ -324,6 +324,31 @@ def normalize_value_scale(df, value_cols=(FV_RAW + "_normalized", COST_RAW + "_n
     return out
 
 
+EQUITY_UNIT_RATIO = 100    # principal / cost above this on an equity position is a unit count
+_EQUITY_TEXT = r"(?i)\b(?:preferred|equity|units?|warrants?|common|shares|membership)\b"
+
+
+def cap_equity_unit_principal(df: pd.DataFrame, id_col: str = "investment_identifier") -> pd.DataFrame:
+    """
+    Equity positions sometimes report their unit count as principal (Veronica Holdings
+    preferred at 457x cost, VardimanBlack Holdings preferred at 2,449x). It is not a round
+    1000x error, so normalize_value_scale leaves it, yet the index books income as rate x
+    principal: two such positions added ~0.9pp of cash and ~0.5pp of PIK income to the
+    2024Q4 Healthcare sub-index. On a position whose identifier names an equity instrument,
+    a principal above EQUITY_UNIT_RATIO x cost is set to cost (flag `|equity_units_capped`).
+    """
+    out = df.copy()
+    p, c = PRIN_RAW + "_normalized", COST_RAW + "_normalized"
+    ident = out[id_col].astype("string") if id_col in out else pd.Series(pd.NA, index=out.index, dtype="string")
+    hit = (ident.str.contains(_EQUITY_TEXT, regex=True).fillna(False).astype(bool)
+           & out[c].gt(0) & (out[p] > EQUITY_UNIT_RATIO * out[c]))
+    out.loc[hit, p] = out.loc[hit, c]
+    fc = p + "_scale_flag"
+    if fc in out:
+        out.loc[hit, fc] = out.loc[hit, fc].astype(str) + "|equity_units_capped"
+    return out
+
+
 # ============================================================
 # 4. Filer-quarter outliers (leave-one-out median, vectorised)
 # ============================================================

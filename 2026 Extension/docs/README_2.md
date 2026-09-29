@@ -54,6 +54,14 @@ a modified copy. All of them are vectorised (no row-wise `apply`).
 **Dollar-value scale correction**
 - `normalize_value_scale` — detects and corrects fair value / cost fields whose scale is
   inconsistent with the position's own principal amount, rescaling by 1,000 or 1,000,000
+- `cap_equity_unit_principal` — an equity position (identifier names preferred, equity, units,
+  warrants, common, shares or membership) whose principal exceeds 100x cost is reporting a unit
+  count, not a face amount: principal is set to cost (`|equity_units_capped`). 56 rows at 10
+  filers, 17 positions. Two preferred stakes (Veronica Holdings / Vapotherm at 457x cost,
+  VardimanBlack Holdings at 2,449x) otherwise added ~0.9pp of cash and ~0.5pp of PIK income to the
+  2024Q4 Healthcare sub-index and 0.19pp to the 2024Q4 market index. With the cap, correlation with
+  CDLI is 94.49% against 95.38% without it: the fictitious income had happened to move 2024Q4
+  toward CDLI.
 
 **When the principal is the mis-scaled field.** If fair value *and* cost both need the same
 rescale, the principal may be the field that is off (e.g. principal tagged in thousands, or a
@@ -278,8 +286,6 @@ carry a PIK paid on top of base + spread (IR = base + spread + PIK), which is co
   its small value (about 1%, a commitment fee or a floor in the wrong field); the downstream
   `compute_final_interest_rates` then books the gap as PIK. These are the only rows where the
   estimate overrides I1; setting IR = PIC would give ~2% coupons on loans priced near 10%.
-- **Preferred equity with a unit count as principal** that is not a clean 1000x (e.g. 483x cost)
-  is left as reported; it adds about +0.25pp of income to the 2024Q4 index return.
 - **Prime is approximated** as SOFR + 3.2% (the 2023–2026 quarterly gap is 3.2–3.4%), not read
   from a Prime series.
 - **Currency comes from the unit tag.** A EUR loan that the filer reports in USD is treated as USD,
