@@ -572,6 +572,15 @@ RATE_RULES = [
          lambda d: live(d) & isna(d, RATE) & has(d, SPREAD) & d["_base"].notna(),
          _set(**{RATE: est, "_est": True})),
 
+    # IR, PIK and spread reported, no PIC: if IR + PIK = base + spread (within BASE_TOL) while IR
+    # alone does not, the PIK is carved out of the margin and IR holds only the cash part
+    # ("SOFR + 6.00% (3.25% PIK)" tagged IR=6.42%, PIK=3.25%) -> PIC = old IR, IR = IR + PIK.
+    Rule("rate_is_cash_part_of_base_plus_spread",
+         lambda d: live(d) & has(d, RATE) & has(d, PIK) & has(d, SPREAD) & isna(d, PIC)
+                   & d["_base"].notna() & d[PIK].gt(0)
+                   & close(d[RATE] + d[PIK], est(d), BASE_TOL) & ~close(d[RATE], est(d), BASE_TOL),
+         _set(**{PIC: lambda d: d[RATE], RATE: lambda d: d[RATE] + d[PIK]}), moves_ir=True),
+
     # ---------- fills: one I1 component missing ----------
     Rule("pic_from_rate_minus_pik",
          lambda d: live(d) & has(d, RATE) & has(d, PIK) & isna(d, PIC) & (d[PIK] <= d[RATE] + TOL),
