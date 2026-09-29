@@ -216,6 +216,7 @@ Counts below are from a full run on `ixbrl_clean.csv` (502,299 output rows).
 | `rate_is_spread_components_exceed` | PIC + PIK > IR, no spread | spread = old IR, IR = PIC + PIK ("1M SOFR + 16.00% (0.00% Cash + 20.65% PIK)") | 18 | +11 rows with IR < PIK |
 | `rate_is_cash_component` | PIK > IR, no PIC | PIC = old IR, IR = old IR + PIK | 1,223 | +1,004 I1 failures, 1,096 negative coupons |
 | `rate_below_spread_replaced` | IR < spread, no PIC/PIK | IR = base + spread (old IR was a floor or base rate, median 0.5–1%) | 498 | +205 I2 failures |
+| `rate_is_cash_part_of_base_plus_spread` | IR, PIK and spread, no PIC; IR + PIK = base + spread within 50bp while IR alone is not | PIC = old IR, IR = old IR + PIK (PIK carved out of the margin: "SOFR + 6.00% (3.25% PIK)" tagged IR 6.42%, PIK 3.25%) | 3,973 | coupons understated by their PIK; index coupon −1.3bp; +3,042 rows where IR is more than 2pp from base + spread |
 
 **Fills**
 
@@ -224,7 +225,7 @@ Counts below are from a full run on `ixbrl_clean.csv` (502,299 output rows).
 | `rate_from_base_plus_spread_plus_pik` | IR missing, spread + PIK, spread < PIK < base rate | PIK cannot be the all-in coupon, so it is paid on top: PIC = base + spread, IR = PIC + PIK ("Prime + 1.35%, Floor 9.85%, PIK 2.50%") | 674 | coupon −3.6bp, returns move up to 1.6bp |
 | `rate_from_components` | IR missing, PIC/PIK present and above the spread (or no spread) | IR = PIC + PIK | 32,129 | 14,988 loans with no rate (2.8% of FV), 8,358 negative coupons |
 | `rate_from_base_plus_spread` | IR missing, spread present | IR = base + spread with floors (`rate_source = estimated`) | 87,556 | 87,347 loans with no rate (23% of FV); correlation with CDLI 0.954 → 0.932 |
-| `pic_from_rate_minus_pik` | IR and PIK present, PIC missing | PIC = IR − PIK | 47,886 | +28,267 I1 failures (9.4% of FV) |
+| `pic_from_rate_minus_pik` | IR and PIK present, PIC missing | PIC = IR − PIK | 43,913 | +24,299 I1 failures (8.6% of FV) |
 | `pic_from_rate_minus_pik_reconcile` | all three present, I1 off | PIC = IR − PIK | 1,541 | +1,541 I1 failures |
 
 `fix_component_scale` (in `normalize_interest_columns`) stays for the same reason: without it, 7
@@ -266,6 +267,10 @@ The I2 failures are reported coupons left as filed: most sit above base + spread
 or a spread field holding part of the margin), the rest below it (mostly foreign loans reported in
 USD units and priced off SOFR). The I1 failures are mostly undrawn or partly drawn delayed-draw
 loans whose PIC holds a 0.25–1% commitment fee.
+
+Where both identities can be checked (a PIC or PIK and a spread), I1 is kept and I2 is not
+enforced. IR differs from base + spread by more than 2pp on 5,339 such rows (1.09% of FV); most
+carry a PIK paid on top of base + spread (IR = base + spread + PIK), which is correct as filed.
 
 ### Known limitations
 
