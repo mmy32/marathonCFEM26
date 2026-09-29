@@ -1,6 +1,6 @@
 # IXBRL Cleaning Pipeline
 
-This repository contains a **rule-based data cleaning pipeline** for IXBRL investment data, focused on **interest rates, spreads, currency normalization, and SOFR-based estimation**.
+This repository contains a **rule-based data cleaning pipeline** for IXBRL investment data, focused on **interest rates, spreads, currency normalization, and base-rate estimation**.
 
 The logic is split into two parts:
 - `ixbrl_utils.py`: reusable cleaning utilities
@@ -14,9 +14,9 @@ The logic is split into two parts:
 2. Normalize interest rates and spreads to decimals
 3. Normalize currencies and convert amounts to USD
 4. Correct dollar-value scale errors in fair value / cost (e.g. thousands-vs-units tagging mistakes)
-5. Drop filer-quarters whose fair value, cost and principal are wrong together
+5. Rescale positions whose fair value, cost and principal are all 1000x too large together
 6. Drop subtotal / heading rows that would double-count fair value
-7. Resolve rates with one ordered rule table: rate-type repairs → role repairs → fills → flags
+7. Resolve rates with one ordered rule table: rate-type repairs → role repairs → fills
 8. Output a cleaned, reusable loan-level dataset for index construction and further analysis
 
 ---
@@ -32,6 +32,10 @@ a modified copy. All of them are vectorised (no row-wise `apply`).
 - `normalize_interest_columns` — rescales rates and spreads into consistent decimal form
   (divide by 100 or 10,000 to fit the valid range) and forces PIC/PIK/Floor non-negative
   (flagged `|sign_error`)
+- `fix_component_scale` — row-level check on PIC / PIK: a component more than 10pp above the row's
+  coupon that fits under it once divided by 100 was tagged in percent (a raw 0.50 meaning 0.50%)
+  and is divided by 100 (13 PIK values, `|row_div100`); PIC = PIK = 0.5 is read as a 50/50 split of
+  IR (1 row, `|split_50_50`). Without it these rows feed negative cash coupons to the index.
 - `rescale_to_range` — shared power-of-ten rescaling used for both rates and dollar values
 
 **Currency handling**
@@ -39,7 +43,13 @@ a modified copy. All of them are vectorised (no row-wise `apply`).
   standalone token, so random hashes in unit IDs do not match a currency code)
 - `determine_currency` — row currency, in priority order Principal > FairValue > Cost; USD if all missing
 - `prepare_fx_data` — prepares quarterly FX rates
-- `convert_currencies` — converts monetary values to USD and sets `currency`
+- `convert_currencies` — converts monetary values to USD and sets `currency`. A principal tagged in a
+  different unit from fair value and cost is normal (a EUR loan reported in USD); it is treated as a
+  filer unit error only when converting it is what breaks it, i.e. read in the fair-value currency it
+  sits within 3x of fair value and converted it does not, and the two currencies are at least 2x
+  apart. Those principals are read in the fair-value currency (`unit_mismatch_fixed`): 17 rows at 5
+  filers, e.g. CIK 1976336 tagging USD principals as EGP. Left alone, the loan would be labelled EGP
+  and the value-scale check would divide its fair value and cost by 1,000.
 
 **Dollar-value scale correction**
 - `normalize_value_scale` — detects and corrects fair value / cost fields whose scale is
@@ -53,8 +63,8 @@ principal by that scale brings FV / principal to within 3x of 1, the principal i
 instead (`InvestmentOwnedBalancePrincipalAmount_normalized_scale_flag = mul1000`) and fair value /
 cost are left as reported. The second condition stops a 10x mismatch (e.g. a principal converted
 from a foreign-currency unit) from being "fixed" with a 1000x multiplier. On the current data this
-applies to 111 rows, restoring $1.4B of fair value that was previously shrunk 1000x. Rows with no
-history keep the old behaviour.
+applies to 111 rows, and keeps $1.4B of fair value that dividing it by 1,000 would have removed.
+Rows with no other quarter to compare against are rescaled on fair value / cost as usual.
 
 **When the principal is too large.** The fair-value check allows any FV / principal between 0 and 3,
 so a principal that is 1000x too large (FV / principal near 0) passes it. That matters because the
@@ -68,8 +78,8 @@ left alone: First Brands' fair value fell to 0.03x cost by 2026Q2 while its prin
 $20k cost on $39.6M face) or an unfunded commitment can make a large ratio real. On the current
 data it fixes 35 rows at 9 filers (Treasury bills, money-market funds, preferred equity reported in
 units, and term loans with principal tagged 1000x). Two of them (Linxup and Digicert, CIK 1653384)
-alone added about +0.25pp of income to the 2026Q1 index return; with both principal checks the
-2026Q1 return is 0.86% instead of 1.24%, and the correlation with CDLI is 0.954 instead of 0.941.
+alone added about +0.25pp of income to the 2026Q1 index return. With both principal checks the
+2026Q1 return is 0.86% and the correlation with CDLI 0.954; without them, 1.24% and 0.941.
 
 Some filings tag `InvestmentOwnedAtFairValue` / `InvestmentOwnedAtCost` in a different unit
 scale than `InvestmentOwnedBalancePrincipalAmount` for the same investment (e.g. thousands vs.
@@ -103,7 +113,7 @@ Raising the floor to 0.3 restricts rescaling to genuine ~1000x / ~1e6x mistags. 
 current dataset, that moves 415 fair-value rows out of `div1000` and into `unresolved`
 (1,430 -> 1,015 corrected, 438 flagged) and shifts total fair value by +0.014%.
 
-It is **deliberately left at 0.0** for now. Raising it costs ~0.30pp of correlation against CDLI
+It is **left at 0.0**. Raising it costs ~0.30pp of correlation against CDLI
 (0.9617 -> 0.9587) and ~0.9bp of tracking error, because the 438 newly-`unresolved` rows then enter
 the fair-value-weighted index at face value instead of being shrunk to near-zero weight. Those rows
 are genuinely bad data — median FV/principal of 10x, p90 of 194x, max of 286,048x — so the floor of 0
@@ -111,31 +121,25 @@ is currently doing the right thing for the wrong reason: it suppresses them by a
 by rule. The principled fix is to raise the floor *and* drop or winsorize `unresolved` rows at the
 index stage; until that is decided, the floor stays at 0.
 
-**A gap the ratio check structurally cannot close — `flag_filer_quarter_outliers`.**
+**A gap the ratio check structurally cannot close — `rescale_filer_quarter_outliers`.**
 `normalize_value_scale` catches a fair value or cost that is wrong *relative to its own row's
-principal*. It cannot catch a filing where fair value, cost, **and** principal are all wrong
-*together*, by the same non-round factor — every row's internal ratio still looks plausible, so
-nothing gets flagged. Found this way: TCW Direct Lending VIII LLC's 2023Q1 filing (CIK 1825265)
-reported individual loan positions at **$30–46B each** — larger than the entire BDC industry's
-typical quarterly total — while the same filer's other 13 quarters, on the very same three fields,
-sit in the tens-of-millions range per position. `normalize_value_scale` correctly saw a plausible
-FV/principal ratio on every one of those rows and left them alone.
+principal*. It cannot catch positions where fair value, cost **and** principal are all 1000x too
+large together: every row's internal ratio still looks plausible. Found this way: TCW Direct
+Lending VIII LLC's 2023Q1 filing (CIK 1825265) reported individual loan positions at **$30–46B
+each**, larger than the entire BDC industry's typical quarterly total, while the same filer's other
+13 quarters sit in the tens of millions per position.
 
-No rescale is possible here (unlike the thousands-vs-units case above): the ratio between the
-2023Q1 values and the filer's own normal scale was ~664x — not a round power of ten — so there is no
-formula that recovers what the filer actually meant. `flag_filer_quarter_outliers` (called from
-`run_ixbrl_pipeline.run_pipeline` right after `normalize_value_scale`) instead flags and drops
-the affected rows: for every filer with 3+ quarters on file, it compares each quarter's *total*
-reported fair value to the median of that same filer's *other* quarters, and flags the whole quarter
-when the ratio exceeds 20x. Validated against the full panel: exactly 5 (filer, quarter) pairs cross
-that line, at 39x–431x — a clean separation, with the next-highest ratio for any other filer nowhere
-close — and it does not catch positions that are genuinely large and simply persist (a real large
-position recurs at a consistent scale every quarter for that filer, so it never produces one isolated
-quarter wildly bigger than its own history). 182 rows removed out of 493,364 (0.037%), concentrated
-in 5 filer-quarters. 2023Q1's reported total fair value alone drops from $558.6B to $234.1B once
-removed, restoring a smooth, monotonically-plausible growth trajectory across the panel's full
-history — and the index's correlation to CDLI *improves* (95.84% → 95.99%) once these rows stop
-feeding `FV_prev` linkages for later quarters.
+The fix works at two levels. `flag_filer_quarter_outliers` compares each quarter's *total* fair
+value with the median of the same filer's *other* quarters (filers with 3+ quarters) and flags the
+quarter when the ratio exceeds 20x. On this data exactly 6 (filer, quarter) pairs cross that line,
+with a clean gap to every other filer. Inside a flagged quarter only a few positions (2–14) are
+wrong, so `rescale_filer_quarter_outliers` divides fair value, cost and principal by 1,000 on each
+position larger than 25% of the fund's usual quarterly total (`OUTLIER_POSITION_SHARE`), tagging
+`|filer_quarter_div1000`, and keeps the correctly scaled rows. `flag_filer_quarter_outliers` then
+runs again as a fallback and drops any quarter that is still an outlier. On this data 39 positions
+are rescaled and no quarter remains an outlier, so nothing is dropped. 2023Q1's total fair value
+falls from $565.2B to $241.9B. A genuinely large position recurs at a consistent scale every
+quarter, so it never produces one isolated quarter far above its own history.
 
 **Subtotal rows — `drop_subtotal_rows`.** Some filings tag a section heading as if it were a
 position: CIK 1786108 reports "Portfolio Company Debt Securities" next to 200+ rows named
@@ -154,83 +158,78 @@ All rate cleaning rests on two identities:
 
 ```text
 (I1)  IR = PIC + PIK              coupon identity (all loans)
-(I2)  IR ≈ max(Base_q + Spread, Floor)   floating-rate identity (floating or untagged loans)
+(I2)  IR ≈ Base_q + Spread, with floors   floating-rate identity (floating or untagged loans)
 ```
 
 `Base_q` is the quarterly average of the loan's own currency's base rate, read from
 `SOFR_augmented.csv` by `load_base_rates`: SOFR (USD), 3-month EURIBOR (EUR), SONIA (GBP),
-CORRA (CAD) and 3-month BBSW (AUD). `augment_rates.py` builds that file from `SOFR.csv` by
-downloading the other series from the ECB, Bank of England (via FRED), Bank of Canada and RBA.
+CORRA (CAD), 3-month BBSW (AUD), 3-month STIBOR (SEK), TONA (JPY), SARON (CHF), 3-month NIBOR
+(NOK), 91-day CD (KRW), 3-month CIBOR (DKK), 3-month SHIBOR (CNY), 3-month BKBM (NZD) and
+3-month compounded SORA (SGD). `augment_rates.py` builds
+that file from `SOFR.csv` from the official publishers (see its docstring). Negative SARON / TONA
+are kept in the file but floored at 0% for loans, which floor the benchmark at zero.
 USD Prime-based loans use SOFR + 3.2% (`PRIME_OVER_SOFR`); Prime loans are recognised from the
 rate-type tag or from "Prime + x%" / "Prime − x%" in the identifier, since most are untagged.
-Rows in other currencies (SEK, JPY, CHF, …) get no base rate, and a base rate is never applied
-to loans tagged fixed-rate. `Floor` is the reported interest
-rate floor: a base-rate floor (0.5–2%) never binds against base + spread, so the same formula
-covers base-rate floors and all-in floors ("Floor rate 9.85%").
+Rows in other currencies (e.g. EGP) get no base rate, and a base rate is never applied
+to loans tagged fixed-rate. `Floor` is the reported interest rate floor. A floor below the
+spread is a base-rate floor, so the estimate is max(Base_q, Floor) + Spread; a floor at or above
+the spread is an all-in floor ("Floor rate 9.85%"), so the estimate is max(Base_q + Spread,
+Floor). Base-rate floors bind when the benchmark is near or below them: CHF loans with a 0.75%
+floor report exactly spread + 0.75% while SARON is negative, and 2023-vintage USD loans with 4–5%
+SOFR floors report floor + spread once SOFR fell below it (88% match exactly).
 
-Every change is one of three things:
+Every change is one of two things:
 
 1. **Role repair** — a field holds a value that belongs in another field, detected because moving
    it makes I1 or I2 hold.
 2. **Fill** — one term of I1 / I2 is missing and the others are present.
-3. **Flag** — the row contradicts I1 / I2 and no move fixes it. The value is left alone and the
-   flag goes to `rate_flags`.
 
-A row is only flagged when no identity pins down the right value. Anything that is *known* wrong
-is repaired, because `rate_flags` is not read by the index code — a flagged value still enters the
-index as-is.
+A row that contradicts I1 / I2 with no move that fixes it is left as reported.
 
 The rules live in one ordered list, `RATE_RULES`. Each `Rule` is a tag, a row condition, and an
 assignment; `apply_rules` runs them in order and records every rule that fires in
-`change_tracker` (repairs and fills) or `rate_flags` (flags). Each rule sees the result of the
-rules before it. Rows with an interest rate of 0 and no PIC/PIK coupon (unfunded revolvers, "—%"
-rows) are left at 0 and flagged `zero_rate_unfunded`.
+`change_tracker`. Each rule sees the result of the rules before it. Rows with an interest rate of
+0 and no PIC/PIK coupon (unfunded revolvers, "—%" rows) are left at 0 with `rate_source = zero`.
 
-Counts below are from a full run on `ixbrl_clean.csv` (502,094 output rows).
+**Why each rule is kept.** Each rule was switched off one at a time and the output rescored on the
+consistency check below and on the index. Every rule in the table breaks I1, I2 or a sign on a
+measurable share of rows when switched off; the "Without it" column shows what breaks.
+
+Counts below are from a full run on `ixbrl_clean.csv` (502,299 output rows).
 
 **Rate-type repairs** (use `is_fixed`, from the XBRL rate-type tag, or the value's size when untagged)
 
-| Rule | Condition | Change | Rows |
-|---|---|---|---|
-| `clear_spread_fixed_rate` | fixed loan, spread = IR | clear spread (the value is the coupon, median 13.6%) | 38 |
-| `fixed_spread_is_rate` | fixed loan, only a spread | IR = spread, clear spread | 3 |
-| `rate_is_spread_floating` | floating loan, spread = IR | IR = base + spread (the value is the spread, median 6.25%) | 242 |
-| `rate_is_spread_untagged` | untagged loan, spread = IR, value 2–9% | IR = base + spread (same split as tagged loans: floating ≤ 7.5%) | 430 |
-| `clear_spread_untagged_coupon` | untagged loan, spread = IR, value > 9% | clear spread (the value is the coupon; tagged fixed ≥ 10%) | 445 |
+| Rule | Condition | Change | Rows | Without it |
+|---|---|---|---|---|
+| `fixed_spread_is_rate` | fixed loan, only a spread | IR = spread, clear spread | 3 | 3 loans with no rate |
+| `rate_is_spread_floating` | floating loan, spread = IR | IR = base + spread (the value is the spread, median 6.25%) | 259 | +234 I2 failures |
+| `rate_is_spread_untagged` | untagged loan, spread = IR, value 2–9% | IR = base + spread (same split as tagged loans: floating ≤ 7.5%) | 498 | +463 I2 failures |
+| `clear_spread_untagged_coupon` | untagged loan, spread = IR, value > 9% | clear spread (the value is the coupon; tagged fixed ≥ 10%) | 445 | +320 I2 failures (0.11% of FV) |
 
 **Role repairs**
 
-| Rule | Condition | Change | Rows |
-|---|---|---|---|
-| `spread_is_allin_rate` | IR missing, spread = PIC + PIK | IR = spread, clear spread | 1,163 |
-| `rate_is_spread` | IR < PIC | spread = old IR (if no spread), IR = PIC + PIK | 4,066 |
-| `pic_is_spread` | IR − PIC ≈ base rate, no spread/PIK | spread = old PIC, PIC = IR | 1,513 |
-| `rate_is_spread_components_exceed` | PIC + PIK > IR, no spread | spread = old IR, IR = PIC + PIK | 18 |
-| `rate_is_spread_pik_is_allin` | PIK > IR, no PIC, PIK ≈ base + IR | spread = old IR, IR = PIK | 92 |
-| `rate_is_cash_component` | PIK > IR, no PIC (otherwise) | PIC = old IR, IR = old IR + PIK | 1,133 |
-| `rate_below_spread_replaced` | IR < spread, no PIC/PIK | IR = base + spread (old IR was a floor or base rate, median 0.5–1%) | 494 |
+| Rule | Condition | Change | Rows | Without it |
+|---|---|---|---|---|
+| `spread_is_allin_rate` | IR missing, spread = PIC + PIK | IR = spread, clear spread | 1,164 | +80 I1 failures, 10 loans with no rate |
+| `rate_is_spread` | IR < PIC | spread = old IR (if no spread), IR = PIC + PIK | 4,066 | +3,979 I1 failures, 3,918 negative coupons in the index |
+| `pic_is_spread` | IR − PIC ≈ base rate, no spread/PIK | spread = old PIC, PIC = IR | 1,514 | +1,514 I1 failures |
+| `rate_is_spread_components_exceed` | PIC + PIK > IR, no spread | spread = old IR, IR = PIC + PIK ("1M SOFR + 16.00% (0.00% Cash + 20.65% PIK)") | 18 | +11 rows with IR < PIK |
+| `rate_is_cash_component` | PIK > IR, no PIC | PIC = old IR, IR = old IR + PIK | 1,223 | +1,004 I1 failures, 1,096 negative coupons |
+| `rate_below_spread_replaced` | IR < spread, no PIC/PIK | IR = base + spread (old IR was a floor or base rate, median 0.5–1%) | 498 | +205 I2 failures |
 
 **Fills**
 
-| Rule | Condition | Change | Rows |
-|---|---|---|---|
-| `rate_from_base_plus_spread_plus_pik` | IR missing, spread + PIK, spread < PIK < base rate | PIK cannot be the all-in coupon, so it is paid on top: PIC = base + spread, IR = PIC + PIK ("Prime + 1.35%, Floor 9.85%, PIK 2.50%") | 672 |
-| `rate_from_components` | IR missing, PIC/PIK present and above the spread (or no spread) | IR = PIC + PIK | 32,133 |
-| `rate_from_base_plus_spread` | IR missing, spread present | IR = base + spread (`rate_source = estimated`) | 84,759 |
-| `pic_from_rate_minus_pik` | IR and PIK present, PIC missing | PIC = IR − PIK | 47,516 |
-| `pic_from_rate_minus_pik_reconcile` | all three present, I1 off | PIC = IR − PIK | 1,541 |
+| Rule | Condition | Change | Rows | Without it |
+|---|---|---|---|---|
+| `rate_from_base_plus_spread_plus_pik` | IR missing, spread + PIK, spread < PIK < base rate | PIK cannot be the all-in coupon, so it is paid on top: PIC = base + spread, IR = PIC + PIK ("Prime + 1.35%, Floor 9.85%, PIK 2.50%") | 674 | coupon −3.6bp, returns move up to 1.6bp |
+| `rate_from_components` | IR missing, PIC/PIK present and above the spread (or no spread) | IR = PIC + PIK | 32,129 | 14,988 loans with no rate (2.8% of FV), 8,358 negative coupons |
+| `rate_from_base_plus_spread` | IR missing, spread present | IR = base + spread with floors (`rate_source = estimated`) | 87,556 | 87,347 loans with no rate (23% of FV); correlation with CDLI 0.954 → 0.932 |
+| `pic_from_rate_minus_pik` | IR and PIK present, PIC missing | PIC = IR − PIK | 47,886 | +28,267 I1 failures (9.4% of FV) |
+| `pic_from_rate_minus_pik_reconcile` | all three present, I1 off | PIC = IR − PIK | 1,541 | +1,541 I1 failures |
 
-**Flags only** (`rate_flags`, values unchanged)
-
-| Flag | Meaning | Rows |
-|---|---|---|
-| `rate_vs_base_plus_spread_gt_2pct` | IR ≥ spread but more than 2% away from base + spread (stale reset, spread field holding only part of the margin, etc.) | 12,211 |
-| `zero_rate_unfunded` | IR = 0 with no PIC/PIK coupon | 4,964 |
-| `spread_equals_rate` | spread = IR ≤ 2% on an untagged loan (ambiguous) | 477 |
-| `rate_below_spread` | IR < spread although PIC + PIK = IR (which field is wrong is ambiguous) | 557 |
-| `spread_out_of_range` | spread outside 0–20% (mostly real "Prime − x%" loans) | 85 |
-| `pic_below_rate_unexplained` | PIC < IR with no PIK and no SOFR explanation | 51 |
-| `coupon_identity_broken` | PIC + PIK ≠ IR after all repairs | 1 |
+`fix_component_scale` (in `normalize_interest_columns`) stays for the same reason: without it, 7
+PIK values tagged in percent (0.50 meaning 0.50%) pass through as 50% and feed 6 negative cash
+coupons to the index.
 
 **Other helpers**
 - `classify_rate_type` — adds `RateType` and `is_fixed` from
@@ -240,18 +239,58 @@ Counts below are from a full run on `ixbrl_clean.csv` (502,094 output rows).
 - `rate_config` — which of spread / rate / pik / pic are present on input (`check_2`)
 - `resolve_rates` — runs the whole rate stage; rows with no rate field at all are dropped
 
+### Consistency check
+
+The rate stage succeeds when every row with a usable rate satisfies I1, or I2 where I1 cannot be
+checked, with every component nonnegative:
+
+- **I1** (IR = PIC + PIK within 1bp) is checked wherever PIC or PIK is reported, and takes precedence.
+- **I2** (IR ≈ base + spread with floors, within 2%) is checked only where I1 cannot be. Below about
+  1%, gaps are benchmark noise: reset dates, 1M vs 3M term SOFR, and 10–26bp credit spread
+  adjustments on the quarterly-average base.
+- **Sign**: IR, PIC, PIK and spread ≥ 0, except "Prime − x%" loans, whose negative spread is real.
+
+On the current output (496,502 rows with a usable rate, excluding 5,797 zero-rate rows):
+
+| Check | Rows checked | Fails | FV share of fails |
+|---|---|---|---|
+| No IR | all | 0 | 0.000% |
+| Negative IR, PIC or PIK | all | 0 | 0.000% |
+| Negative spread, not Prime-minus | all | 9 | 0.000% |
+| I1 off by more than 1bp | 74,663 | 339 | 0.006% |
+| I2 off by more than 2% | 397,800 | 4,787 | 0.340% |
+| **Passes every rule** | 496,502 | — | 99.57% of all FV pass |
+
+24,039 rows (2.65% of FV) report IR only (fixed-rate or no spread), so neither identity applies.
+The I2 failures are reported coupons left as filed: most sit above base + spread (an untagged PIK
+or a spread field holding part of the margin), the rest below it (mostly foreign loans reported in
+USD units and priced off SOFR). The I1 failures are mostly undrawn or partly drawn delayed-draw
+loans whose PIC holds a 0.25–1% commitment fee.
+
 ### Known limitations
 
-- **PIK reported as a share, not a rate.** 7 rows carry a PIK of 50% (0.50) — most likely "50% of
-  interest paid in kind". This passes the 0–50% range check, so these rows still have PIK > IR.
-- **`spread, pic` rows with PIC below the spread** (239 rows) get IR = SOFR + spread while PIC keeps
-  its small value; the downstream `compute_final_interest_rates` then books the gap as PIK.
+- **`spread, pic` rows with PIC below the spread** get IR = base + spread while PIC keeps
+  its small value (about 1%, a commitment fee or a floor in the wrong field); the downstream
+  `compute_final_interest_rates` then books the gap as PIK. These are the only rows where the
+  estimate overrides I1; setting IR = PIC would give ~2% coupons on loans priced near 10%.
 - **Preferred equity with a unit count as principal** that is not a clean 1000x (e.g. 483x cost)
   is left as reported; it adds about +0.25pp of income to the 2024Q4 index return.
 - **Prime is approximated** as SOFR + 3.2% (the 2023–2026 quarterly gap is 3.2–3.4%), not read
   from a Prime series.
-- **Loans in currencies without a base rate** (SEK, JPY, CHF, NOK, KRW, DKK, CNY) that report only
-  a spread get no IR: 130 rows, 0.06% of fair value.
+- **Currency comes from the unit tag.** A EUR loan that the filer reports in USD is treated as USD,
+  so it is estimated off SOFR rather than EURIBOR (e.g. Pineapple German Bidco). About 279 estimated
+  coupons on EUR / GBP / CAD loans are affected (0.05% of FV); reading the benchmark from the
+  rate-type tag or identifier would move 99 I2 failures and the index coupon by 0.04bp, so the
+  unit is kept as the single source of currency.
+- **Commitment fees on undrawn loans.** Some delayed-draw loans report their 0.25–1% unused fee as
+  the coupon or as PIC; they account for most of the 339 I1 failures but have fair value at or
+  below zero, so they carry no index weight.
+- **STIBOR, NIBOR and CIBOR are OECD monthly averages** (via FRED), because the administrators
+  license the daily fixings; the quarterly value is the mean of three monthly averages. SHIBOR 3M
+  for CNY is a choice, since no filing tags a CNY benchmark.
+- **High floors on estimated loans.** 28 USD rows with no reported coupon and a 6–10% floor below
+  the spread (e.g. Verano, Dreamfields, likely Prime floors) are estimated at floor + spread; no
+  reported coupon confirms it.
 - **National Property REIT** (Prospect's affiliate, $6.6B) reports IR 4.25% (2.25% cash + 2% PIK)
   with a 0.25% spread — below SOFR, but plausibly a real affiliate rate, so it is left as reported.
 
@@ -265,8 +304,8 @@ This script **orchestrates the full workflow**.
 
 - Loads IXBRL data and reference files (FX, base rates from `SOFR_augmented.csv`)
 - Filters out share-count rows (except `context_type == "mixed"`, see below) and amounts-only / empty rows
-- Runs normalization, currency conversion, value-scale correction, the outlier drop and the
-  subtotal-row drop
+- Runs normalization, currency conversion, value-scale correction, the filer-quarter outlier
+  rescale (with the drop as a fallback) and the subtotal-row drop
 - Calls `resolve_rates` and returns the cleaned dataset
 
 Shares are normally an equity signal, but HPS Corporate Lending Fund's 2026Q1 10-Q tagged shares on
@@ -289,7 +328,7 @@ Running the script directly writes the output to:
 ixbrl_cleaned_out.csv
 ```
 
-A full run on the current dataset takes about 1.5–2.5 minutes.
+A full run on the current dataset takes about 3–4 minutes.
 
 ---
 
@@ -300,7 +339,8 @@ A full run on the current dataset takes about 1.5–2.5 minutes.
   `unresolved`, or `na`. For `InvestmentOwnedAtFairValue_normalized_scale_flag` /
   `InvestmentOwnedAtCost_normalized_scale_flag`, `unresolved` is not produced while the rescale
   floor is 0 (see above), and `na` means there was no principal amount to check against
-- `currency` — row currency after `determine_currency`
+- `currency` — row currency after `determine_currency`; it also selects the loan's base rate
+- `unit_mismatch_fixed` — principal read in the fair-value currency (see `convert_currencies`)
 - `RateType` — base-rate member from the XBRL rate-type tag (e.g. `SecuredOvernightFinancingRateSofrMember`, `FixedRateMember`)
 - `is_fixed` — `True` / `False` from `RateType`, `<NA>` when untagged
 - `is_prime` — Prime-based loan (from `RateType` or the identifier text)
@@ -311,17 +351,18 @@ A full run on the current dataset takes about 1.5–2.5 minutes.
 - `rate_source` — where the final IR came from: `reported`, `derived` (from other fields or a
   role repair), `estimated` (base + spread), `zero`, or `none`
 - `check_1` — `resolved` if the row ends with a usable non-zero IR, else `unresolved`
-- `estimate` — max(base + spread, floor) for USD floating/untagged rows with a spread
+- `estimate` — base + spread with floors (see I2) for floating/untagged rows with a spread and a
+  base rate
 - `change_tracker` — pipe-delimited tags of every repair / fill applied
-- `rate_flags` — pipe-delimited data-quality flags (values left unchanged)
 
 ---
 
 ## Design Principles
 
 - Rule-based (no ML, no black-box imputation)
-- Repair only when an identity pins down the value; flag when it is ambiguous
-- Fully auditable: every change is recorded in `change_tracker`, every doubt in `rate_flags`
+- Repair only when an identity pins down the value; otherwise leave the reported value
+- Fully auditable: every change is recorded in `change_tracker`
+- Every rule earns its place: removing it must break I1, I2 or a sign on a measurable share of rows
 - One rule table: adding a rule is one `Rule(...)` entry, not a new function
 
 ---
@@ -330,7 +371,10 @@ A full run on the current dataset takes about 1.5–2.5 minutes.
 
 - Missing currency ⇒ assumed USD
 - Base-rate estimation uses the loan's currency (SOFR — or SOFR + 3.2% for Prime —, EURIBOR, SONIA,
-  CORRA, BBSW) and never applies to rows tagged fixed-rate
+  CORRA, BBSW, STIBOR, TONA, SARON, NIBOR, CD 91-day, CIBOR, SHIBOR, BKBM, compounded SORA), taken
+  from the value unit, and never applies to rows tagged fixed-rate
+- A loan's base rate is floored at 0% (negative SARON / TONA do not pass through), and a reported
+  floor below the spread is a base-rate floor
 - Floating-point tolerance: `1e-6`; "differs by the base rate" tolerance: 50bp
 
 ---

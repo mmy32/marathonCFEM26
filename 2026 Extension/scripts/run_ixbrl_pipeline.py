@@ -12,6 +12,7 @@ from ixbrl_utils import (
     convert_currencies,
     normalize_value_scale,
     flag_filer_quarter_outliers,
+    rescale_filer_quarter_outliers,
     drop_subtotal_rows,
     load_base_rates,
     resolve_rates,
@@ -43,7 +44,9 @@ def run_pipeline(data_path: str, fx_path: str, sofr_path: str = "SOFR_augmented.
     df = normalize_value_scale(df)
 
     # Filings that mis-tag FV, cost and principal together (e.g. TCW Direct Lending VIII,
-    # 2023Q1) -- see flag_filer_quarter_outliers() docstring.
+    # 2023Q1): rescale the mis-tagged positions first; drop the quarter only if it is still
+    # an outlier afterwards (see the two docstrings).
+    df = rescale_filer_quarter_outliers(df)
     df = flag_filer_quarter_outliers(df)
     df = df.loc[~df["filer_quarter_outlier"]].drop(columns="filer_quarter_outlier")
 
