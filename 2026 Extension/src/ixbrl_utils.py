@@ -69,6 +69,11 @@ SPREAD_LIKE_RANGE = (0.02, 0.09)        # untagged spread == IR: a value in here
                                         # above it a coupon (tagged loans: floating <= 7.5%, fixed >= 10%)
 _PRIME_TEXT = r"(?i)\bprime\s*(?:rate\s*)?[+\-–]"   # "Prime + 1.35%", "Prime - 1.15%"
 
+# Three thresholds shared by every fair value / cost / principal check below.
+AGREE_RANGE = (0.5, 2.0)                # two amounts "agree": their ratio is in here
+EXACT_BAND = (0.95, 1.05)               # a ratio is "exactly" 1,000x (or a rate): within 5%
+OUT_OF_LINE = 3.0                       # two amounts are "out of line": more than 3x apart
+
 COUNTRY_TO_CURRENCY = {
     "United States": "USD", "Australia": "AUD", "Canada": "CAD", "Singapore": "SGD",
     "Hong Kong": "HKD", "New Zealand": "NZD", "United Kingdom": "GBP", "Euro Area": "EUR",
@@ -80,7 +85,8 @@ COUNTRY_TO_CURRENCY = {
     "Turkey": "TRY", "Israel": "ILS", "Saudi Arabia": "SAR", "United Arab Emirates": "AED",
     "Thailand": "THB", "Malaysia": "MYR", "Philippines": "PHP", "Indonesia": "IDR",
     "Vietnam": "VND", "Pakistan": "PKR", "Bangladesh": "BDT", "Russia": "RUB",
-    "Nigeria": "NGN", "Egypt": "EGP",
+    "Nigeria": "NGN", "Egypt": "EGP", "Iceland": "ISK",
+    "Korea": "KRW",             # the FX file's name for South Korea; without it KRW principals convert to NaN
 }
 CURRENCY_CODES = sorted(set(COUNTRY_TO_CURRENCY.values()))
 
@@ -216,6 +222,42 @@ def prepare_fx_data(fx_path: str) -> pd.DataFrame:
     return fx.groupby(["cal_q", "currency_norm"], as_index=False)["fx_to_usd"].mean()
 
 
+MISTAG_FX_MIN = 50.0          # only currencies at 50+ per USD (JPY, ISK) are re-read...
+MISTAG_FX_MAX = 500.0         # ...and below 500: at ~1,400 per USD (KRW) a rate match cannot be
+                              # told from a 1000x scale error, which normalize_value_scale handles
+MISTAG_FX_TOL = 1.10          # raw principal / cost within 10% of the rate (cost is booked at the
+                              # acquisition-date rate, so the ratio drifts with FX)
+MISTAG_MIN_RATIO = OUT_OF_LINE  # as tagged, principal must be this far above cost...
+MISTAG_MIN_COST = 1_000_000   # ...on a position large enough for the ratio to mean something
+
+
+# Rows that are wrong in a way no general rule separates from real positions, keyed by
+# (accession, context_id). "principal_currency" re-reads the raw principal in that currency
+# (convert_currencies); "mul" multiplies the named raw fields (normalize_value_scale).
+MANUAL_CORRECTIONS = {
+    # Spruce Bidco yen tranche tagged U_USD, cost $705k: under MISTAG_MIN_COST, where mortgage-trust
+    # notionals at 160-176x cost match the yen rate too.
+    (95017025070633, "C_84467c6d-0de7-434b-a2c5-c88284b92077"): {"principal_currency": "JPY"},
+    # Cost and FV tagged 1000x too small against a plausible principal. Written-down CLO equity
+    # looks the same (cost a thousandth of face), so this cannot be a rule.
+    (95017024038500, "C_e2010a5a-0f84-4446-b2b2-549a0e6e2481"): {"mul": {COST_RAW: 1_000, FV_RAW: 1_000}},  # Chartwell Cumming term loan
+    (95017024038500, "C_2a1026e8-aa08-4877-981c-eb8c8ae8b138"): {"mul": {COST_RAW: 1_000, FV_RAW: 1_000}},  # Chartwell Cumming DDTL
+    (95017025029152, "C_2e10e18d-6948-48c0-b2a3-459b54eddc3f"): {"mul": {COST_RAW: 1_000, FV_RAW: 1_000}},  # Hellers DDTL
+}
+
+
+def _manual_rows(df: pd.DataFrame, kind: str):
+    """Yield (row mask, correction) for the MANUAL_CORRECTIONS entries of one kind present in df."""
+    if not {"accession", "context_id"} <= set(df.columns):
+        return
+    acc = pd.to_numeric(df["accession"], errors="coerce")
+    for (a, ctx), fix in MANUAL_CORRECTIONS.items():
+        if kind in fix:
+            m = acc.eq(a) & df["context_id"].eq(ctx)
+            if m.any():
+                yield m, fix[kind]
+
+
 def convert_currencies(df: pd.DataFrame, fx_path: str) -> pd.DataFrame:
     out = df.copy()
     out["cal_q"] = out["cal_q"].astype(str)
@@ -245,7 +287,31 @@ def convert_currencies(df: pd.DataFrame, fx_path: str) -> pd.DataFrame:
            & within(alt / fvn) & ~within(pv / fvn)).fillna(False).astype(bool)
     out.loc[odd, PRIN_RAW + "_normalized"] = alt[odd]
     out.loc[odd, PRIN_RAW + "-unitRef_normalized"] = fu[odd]
-    out["unit_mismatch_fixed"] = odd
+
+    # The reverse error: a principal in a high-denomination currency tagged as something else.
+    # Spruce Bidco's yen tranche is tagged jpy by three filers but usd / cny by CIK 1872371,
+    # 1974793 and 2052152, so it reads ~157x cost (about $10B of principal on $65M of cost).
+    # The raw principal is re-read in currency X when raw principal / cost(USD) matches X's rate
+    # for the quarter. X must be a currency some filer actually tags a principal in, with a rate
+    # of at least MISTAG_FX_MIN: at 20-35 per USD (CZK, THB, TWD) CLO equity and mortgage
+    # notionals match by coincidence, at 50+ only the genuine cases do.
+    pv, cost_usd = out[PRIN_RAW + "_normalized"], out[COST_RAW + "_normalized"]
+    cand = ((cost_usd >= MISTAG_MIN_COST) & (fvn / cost_usd).between(*AGREE_RANGE)
+            & (pv / cost_usd > MISTAG_MIN_RATIO)).fillna(False)
+    reread = pd.Series(False, index=out.index)
+    for cur in sorted(set(out[PRIN_RAW + "-unitRef_normalized"].dropna()) - {"USD"}):
+        rate = pd.Series(pd.MultiIndex.from_arrays([out["cal_q"], [cur] * len(out)]).map(fx), index=out.index)
+        hit = (cand & ~reread & out[PRIN_RAW + "-unitRef_normalized"].ne(cur) & rate.between(MISTAG_FX_MIN, MISTAG_FX_MAX)
+               & (out[PRIN_RAW] / cost_usd / rate).between(1 / MISTAG_FX_TOL, MISTAG_FX_TOL)).fillna(False)
+        out.loc[hit, PRIN_RAW + "_normalized"] = out.loc[hit, PRIN_RAW] / rate[hit]
+        out.loc[hit, PRIN_RAW + "-unitRef_normalized"] = cur
+        reread |= hit
+    for m, cur in _manual_rows(out, "principal_currency"):
+        rate = pd.Series(pd.MultiIndex.from_arrays([out["cal_q"], [cur] * len(out)]).map(fx), index=out.index)
+        out.loc[m, PRIN_RAW + "_normalized"] = out.loc[m, PRIN_RAW] / rate[m]
+        out.loc[m, PRIN_RAW + "-unitRef_normalized"] = cur
+        reread |= m
+    out["unit_mismatch_fixed"] = odd | reread
     out["currency"] = determine_currency(out)
     return out
 
@@ -256,10 +322,92 @@ def convert_currencies(df: pd.DataFrame, fx_path: str) -> pd.DataFrame:
 
 VALUE_SCALE_CANDIDATES = (1_000, 1_000_000)
 VALUE_RATIO_RANGE = (0.0, 3.0)
-VALUE_RESCALE_TARGET_RANGE = (0.0, 3.0)   # see README "Known limitation: the rescale floor"
-PRINCIPAL_COST_RANGE = (0.5, 2.0)         # principal / cost must land here after a 1e3 / 1e6 fix
+VALUE_RESCALE_TARGET_RANGE = (1 / 3, 3.0)  # a 1e3 / 1e6 fix must bring the ratio back to ~1; with a
+                                          # floor of 0, any cost 3-3000x principal was divided by 1000
+                                          # (EOT-heavy equipment loans, preferred units, ABS notes).
+                                          # Partly funded loans in a mis-scaled filing are handled by
+                                          # fix_filing_principal_scale instead.
+PRINCIPAL_COST_RANGE = AGREE_RANGE        # principal / cost must land here after a 1e3 / 1e6 fix
 PRINCIPAL_CHECK_MIN_COST = 1_000_000      # below this, principal >> cost is usually real: cost
                                           # written down (CLO equity) or an unfunded commitment
+
+
+PRINCIPAL_SMALL_COST_BAND = EXACT_BAND    # principal / cost / 1000 on a position with cost under the minimum
+PRINCIPAL_SMALL_COST_SIZE = 5.0           # ...and principal this many times the filer-quarter median
+
+
+FV_SMALL_BAND = EXACT_BAND                # FV x 1000 / cost (or cost x 1000 / FV): tagged 1000x too small
+FV_SMALL_PRINCIPAL_RANGE = AGREE_RANGE    # ...on a position whose principal agrees with the other field
+
+
+FILING_SCALE_SHARE = 0.50  # share of a filing's rows at ~1e3 / 1e6 x principal that marks the
+                              # whole filing's principal as tagged in the wrong unit
+FILING_FV_HISTORY = (1 / 3, 3.0)   # filing FV total vs the filer's median in other quarters
+
+
+def fix_filing_principal_scale(df, value_cols=(FV_RAW + "_normalized", COST_RAW + "_normalized"),
+                               anchor_col=PRIN_RAW + "_normalized", filing_cols=("cik", "accession"),
+                               filer_col="cik", quarter_col="cal_q"):
+    """
+    Filing-level principal unit error. Some filings tag *every* principal with the wrong decimals
+    (CIK 1784700 2023Q1/Q3/Q4, 1948368 2026Q1, 2012139 2026Q2: principal in thousands, FV and
+    cost in dollars). Row by row this looks like FV / cost 1000x too large, so the row-level
+    check divided correct FV and cost by 1000 and the fund's FV total collapsed (1784700 2023Q4:
+    $683M -> $0.7M). Position-history matching cannot catch it because identifiers embed text
+    that changes every quarter ("Debt Investments - 168.5%"), so the decision is made per filing:
+
+      1. >= FILING_SCALE_SHARE of rows have value / principal at ~scale (or ~1/scale);
+      2. the filing's FV total is in line with the filer's other quarters (FILING_FV_HISTORY),
+         so FV is right and the principal is the mis-scaled field.
+
+    Then *every* principal in the filing is rescaled, including partly funded loans whose
+    ratio is not near the scale. If FV is itself ~1000x its history, nothing happens here and
+    the row-level / filer-quarter checks handle it.
+    """
+    out = df.copy()
+    fv, cost = value_cols
+    a = out[anchor_col]
+    v = out[cost].where(out[cost].gt(0), out[fv])
+    r = (v / a).where(a.gt(0) & v.gt(0))
+    keys = [out[k] for k in filing_cols]
+    n = r.notna().groupby(keys).transform("sum")
+    tot = out[fv].abs().groupby([out[filer_col], out[quarter_col]]).sum()
+    hist = {}
+    for f, g in tot.groupby(level=0):
+        g = g.droplevel(0)
+        for q in g.index:
+            o = g.drop(q)
+            hist[(f, q)] = o.median() if len(o) else np.nan
+    ref = pd.Series([hist.get(k, np.nan) for k in zip(out[filer_col], out[quarter_col])], index=out.index)
+    own = pd.Series([tot.get(k, np.nan) for k in zip(out[filer_col], out[quarter_col])], index=out.index)
+    fv_ok = (own / ref).between(*FILING_FV_HISTORY)
+    # filer's typical principal size in its other quarters (for rows with no usable ratio)
+    pq = a.abs().where(a.gt(0)).groupby([out[filer_col], out[quarter_col]]).median()
+    phist = {}
+    for f, g in pq.groupby(level=0):
+        g = g.droplevel(0)
+        for q in g.index:
+            o = g.drop(q).dropna()
+            phist[(f, q)] = o.median() if len(o) else np.nan
+    pref = pd.Series([phist.get(k, np.nan) for k in zip(out[filer_col], out[quarter_col])], index=out.index)
+    flag = pd.Series("", index=out.index, dtype=object)
+    for s in VALUE_SCALE_CANDIDATES:
+        for mult, lo, hi, tag in ((s, 0.3 * s, 3 * s, f"filing_mul{s}"),
+                                  (1 / s, 1 / (3 * s), 1 / (0.3 * s), f"filing_div{s}")):
+            share = r.between(lo, hi).groupby(keys).transform("sum") / n
+            # Within a flagged filing, rescale a row only if it is out of line itself: its ratio
+            # points the same way (value > 3x principal for mul, < 1/3 for div; this includes
+            # partly funded loans), or, with no usable ratio (unfunded, cost <= 0), rescaling
+            # brings the principal closer to the filer's typical size. Rows already at ~1 stay.
+            off = (r > 3) if mult > 1 else (r < 1 / 3)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                closer = np.log10((a * mult).abs() / pref).abs() < np.log10(a.abs() / pref).abs()
+            row_bad = off | (r.isna() & closer)
+            hit = ((share >= FILING_SCALE_SHARE) & fv_ok & a.gt(0) & row_bad & flag.eq("")).fillna(False)
+            out.loc[hit, anchor_col] = a[hit] * mult
+            flag[hit] = tag
+    out["_filing_prin_flag"] = flag
+    return out
 
 
 def normalize_value_scale(df, value_cols=(FV_RAW + "_normalized", COST_RAW + "_normalized"),
@@ -277,9 +425,10 @@ def normalize_value_scale(df, value_cols=(FV_RAW + "_normalized", COST_RAW + "_n
     and only the principal changes. Positions with cost under PRINCIPAL_CHECK_MIN_COST are
     skipped, since a written-down cost basis or an unfunded commitment can make that ratio real.
     """
-    out = df.copy()
-    if anchor_col not in out:
-        return out
+    if anchor_col not in df:
+        return df.copy()
+    out = fix_filing_principal_scale(df, value_cols, anchor_col)
+    filing_flag = out.pop("_filing_prin_flag")
     a = out[anchor_col]
     has_anchor = a.notna() & a.ne(0)
     pflag = pd.Series("unchanged", index=out.index, dtype=object).where(a.notna(), "na")
@@ -320,11 +469,45 @@ def normalize_value_scale(df, value_cols=(FV_RAW + "_normalized", COST_RAW + "_n
         _, cflag, s = rescale_to_range((p / c).where(big), *PRINCIPAL_COST_RANGE, VALUE_SCALE_CANDIDATES)
         out[anchor_col] = p.where(s.isna(), p / s)
         pflag = pflag.where(s.isna(), cflag)
+
+        # Under PRINCIPAL_CHECK_MIN_COST the ratio alone proves nothing (CLO equity, unfunded
+        # commitments), so three more things must hold: the ratio is ~1000 exactly, FV agrees with
+        # cost (an unfunded commitment has FV <= 0), and the principal is far outside the filer's
+        # own positions that quarter. Halcyon CLO equity at 990x cost is an ordinary-sized
+        # principal for its filer (1.1x the median) and stays; a money-market fund at 168x the
+        # median (CIK 1675033 2024Q2, $514M principal on $514k of cost) does not.
+        if fv in out and all(k in out for k in ("cik", "cal_q")):
+            p = out[anchor_col]
+            typical = p.where(p > 0).groupby([out["cik"], out["cal_q"]]).transform("median")
+            tiny = (~big & c.gt(0) & (p / c / 1_000).between(*PRINCIPAL_SMALL_COST_BAND)
+                    & (out[fv] / c).between(*AGREE_RANGE) & (p > PRINCIPAL_SMALL_COST_SIZE * typical)).fillna(False)
+            out.loc[tiny, anchor_col] = p[tiny] / 1_000
+            pflag[tiny] = "div1000"
+
+    # FV exactly 1000x too small: principal ~ cost and FV = cost / 1000 (CIK 1655050 2024Q1:
+    # nine loans with $131M of cost carried at $0.13M). A real write-off does not land on the
+    # ratio: of the rows with principal ~ cost, FV x 1000 / cost is 0.955-1.037 for the mistags
+    # and jumps to <= 0.73 or >= 1.11 for the genuine ones (First Brands, Interface Security).
+    # The same test with FV and cost swapped catches a cost 1000x too small.
+    if fv in out and cost in out:
+        p, c, f = out[anchor_col], out[cost], out[fv]
+        for col, v, ref in ((fv, f, c), (cost, c, f)):
+            small = (ref.gt(0) & (p / ref).between(*FV_SMALL_PRINCIPAL_RANGE)
+                     & (v * 1_000 / ref).between(*FV_SMALL_BAND)).fillna(False)
+            out.loc[small, col] = v[small] * 1_000
+            out.loc[small, f"{col}_scale_flag"] = "mul1000"
+    for m, mult in _manual_rows(out, "mul"):
+        for raw, k in mult.items():
+            col = raw + "_normalized"
+            out.loc[m, col] = out.loc[m, col] * k
+            out.loc[m, f"{col}_scale_flag"] = f"manual_mul{k}"
+    pflag = pflag.where(filing_flag.eq(""), filing_flag)
     out[f"{anchor_col}_scale_flag"] = pflag
     return out
 
 
 EQUITY_UNIT_RATIO = 100    # principal / cost above this on an equity position is a unit count
+UNITS_VALUE_RATIO = OUT_OF_LINE   # cost and FV both above this x principal: the principal is a unit count
 _EQUITY_TEXT = r"(?i)\b(?:preferred|equity|units?|warrants?|common|shares|membership)\b"
 
 
@@ -346,6 +529,24 @@ def cap_equity_unit_principal(df: pd.DataFrame, id_col: str = "investment_identi
     fc = p + "_scale_flag"
     if fc in out:
         out.loc[hit, fc] = out.loc[hit, fc].astype(str) + "|equity_units_capped"
+
+    # The same error the other way round: a share or unit count far *below* the dollar amounts
+    # (PG&E: 230,000 shares against $10.7M of cost; preferred units, ABS certificates). Cost and
+    # FV agree with each other and both exceed UNITS_VALUE_RATIO x principal, so the principal is
+    # the field that is not a dollar amount and is set to cost (`|units_as_principal`). No text
+    # test: a debt principal is never a third of its own cost with FV still at cost. FV and cost
+    # were flagged `unresolved` against the old principal and are consistent now.
+    f = FV_RAW + "_normalized"
+    if f in out:
+        low = (out[p].gt(0) & (out[c] > UNITS_VALUE_RATIO * out[p])
+               & (out[f] / out[c]).between(*AGREE_RANGE)).fillna(False)
+        out.loc[low, p] = out.loc[low, c]
+        if fc in out:
+            out.loc[low, fc] = out.loc[low, fc].astype(str) + "|units_as_principal"
+        for v in (f, c):
+            vf = v + "_scale_flag"
+            if vf in out:
+                out.loc[low & out[vf].eq("unresolved"), vf] = "unchanged"
     return out
 
 
