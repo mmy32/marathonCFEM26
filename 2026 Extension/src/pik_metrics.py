@@ -900,3 +900,177 @@ def plot_pik_distress_vs_contractual_share(
 
 
 
+
+
+# ==============================================================================
+# 4. Distress Amendment Event Study
+# ==============================================================================
+
+def compute_amendment_event_study(
+    df: pl.DataFrame,
+    quarter_col: str = "cal_q",
+    cik_col: str = "cik",
+    id_col: str = "investment_identifier",
+    sector_col: str = "sector",
+    fv_col: str = "FV",
+    cost_col: str = "COST",
+    window: tuple = (-2, 1),
+    level_threshold: float = 0.80,
+    drop_threshold: float = 0.20,
+) -> pl.DataFrame:
+    """
+    Event study of markdowns around a loan's first distress amendment (quarter t).
+
+    Treated: loans with `is_distress_amendment`, observed in every quarter of
+             `window` relative to t (balanced, so the same loans trace each line).
+    Control: loans that never amend, same sector and same event quarter t,
+             balanced over the same window and reweighted to the treated
+             sector x quarter mix.
+
+    Outcomes at each relative quarter k:
+      - `share_low`: share with FV/Cost < `level_threshold`.
+      - `share_drop`: share whose FV fell by more than `drop_threshold` versus
+                      the immediately preceding quarter (the prediction target).
+
+    Returns one row per (group, k) with `share_low`, `share_drop`, `n` and
+    binomial standard errors `se_low`, `se_drop` (treated only; controls are
+    weighted so their SE is left null).
+    """
+    keys = [cik_col, id_col]
+    k_min, k_max = window
+    ks = list(range(k_min, k_max + 1))
+
+    panel = (
+        df.with_columns(quarter_sort_expr(quarter_col))
+        .unique(subset=keys + ["qsort"], keep="first", maintain_order=True)
+        .sort(keys + ["qsort"])
+        .with_columns([
+            pl.col("qsort").diff().over(keys).alias("_gap"),
+            pl.col(fv_col).shift(1).over(keys).alias("_fv_prev"),
+        ])
+        .filter(pl.col(cost_col) > 0)
+        .with_columns(
+            pl.when((pl.col("_gap") == 1) & (pl.col("_fv_prev") > 0))
+            .then(pl.col(fv_col) / pl.col("_fv_prev") - 1)
+            .otherwise(None)
+            .alias("_qchg")
+        )
+        .with_columns([
+            ((pl.col(fv_col) / pl.col(cost_col)) < level_threshold).cast(pl.Float64).alias("low"),
+            pl.when(pl.col("_qchg").is_null()).then(None)
+            .otherwise((pl.col("_qchg") < -drop_threshold).cast(pl.Float64))
+            .alias("drop"),
+        ])
+        .select(keys + [sector_col, "qsort", "is_distress_amendment", "low", "drop"])
+    )
+
+    events = (
+        panel.filter(pl.col("is_distress_amendment"))
+        .group_by(keys)
+        .agg([pl.col("qsort").min().alias("t"), pl.col(sector_col).first()])
+    )
+    never = panel.join(events.select(keys), on=keys, how="anti")
+
+    # Treated: balanced window around each loan's own event quarter
+    treated = (
+        events.join(panel.select(keys + ["qsort", "low", "drop"]), on=keys)
+        .with_columns((pl.col("qsort") - pl.col("t")).alias("k"))
+        .filter(pl.col("k").is_in(ks))
+    )
+    full = treated.group_by(keys).agg(pl.len().alias("n")).filter(pl.col("n") == len(ks))
+    treated = treated.join(full.select(keys), on=keys)
+
+    treated_out = (
+        treated.group_by("k")
+        .agg([
+            pl.col("low").mean().alias("share_low"),
+            pl.col("drop").mean().alias("share_drop"),
+            pl.len().alias("n"),
+        ])
+        .with_columns([
+            (pl.col("share_low") * (1 - pl.col("share_low")) / pl.col("n")).sqrt().alias("se_low"),
+            (pl.col("share_drop") * (1 - pl.col("share_drop")) / pl.col("n")).sqrt().alias("se_drop"),
+            pl.lit("Distress amendment").alias("group"),
+        ])
+    )
+
+    # Controls: never-amended loans, matched to each (sector, t) treated cell
+    cells = events.group_by([sector_col, "t"]).agg(pl.len().alias("w"))
+    ctrl = (
+        cells.join(never.select(keys + [sector_col, "qsort", "low", "drop"]), on=sector_col)
+        .with_columns((pl.col("qsort") - pl.col("t")).alias("k"))
+        .filter(pl.col("k").is_in(ks))
+    )
+    ctrl_full = ctrl.group_by(keys + ["t"]).agg(pl.len().alias("n")).filter(pl.col("n") == len(ks))
+    ctrl = ctrl.join(ctrl_full.select(keys + ["t"]), on=keys + ["t"])
+
+    ctrl_out = (
+        ctrl.group_by([sector_col, "t", "k", "w"])
+        .agg([
+            pl.col("low").mean(),
+            pl.col("drop").mean(),
+            pl.len().alias("n"),
+        ])
+        .group_by("k")
+        .agg([
+            (pl.col("low") * pl.col("w")).sum() / pl.col("w").sum(),
+            (pl.col("drop") * pl.col("w")).sum() / pl.col("w").sum(),
+            pl.col("n").sum(),
+        ])
+        .rename({"low": "share_low", "drop": "share_drop"})
+        .with_columns([
+            pl.lit(None, dtype=pl.Float64).alias("se_low"),
+            pl.lit(None, dtype=pl.Float64).alias("se_drop"),
+            pl.lit("Never amended (same sector, quarter)").alias("group"),
+        ])
+    )
+
+    cols = ["group", "k", "share_low", "share_drop", "n", "se_low", "se_drop"]
+    return pl.concat([treated_out.select(cols), ctrl_out.select(cols)]).sort(["group", "k"])
+
+
+def plot_amendment_event_study(
+    event_df: pl.DataFrame,
+    figsize: tuple = (11, 4.8),
+    save_path: Optional[str] = None,
+) -> None:
+    """
+    Two-panel event-study chart from `compute_amendment_event_study`:
+    A. share of loans with FV/Cost < 0.80; B. share with a >20% single-quarter
+    FV drop. Shaded band is +/-1.96 binomial SE for amended loans.
+    """
+    pdf = event_df.to_pandas()
+    styles = {
+        "Distress amendment": dict(color="#d62728", marker="o", linestyle="-"),
+        "Never amended (same sector, quarter)": dict(color="#7f7f7f", marker="x", linestyle="--"),
+    }
+    panels = [
+        ("share_low", "se_low", "A. Loans with FV/Cost < 0.80"),
+        ("share_drop", "se_drop", "B. Loans with >20% FV drop vs. prior quarter"),
+    ]
+
+    fig, axes = plt.subplots(1, 2, figsize=figsize, sharex=True)
+    for ax, (col, se_col, title) in zip(axes, panels):
+        for group, style in styles.items():
+            g = pdf[pdf["group"] == group].sort_values("k")
+            ax.plot(g["k"], g[col] * 100, linewidth=2, label=f"{group} (n={int(g['n'].iloc[0]):,})", **style)
+            if g[se_col].notna().all():
+                ax.fill_between(
+                    g["k"], (g[col] - 1.96 * g[se_col]) * 100, (g[col] + 1.96 * g[se_col]) * 100,
+                    color=style["color"], alpha=0.15,
+                )
+        ax.axvline(0, color="black", linewidth=0.8, linestyle=":")
+        ax.set_ylim(bottom=0)
+        ax.set_xticks(sorted(pdf["k"].unique()))
+        ax.set_xticklabels([f"t{int(k):+d}" if k else "t" for k in sorted(pdf["k"].unique())])
+        ax.yaxis.set_major_formatter(mtick.PercentFormatter(decimals=0))
+        ax.set_title(title, fontsize=11, fontweight="bold")
+        ax.set_xlabel("Quarter relative to first distress amendment (t)", fontsize=10)
+        ax.grid(True, alpha=0.3)
+    axes[0].set_ylabel("Share of loans (%)", fontsize=10)
+    axes[0].legend(loc="upper left", fontsize=8, framealpha=0.9)
+
+    fig.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300)
+        plt.close()

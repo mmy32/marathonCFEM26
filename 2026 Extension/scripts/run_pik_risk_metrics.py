@@ -45,6 +45,8 @@ from pik_metrics import (
     plot_pik_provenance_dollar_volume,
     plot_bdc_idiosyncratic_tagging,
     plot_pik_distress_vs_contractual_share,
+    compute_amendment_event_study,
+    plot_amendment_event_study,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -185,6 +187,15 @@ def main():
     plot7_path = plots_dir / "pik_distress_vs_contractual_share.png"
     plot_pik_distress_vs_contractual_share(flow_df, save_path=str(plot7_path))
     logger.info(f"Generated {plot7_path}")
+
+    event_study = compute_amendment_event_study(flow_df)
+    event_csv = outputs_dir / "pik_amendment_event_study.csv"
+    event_study.write_csv(str(event_csv))
+    logger.info(f"Saved amendment event study to {event_csv}")
+
+    plot8_path = plots_dir / "amendment_event_study.png"
+    plot_amendment_event_study(event_study, save_path=str(plot8_path))
+    logger.info(f"Generated {plot8_path}")
 
     logger.info("PIK risk metrics execution and chart generation complete.")
 
