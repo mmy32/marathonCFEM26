@@ -1,0 +1,50 @@
+2026-08-13 15:45:52,014 INFO resume_parsed_only=True -> skipped 602 already-parsed filings
+2026-08-13 15:45:52,014 INFO To process: 1739 filings
+2026-08-13 15:48:02,975 INFO Progress 500/1739 | success=0 failed=113
+2026-08-13 15:49:38,802 INFO Progress 800/1739 | success=29 failed=169
+2026-08-13 15:50:34,381 INFO Progress 850/1739 | success=73 failed=175
+2026-08-13 15:51:16,492 INFO Flushing 100 parsed frames -> C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\data\ixbrl\combined\wide_all.csv ...
+2026-08-13 15:54:25,883 INFO Progress 900/1739 | success=119 failed=179
+2026-08-13 15:55:38,543 INFO Progress 950/1739 | success=166 failed=182
+2026-08-13 15:56:40,583 INFO Flushing 100 parsed frames -> C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\data\ixbrl\combined\wide_all.csv ...
+2026-08-13 16:00:05,438 INFO Progress 1000/1739 | success=201 failed=197
+2026-08-13 16:01:10,162 INFO Progress 1050/1739 | success=242 failed=206
+2026-08-13 16:02:40,138 INFO Progress 1100/1739 | success=285 failed=213
+2026-08-13 16:03:09,254 INFO Flushing 100 parsed frames -> C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\data\ixbrl\combined\wide_all.csv ...
+2026-08-13 16:07:22,939 INFO Progress 1150/1739 | success=325 failed=223
+2026-08-13 16:09:14,252 INFO Progress 1200/1739 | success=369 failed=229
+2026-08-13 16:10:13,220 INFO Flushing 100 parsed frames -> C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\data\ixbrl\combined\wide_all.csv ...
+2026-08-13 16:14:57,094 INFO Progress 1250/1739 | success=407 failed=241
+2026-08-13 16:16:01,419 INFO Progress 1300/1739 | success=451 failed=247
+2026-08-13 16:17:30,132 INFO Progress 1350/1739 | success=498 failed=250
+2026-08-13 16:17:32,204 INFO Flushing 100 parsed frames -> C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\data\ixbrl\combined\wide_all.csv ...
+2026-08-13 16:24:22,670 INFO Progress 1400/1739 | success=537 failed=261
+2026-08-13 16:25:39,478 INFO Progress 1450/1739 | success=583 failed=265
+2026-08-13 16:26:03,693 INFO Flushing 100 parsed frames -> C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\data\ixbrl\combined\wide_all.csv ...
+2026-08-13 16:32:29,594 INFO Progress 1500/1739 | success=630 failed=268
+2026-08-13 16:33:36,099 INFO Progress 1550/1739 | success=678 failed=270
+2026-08-13 16:34:04,056 INFO Flushing 100 parsed frames -> C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\data\ixbrl\combined\wide_all.csv ...
+2026-08-13 16:41:20,699 INFO Progress 1600/1739 | success=725 failed=273
+2026-08-13 16:42:28,319 INFO Progress 1650/1739 | success=774 failed=274
+2026-08-13 16:43:09,959 INFO Flushing 100 parsed frames -> C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\data\ixbrl\combined\wide_all.csv ...
+2026-08-13 16:51:05,268 INFO Progress 1700/1739 | success=820 failed=278
+2026-08-13 16:52:05,682 INFO Progress 1750/1739 | success=868 failed=280
+2026-08-13 16:52:48,374 INFO Flushing 100 parsed frames -> C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\data\ixbrl\combined\wide_all.csv ...
+2026-08-13 17:02:15,004 INFO Progress 1800/1739 | success=916 failed=282
+2026-08-13 17:03:06,063 INFO Progress 1850/1739 | success=955 failed=293
+2026-08-13 17:03:59,606 INFO Flushing 100 parsed frames -> C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\data\ixbrl\combined\wide_all.csv ...
+2026-08-13 17:14:06,224 INFO Progress 1900/1739 | success=1002 failed=296
+2026-08-13 17:15:13,816 INFO Progress 1950/1739 | success=1038 failed=310
+2026-08-13 17:16:17,647 INFO Progress 2000/1739 | success=1087 failed=311
+2026-08-13 17:16:32,873 INFO Flushing 100 parsed frames -> C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\data\ixbrl\combined\wide_all.csv ...
+2026-08-13 17:27:56,097 INFO Progress 2050/1739 | success=1136 failed=312
+2026-08-13 17:29:05,869 INFO Progress 2100/1739 | success=1185 failed=313
+2026-08-13 17:29:30,182 INFO Flushing 100 parsed frames -> C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\data\ixbrl\combined\wide_all.csv ...
+2026-08-13 17:40:57,166 INFO Progress 2150/1739 | success=1227 failed=321
+2026-08-13 17:42:06,330 INFO Progress 2200/1739 | success=1262 failed=336
+2026-08-13 17:42:50,210 INFO Flushing 100 parsed frames -> C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\data\ixbrl\combined\wide_all.csv ...
+2026-08-13 17:56:17,551 INFO Progress 2250/1739 | success=1309 failed=339
+2026-08-13 17:57:15,959 INFO Progress 2300/1739 | success=1357 failed=341
+2026-08-13 17:58:00,343 WARNING Wrote ixbrl parse failures -> C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\data\ixbrl\combined\ixbrl_parse_failures.csv (n=345)
+2026-08-13 18:10:57,254 INFO Wrote combined wide -> C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\data\ixbrl\combined\wide_all.csv
+2026-08-13 18:10:57,254 INFO Done. processed=1739 success=1394 failed=345

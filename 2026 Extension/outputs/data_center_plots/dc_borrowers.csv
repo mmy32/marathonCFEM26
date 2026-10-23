@@ -1,0 +1,54 @@
+entity,scope,function,fv_usd_mm,pct_of_dc_total,bdcs,managers,note
+Valor Compute Infrastructure (xAI GPUs),core,AI compute,1103.91,16.70,8,Apollo; Blue Owl; Great Elm Capital Corp.,Valor VCI: NVIDIA GPUs triple-net leased to xAI (Apollo-led financing)
+Service Express,support,DC services / supply chain,1079.18,16.33,26,"Antares; Apollo; Ares; Blue Owl; Carlyle; FS KKR; Goldman Sachs; HPS; Jefferies Credit Partners BDC Inc.; Lgam Private Credit LLC; Morgan Stanley; New Mountain; Senior Credit Investments, LLC","Third-party DC hardware maintenance; legal borrower Victors Purchaser, LLC (merged with Park Place, Jan 2026)"
+IEM (Industrial Electric Mfg),grey,DC services / supply chain,836.83,12.66,10,Adams Street Credit Solutions Fund; Audax; Blackstone; Carlyle; New Mountain,Switchgear maker serving data centers and utilities
+Vantage Data Centers,core,Operator / developer,608.33,9.21,4,Ares; Blackstone,
+Accelevation,support,DC services / supply chain,225.38,3.41,14,Apollo; Bain Capital; Barings; CM Finance Inc; Lord Abbett; Monroe Capital; Stepstone Private Credit Fund LLC,DC containment / infrastructure products
+LayerZero Power Systems,support,DC services / supply chain,187.81,2.84,5,BlackRock; Blackstone,Static transfer switches / PDUs for data centers
+EdgeConneX,core,Operator / developer,178.45,2.70,2,Ares,
+Trystar,grey,DC services / supply chain,174.87,2.65,9,"Audax; Diameter Credit Co; Franklin Bsp Capital L.L.C.; Goldman Sachs; Jefferies Credit Partners BDC Inc.; Senior Credit Investments, LLC",Power distribution equipment; data centers are one of several end markets
+Mission Critical Group,support,DC services / supply chain,165.82,2.51,6,"Brightwood Capital Corp I; Lafayette Square Empire BDC, LLC; Main Street; Onex Falcon Direct Lending BDC Fund; Pgim Private Credit Fund",Power/electrical equipment for data centers
+CyrusOne,core,Operator / developer,159.32,2.41,1,Blackstone,Revolving warehouse facility
+CoreWeave (incl. SPVs),core,AI compute,156.76,2.37,14,"AllianceBernstein; Apollo; Ares; BlackRock; Carlyle; Franklin Bsp Capital L.L.C.; Great Elm Capital Corp.; HPS; Msd Investment, LLC; Nuveen Churchill; Palmer Square Capital BDC Inc.; Pimco Capital Solutions BDC Corp.; Third Point Private Capital Partners","Likely the owner of CoreWeave's NEST data center, Kenilworth, NJ (bought Aug 2025); held by Ares Core Infrastructure Fund"
+Ark Data Centers,core,Operator / developer,152.98,2.31,6,"Crestline Lending Solutions, LLC; Goldman Sachs; Vista Credit Strategic Lending Corp.; West Bay BDC LLC",
+5C Data Centers (CMH01),core,Operator / developer,147.22,2.23,1,Ares,"5C Group's Columbus, OH hyperscale campus"
+Resa Power,grey,DC services / supply chain,140.45,2.13,4,FS KKR,"Electrical power system testing, maintenance and repair"
+Firmus Supercloud,core,AI compute,120.02,1.82,2,Blackstone,
+Galaxy Helios (AI campus),core,Operator / developer,101.04,1.53,2,"Ares; Crestline Lending Solutions, LLC",Galaxy Digital's Helios AI/HPC data center campus
+STACK Infrastructure,core,Operator / developer,100.38,1.52,1,Ares,STACK San Jose (SVY01) campus
+Advanced Cooling Technologies,grey,DC services / supply chain,89.39,1.35,10,BlackRock; Goldman Sachs; Golub; West Bay BDC LLC,Thermal management supplier
+Maverick Power,support,DC services / supply chain,88.49,1.34,3,AGL Private Credit Income Fund; Lord Abbett,Switchgear / power distribution for data centers
+Electro Technical Industries,grey,DC services / supply chain,85.86,1.30,3,"Lafayette Square Empire BDC, LLC; Main Street",Mission-critical electrical distribution / switchgear; data centers are one of several end markets
+US Signal,core,Operator / developer,80.22,1.21,4,"Crestline Lending Solutions, LLC; Goldman Sachs",
+Aggreko,grey,DC services / supply chain,61.98,0.94,3,Apollo; Blackstone; Oaktree,Temporary power and cooling rental
+Modigent,grey,DC services / supply chain,54.61,0.83,5,Ares; BlackRock; Stepstone Private Credit Fund LLC,Mechanical contractor (mission-critical work)
+Together Computer,core,AI compute,50.68,0.77,2,Ept 16 LLC; Trinity Capital Inc.,
+Total Power (generators),grey,DC services / supply chain,50.56,0.77,6,Apollo; Ares; Carlyle,"Generator sales, rental and service; Generator (US) Buyer is the acquisition vehicle"
+PowerHouse Data,core,Operator / developer,46.88,0.71,1,Ares,PowerHouse Data Centers
+QTS,core,Operator / developer,46.65,0.71,1,Apollo,"Identifier: ""Apterra Project Ram Microsoft DC"" mortgage loan; QualityTech, LP is QTS's operating partnership"
+Computer Data Source,support,DC services / supply chain,38.67,0.59,2,Main Street,Third-party DC hardware maintenance
+C3 AcquisitionCo,grey,DC services / supply chain,34.04,0.52,2,Sound Point Direct Lending BDC; Stepstone Private Credit Fund LLC,"One BDC tags it ""Data Center / Other Commercial Services"", another ""Construction & Engineering"""
+Forgent Power,support,DC services / supply chain,30.76,0.47,3,Blackstone; New Mountain,"Transformers, switchboards and PDUs for data centers"
+Iron Mountain Manassas,core,Operator / developer,27.10,0.41,1,Blackstone,"Iron Mountain data center campus (Manassas, VA)"
+Rehlko (Kohler Energy),grey,DC services / supply chain,26.98,0.41,3,Goldman Sachs; Morgan Stanley,Backup generators and power systems
+Salute Mission Critical,support,DC services / supply chain,22.48,0.34,2,Sound Point Direct Lending BDC; Stepstone Private Credit Fund LLC,DC operations staffing
+Uptime Institute,support,DC services / supply chain,22.00,0.33,2,Lord Abbett,Data center tier certification / advisory
+FirstDigital Communications,grey,Operator / developer,13.65,0.21,1,AllianceBernstein,Utah telecom / fiber provider that also runs colocation data centers
+North America Data Center Acq.,core,Operator / developer,12.62,0.19,1,Fortress Private Lending Fund,"Some rows carry the canonical name without ""North America"""
+Yucca Growth Infrastructure (Oracle),core,Operator / developer,11.91,0.18,3,Apollo,"Oracle data center build SPV (identifier names ""Oracle Corp"")"
+Iron Mountain (corporate),grey,Operator / developer,10.20,0.15,3,Blackstone; Crescent Private Credit Income Corp; Msc Capital LLC,Records-management REIT with a data center segment; the Manassas campus loan is a separate core entity
+Nscale,core,AI compute,9.00,0.14,3,Blue Owl,
+Hyscaleix Data Centers,core,Operator / developer,8.43,0.13,2,AllianceBernstein,
+Cirrascale Cloud,core,AI compute,7.75,0.12,2,Ept 16 LLC; Trinity Capital Inc.,
+Chirisa Technology Parks (Volo),core,Operator / developer,7.08,0.11,1,"Crestline Lending Solutions, LLC","Chirisa's Volo, IL data center campus"
+123.Net,grey,Operator / developer,6.09,0.09,1,AllianceBernstein,Michigan fiber provider with carrier-hotel colocation
+Colo Holdings,core,Operator / developer,4.97,0.08,1,AllianceBernstein,Colocation operator; 18-21.5% PIK term loan (CHV Holdings LLC is the same credit)
+Crusoe Energy,core,AI compute,4.17,0.06,1,Monroe Capital,
+Long Ridge Energy,grey,Operator / developer,3.95,0.06,1,Kennedy Lewis Capital Co,Ohio gas power plant developing a co-located data center campus
+Legence,grey,DC services / supply chain,3.01,0.05,1,BlackRock,Mechanical / energy engineering and services; Refficiency is the former name
+Related Digital Michigan (Oracle),core,Operator / developer,2.46,0.04,1,HPS,"Likely Related Digital's Saline Township, MI campus for Oracle (financed Apr 2026)"
+Salas O'Brien,grey,DC services / supply chain,2.13,0.03,1,New Mountain,Engineering firm with a mission-critical design practice
+Switch (ABS / HoldCo),core,Operator / developer,1.96,0.03,1,Ares,Switch Inc. data centers; asset-backed structure
+Yondr (Loudoun County HPC campus),core,Operator / developer,1.53,0.02,1,Blackstone,"Yondr JK 1 6.875% notes due 2031, financing an HPC data center in Loudoun County, VA (June 2026)"
+INNIO,grey,DC services / supply chain,0.77,0.01,2,Blackstone; Msc Capital LLC,Gas engines used for on-site power
+JPMCC 2022-DATA (CMBS),core,Operator / developer,0.72,0.01,1,Blackstone,CMBS; the holding fund (BREC) lists it under property type 'Data center'

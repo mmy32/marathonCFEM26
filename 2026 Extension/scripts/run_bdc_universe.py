@@ -1,21 +1,22 @@
 import os
-from datetime import date
 import sys
+from datetime import date
 from pathlib import Path
 
-# Add src/ to sys.path so sibling module imports below resolve
-ROOT = Path(__file__).resolve().parents[1]  # 2026 Extension/
-sys.path.append(str(ROOT / "src"))
+ROOT = Path(__file__).resolve().parents[1]  # project root
+sys.path.insert(0, str(ROOT / "src" / "1_data_processing"))  # for paths.py
+from paths import add_code_dirs_to_path
+add_code_dirs_to_path()  # modules live in src/*/
 
 from bdc import build_bdc_filings_from_masteridx, build_bdc_intervals_from_filings
-from paths import PROCESSED_DIR
+from paths import UNIVERSE_DIR
 
 
 def run_bdc_universe(
     user_agent: str,
     start_year: int = 2001,
     end_year: int = date.today().year,
-    out_dir: Path = PROCESSED_DIR,
+    out_dir: Path = UNIVERSE_DIR,
 ):
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -37,7 +38,7 @@ def run_bdc_universe(
 
 
 def main():
-    user_agent = "Cornell ORIE5220 Capstone sl3627@cornell.edu"
+    user_agent = "Your Name your.email@domain.com"  # the SEC requires a real name and contact email
     run_bdc_universe(user_agent=user_agent)
 
 

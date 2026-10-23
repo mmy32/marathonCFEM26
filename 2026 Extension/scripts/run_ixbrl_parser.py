@@ -10,10 +10,12 @@ from typing import Optional, Iterable
 
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[1]  # 2026 Extension/
-sys.path.append(str(ROOT / "src"))
+ROOT = Path(__file__).resolve().parents[1]  # project root
+sys.path.insert(0, str(ROOT / "src" / "1_data_processing"))  # for paths.py
+from paths import add_code_dirs_to_path
+add_code_dirs_to_path()  # modules live in src/*/
 
-from paths import METADATA_CSV, IXBRL_WIDE_ALL_CSV
+from paths import IXBRL_WIDE_ALL_CSV, METADATA_CSV
 from ixbrl_parser import parse_accession_from_index_url
 from ixbrl_parser import (
     IXBRLConfig,
@@ -87,8 +89,9 @@ def load_and_filter_metadata(
         df = df[df["isInlineXBRL"].astype(int) == 1]
 
     if cik_list is not None:
-        want = {str(c) for c in cik_list}
-        df = df[df["cik"].astype(str).isin(want)]
+        # compare without leading zeros: metadata stores "1287750", callers often pass "0001287750"
+        want = {str(c).lstrip("0") for c in cik_list}
+        df = df[df["cik"].astype(str).str.lstrip("0").isin(want)]
 
     if (date_from or date_to) and "filingDate" in df.columns:
         fd = pd.to_datetime(df["filingDate"], errors="coerce")
@@ -246,7 +249,7 @@ def run_ixbrl_parse(
 
 
 def main():
-    user_agent = "Cornell ORIE5220 Capstone sl3627@cornell.edu"
+    user_agent = "Your Name your.email@domain.com"  # the SEC requires a real name and contact email
     mode = "full"  # "test" | "full" | "retry_failed"
 
     if mode == "test":

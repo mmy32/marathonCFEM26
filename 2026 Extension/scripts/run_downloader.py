@@ -5,11 +5,13 @@ from typing import Optional
 
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[1]  # 2026 Extension/
-sys.path.append(str(ROOT / "src"))
+ROOT = Path(__file__).resolve().parents[1]  # project root
+sys.path.insert(0, str(ROOT / "src" / "1_data_processing"))  # for paths.py
+from paths import add_code_dirs_to_path
+add_code_dirs_to_path()  # modules live in src/*/
 
 from filings import download_for_cik, download_failures_only
-from paths import PROCESSED_DIR
+from paths import UNIVERSE_DIR
 
 
 def run_download(
@@ -18,7 +20,7 @@ def run_download(
     form_types=("10-K", "10-Q"),
     overwrite: bool = False,
 ):
-    intervals_csv = PROCESSED_DIR / "BDC_intervals.csv"
+    intervals_csv = UNIVERSE_DIR / "BDC_intervals.csv"
 
     if mode == "retry_failed":
         result = download_failures_only(
@@ -96,7 +98,7 @@ def run_download(
             cik_failures.append({"cik": cik, "error": repr(e)})
 
     if cik_failures:
-        fail_path = PROCESSED_DIR / "cik_level_download_failures.csv"
+        fail_path = UNIVERSE_DIR / "cik_level_download_failures.csv"
         pd.DataFrame(cik_failures).to_csv(fail_path, index=False)
         print(f"\n[FULL] {len(cik_failures)} CIK-level failures written to {fail_path}")
 
@@ -105,7 +107,7 @@ def run_download(
 
 
 def main():
-    user_agent = "Cornell ORIE5220 Capstone sl3627@cornell.edu"
+    user_agent = "Your Name your.email@domain.com"  # the SEC requires a real name and contact email
     mode = "full"  # "test" | "full" | "retry_failed"
     run_download(user_agent=user_agent, mode=mode)
 

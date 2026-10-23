@@ -1,1 +1,9 @@
 outputs/data/
+__pycache__/
+# SEC downloads (GBs): shared with the datasets, not committed
+cache/
+# API key: never commit
+claude_api_key.txt
+# local only
+_archive/
+.claude/
