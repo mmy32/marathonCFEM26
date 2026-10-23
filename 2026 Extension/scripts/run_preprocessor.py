@@ -4,11 +4,13 @@ import sys
 from pathlib import Path
 import logging
 
-ROOT = Path(__file__).resolve().parents[1]  # 2026 Extension/
-sys.path.append(str(ROOT / "src"))
+ROOT = Path(__file__).resolve().parents[1]  # project root
+sys.path.insert(0, str(ROOT / "src" / "1_data_processing"))  # for paths.py
+from paths import add_code_dirs_to_path
+add_code_dirs_to_path()  # modules live in src/*/
 
 from preprocessor import run_preprocess, PreprocessConfig
-from paths import IXBRL_WIDE_ALL_CSV, PROCESSED_DIR
+from paths import IXBRL_WIDE_ALL_CSV, PARSED_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -29,7 +31,7 @@ def main():
         )
         run_preprocess(
             in_csv=IXBRL_WIDE_ALL_CSV,
-            out_csv=PROCESSED_DIR / "ixbrl_clean_TEST.csv",
+            out_csv=PARSED_DIR / "ixbrl_clean_TEST.csv",
             cfg=cfg,
             save_diagnostics=True,
         )
@@ -45,7 +47,7 @@ def main():
         )
         run_preprocess(
             in_csv=IXBRL_WIDE_ALL_CSV,
-            out_csv=PROCESSED_DIR / "ixbrl_clean.csv",
+            out_csv=PARSED_DIR / "ixbrl_clean.csv",
             cfg=cfg,
             save_diagnostics=False,
         )

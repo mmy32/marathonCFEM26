@@ -1,0 +1,43 @@
+cal_q,function,fv_usd_mm,cost_usd_mm,borrowers,bdcs,net_new_cost_usd_mm,pct_of_all_bdc_fv
+2023Q1,Operator / developer,79.31,83.29,4,7,,0.03
+2023Q1,AI compute,79.31,120.83,3,4,,0.03
+2023Q1,DC services / supply chain,169.85,175.43,7,13,,0.07
+2023Q2,Operator / developer,81.30,85.93,5,8,2.64,0.03
+2023Q2,AI compute,73.69,105.91,3,4,-14.92,0.03
+2023Q2,DC services / supply chain,176.37,179.76,9,14,4.33,0.07
+2023Q3,Operator / developer,103.84,107.15,5,7,21.21,0.04
+2023Q3,AI compute,84.37,102.69,4,8,-3.22,0.03
+2023Q3,DC services / supply chain,190.43,191.80,9,17,12.04,0.08
+2023Q4,Operator / developer,128.88,133.36,7,9,26.21,0.05
+2023Q4,AI compute,95.43,107.74,3,8,5.05,0.03
+2023Q4,DC services / supply chain,246.61,246.37,12,20,54.57,0.09
+2024Q1,Operator / developer,134.10,130.00,9,10,-3.36,0.04
+2024Q1,AI compute,74.01,73.84,4,5,-33.90,0.02
+2024Q1,DC services / supply chain,1008.17,1009.41,13,20,763.04,0.33
+2024Q2,Operator / developer,140.15,134.65,9,9,4.65,0.04
+2024Q2,AI compute,100.69,100.05,5,6,26.21,0.03
+2024Q2,DC services / supply chain,1062.88,1059.00,13,21,49.59,0.32
+2024Q3,Operator / developer,215.12,213.43,11,12,78.78,0.06
+2024Q3,AI compute,98.13,96.86,5,7,-3.19,0.03
+2024Q3,DC services / supply chain,1962.89,1939.18,17,48,880.18,0.53
+2024Q4,Operator / developer,390.58,388.44,13,14,175.00,0.10
+2024Q4,AI compute,154.26,152.88,5,6,56.02,0.04
+2024Q4,DC services / supply chain,2026.01,2000.18,16,48,61.00,0.51
+2025Q1,Operator / developer,392.61,390.44,14,16,2.01,0.09
+2025Q1,AI compute,139.34,138.40,5,6,-14.48,0.03
+2025Q1,DC services / supply chain,2354.95,2327.43,17,57,327.26,0.55
+2025Q2,Operator / developer,407.54,406.44,14,17,16.00,0.09
+2025Q2,AI compute,237.55,236.82,4,8,98.42,0.05
+2025Q2,DC services / supply chain,2562.35,2514.43,20,59,187.00,0.56
+2025Q3,Operator / developer,493.06,492.52,17,17,86.07,0.10
+2025Q3,AI compute,338.75,335.37,4,11,98.54,0.07
+2025Q3,DC services / supply chain,2638.89,2590.36,20,57,75.93,0.54
+2025Q4,Operator / developer,828.50,818.05,19,19,325.53,0.16
+2025Q4,AI compute,1261.75,1255.86,6,21,920.49,0.24
+2025Q4,DC services / supply chain,3729.51,3651.86,20,58,1061.50,0.71
+2026Q1,Operator / developer,1030.56,1035.56,20,18,217.51,0.20
+2026Q1,AI compute,1461.18,1404.94,6,18,149.08,0.28
+2026Q1,DC services / supply chain,3644.15,3584.65,22,58,-67.20,0.69
+2026Q2,Operator / developer,1734.12,1732.01,24,21,696.45,0.33
+2026Q2,AI compute,1452.29,1385.84,7,25,-19.11,0.28
+2026Q2,DC services / supply chain,3422.05,3300.41,22,69,-284.24,0.65

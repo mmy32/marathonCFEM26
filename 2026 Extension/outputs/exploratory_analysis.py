@@ -13,9 +13,36 @@ import polars as pl
 from IPython.display import display
 
 
-DEFAULT_RAW_PANEL_PATH = Path("data/processed/ixbrl_clean.csv")
-DEFAULT_ENRICHED_PANEL_PATH = Path("data/processed/data_private_credit_FINAL_enriched.csv")
-DEFAULT_BDC_INTERVALS_PATH = Path("data/processed/BDC_intervals.csv")
+_DATA = Path(__file__).resolve().parents[1] / "data"   # works from any working directory
+DEFAULT_RAW_PANEL_PATH = _DATA / "parsed" / "ixbrl_clean.csv"
+DEFAULT_BDC_INTERVALS_PATH = _DATA / "universe" / "BDC_intervals.csv"
+DEFAULT_FINAL_PANEL_PATH = _DATA / "final_dataset" / "FINAL_DATASET.csv"
+
+
+def load_final_panel(path: str | Path = DEFAULT_FINAL_PANEL_PATH) -> pl.DataFrame:
+    """Positions from FINAL_DATASET.csv for the valuation-dispersion views.
+
+    Returns one row per position with ``cik``, ``cal_q``, ``borrower_name`` (the
+    validated ``borrower_canonical``, so one borrower has one spelling across BDCs),
+    ``FV`` and ``PAR`` (the normalized fair value and principal, in USD, the same
+    columns ``index_construction.load_and_prepare_investment_data`` uses). Rows with
+    no borrower or no fair value are dropped.
+    """
+    return (
+        pl.read_csv(
+            path,
+            columns=["cik", "cal_q", "borrower_canonical",
+                     "InvestmentOwnedAtFairValue_normalized",
+                     "InvestmentOwnedBalancePrincipalAmount_normalized"],
+            schema_overrides={"InvestmentOwnedAtFairValue_normalized": pl.Float64,
+                              "InvestmentOwnedBalancePrincipalAmount_normalized": pl.Float64},
+        )
+        .rename({"borrower_canonical": "borrower_name",
+                 "InvestmentOwnedAtFairValue_normalized": "FV",
+                 "InvestmentOwnedBalancePrincipalAmount_normalized": "PAR"})
+        .filter(pl.col("borrower_name").is_not_null() & (pl.col("borrower_name").str.strip_chars() != "")
+                & pl.col("FV").is_not_null())
+    )
 
 
 def visualize_single_filing(
@@ -30,7 +57,7 @@ def visualize_single_filing(
     cik, accession
         The filing identifiers to inspect. Both values are treated as strings.
     raw_panel_path
-        Preprocessed parser output, normally ``data/processed/ixbrl_clean.csv``.
+        Preprocessed parser output, normally ``data/parsed/ixbrl_clean.csv``.
 
     Returns
     -------
@@ -104,7 +131,7 @@ def visualize_single_filing(
 
 def visualize_borrower_valuation_dispersion(
     borrower_query: str = "First Brands",
-    enriched_panel_path: str | Path = DEFAULT_ENRICHED_PANEL_PATH,
+    final_panel_path: str | Path = DEFAULT_FINAL_PANEL_PATH,
     bdc_intervals_path: str | Path = DEFAULT_BDC_INTERVALS_PATH,
     denominator: str = "principal"  # Added parameter: defaults to "principal", accepts "cost"
 ) -> tuple[pl.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -114,10 +141,10 @@ def visualize_borrower_valuation_dispersion(
     principal or cost, depending on the 'denominator' argument.
     """
     borrower_rows = (
-        pl.scan_csv(enriched_panel_path)
+        pl.scan_csv(final_panel_path, infer_schema_length=100_000)
         .with_columns([
             pl.col("cik").cast(pl.Utf8),
-            pl.col("borrower_name").cast(pl.Utf8),
+            pl.col("borrower_canonical").cast(pl.Utf8).alias("borrower_name"),  # validated borrower names
             pl.col("InvestmentOwnedAtFairValue_normalized")
             .cast(pl.Float64, strict=False)
             .alias("fair_value"),
@@ -269,7 +296,7 @@ def visualize_borrower_valuation_dispersion(
 
 
 def screen_valuation_dispersion(
-    enriched_panel_path: str | Path = DEFAULT_ENRICHED_PANEL_PATH,
+    final_panel_path: str | Path = DEFAULT_FINAL_PANEL_PATH,
     min_bdcs: int = 4,
     min_total_amount: float = 30_000_000.0,
     min_spread_pct: float = 15.0,
@@ -281,8 +308,8 @@ def screen_valuation_dispersion(
 
     Parameters
     ----------
-    enriched_panel_path
-        Path to the enriched private credit panel.
+    final_panel_path
+        Path to FINAL_DATASET.csv (validated borrower, seniority and sector labels).
     min_bdcs
         Minimum number of distinct BDCs holding the borrower in the same quarter.
     min_total_amount
@@ -308,10 +335,10 @@ def screen_valuation_dispersion(
     )
 
     query = (
-        pl.scan_csv(enriched_panel_path)
+        pl.scan_csv(final_panel_path, infer_schema_length=100_000)
         .with_columns([
             pl.col("cik").cast(pl.Utf8),
-            pl.col("borrower_name").cast(pl.Utf8),
+            pl.col("borrower_canonical").cast(pl.Utf8).alias("borrower_name"),  # validated borrower names
             pl.col("cal_q").cast(pl.Utf8),
             pl.col("InvestmentOwnedAtFairValue_normalized")
             .cast(pl.Float64, strict=False)
@@ -389,19 +416,14 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 
-def analyze_borrower_universe(enriched_panel_path="data/processed/data_private_credit_FINAL_enriched.csv"):
-    df = pl.read_csv(enriched_panel_path, ignore_errors=True)
-
-    # Basic text cleanup to group obvious variations together
-    df = df.with_columns(
-        pl.col("borrower_name").str.to_lowercase().str.split("-").list.first().str.strip_chars().alias("borrower_name")
-    )
+def analyze_borrower_universe(final_panel_path=DEFAULT_FINAL_PANEL_PATH):
+    df = load_final_panel(final_panel_path)
 
     agg_df = (
         df.group_by(["borrower_name", "cal_q"])
         .agg([
             pl.col("cik").n_unique().alias("num_lenders"),
-            pl.col("InvestmentOwnedBalancePrincipalAmount").sum().alias("total_principal")
+            pl.col("PAR").sum().alias("total_principal")
         ])
     )
 
@@ -475,20 +497,16 @@ import seaborn as sns
 import numpy as np
 import pandas as pd
 
-def analyze_dispersion_statistics(enriched_panel_path="data/processed/data_private_credit_FINAL_enriched.csv"):
+def analyze_dispersion_statistics(final_panel_path=DEFAULT_FINAL_PANEL_PATH):
     """
     Generates advanced statistical charts for BDC valuation dispersion:
     1. The Distribution of Valuation Spreads
     2. Dispersion vs. Distress (Mean Mark vs Spread)
     3. Systematic BDC Marking Bias (Aggressive vs Conservative)
     """
-    df = pl.read_csv(enriched_panel_path, ignore_errors=True)
+    # 1. Positions with validated borrower names (see load_final_panel)
+    df = load_final_panel(final_panel_path)
 
-    # 1. Basic text cleanup for borrower names
-    df = df.with_columns(
-        pl.col("borrower_name").str.to_lowercase().str.split("-").list.first().str.strip_chars().alias("borrower_name")
-    )
-    
     # Calculate Valuation Ratio for each row
     df = df.with_columns((pl.col("FV") / pl.col("PAR")).alias("val_ratio"))
 
@@ -583,15 +601,12 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 
-def analyze_macro_dispersion_trend(enriched_panel_path="data/processed/data_private_credit_FINAL_enriched.csv"):
+def analyze_macro_dispersion_trend(final_panel_path=DEFAULT_FINAL_PANEL_PATH):
     """
     Plots the median and 90th percentile valuation spread across calendar quarters 
     to track systemic disagreement over the macro cycle.
     """
-    df = pl.read_csv(enriched_panel_path, ignore_errors=True)
-
-    df = df.with_columns(
-        pl.col("borrower_name").str.to_lowercase().str.split("-").list.first().str.strip_chars().alias("borrower_name"),
+    df = load_final_panel(final_panel_path).with_columns(
         (pl.col("FV") / pl.col("PAR")).alias("val_ratio")
     )
 

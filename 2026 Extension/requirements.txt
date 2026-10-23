@@ -1,9 +1,13 @@
-polars
-pyarrow
-pandas
-numpy
-matplotlib
-requests
-beautifulsoup4
-lxml
-anthropic
+# Tested with Python 3.11. Exact pins so outputs (including plots) reproduce byte for byte.
+pandas==2.0.2
+openpyxl==3.1.5  # pandas.read_excel: borrower lookup (step 7) and Search.xlsx rates
+numpy==1.26.4
+requests==2.34.2
+beautifulsoup4==4.15.0
+lxml==6.1.1
+matplotlib==3.10.7
+polars==1.44.1
+pyarrow==25.0.1  # polars .to_pandas() in src/5_pik/ and outputs/exploratory_analysis.py
+seaborn==0.13.2  # outputs/exploratory_analysis.py
+ipython==8.14.0  # display() in outputs/exploratory_analysis.py
+anthropic==0.86.0

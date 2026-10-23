@@ -11,10 +11,10 @@ import unittest
 import polars as pl
 import numpy as np
 
-# Ensure src/ is on sys.path
-SRC_DIR = Path(__file__).resolve().parents[1] / "src"
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
+# Project root (for paths.py) and every code folder on sys.path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "1_data_processing"))
+from paths import add_code_dirs_to_path
+add_code_dirs_to_path()
 
 from pik_metrics import (
     classify_pik_provenance,
@@ -71,7 +71,7 @@ class TestPIKMetrics(unittest.TestCase):
         # Loan B: starts contractual PIK in Q1, continues in Q2, jumps +200bps in Q3 (amendment).
         df = pl.DataFrame({
             "cik": ["CIK_A"] * 4 + ["CIK_B"] * 3,
-            "investment_identifier": ["Loan_A"] * 4 + ["Loan_B"] * 3,
+            "position_key": ["Loan_A"] * 4 + ["Loan_B"] * 3,  # positions are matched on borrower + seniority
             "cal_q": ["2024Q1", "2024Q2", "2024Q3", "2024Q4", "2024Q1", "2024Q2", "2024Q3"],
             "PIK_Final": [0.0, 0.03, 0.03, 0.0, 0.02, 0.02, 0.045],
             "PAR": [100.0, 100.75, 101.5, 101.5, 50.0, 50.25, 50.8],
@@ -81,7 +81,7 @@ class TestPIKMetrics(unittest.TestCase):
         res = classify_loan_pik_transitions(df, min_amendment_bps=0.015)
 
         # Check Loan A classifications
-        res_a = res.filter(pl.col("investment_identifier") == "Loan_A").sort("cal_q")
+        res_a = res.filter(pl.col("position_key") == "Loan_A").sort("cal_q")
         self.assertEqual(res_a["pik_transition_state"].to_list(), [
             "stable_cash",               # Q1 inception with PIK=0
             "distress_amendment_pik",    # Q2 0 -> >0 transition
@@ -91,7 +91,7 @@ class TestPIKMetrics(unittest.TestCase):
         self.assertEqual(res_a["is_distress_amendment"].to_list(), [False, True, False, False])
 
         # Check Loan B classifications
-        res_b = res.filter(pl.col("investment_identifier") == "Loan_B").sort("cal_q")
+        res_b = res.filter(pl.col("position_key") == "Loan_B").sort("cal_q")
         self.assertEqual(res_b["pik_transition_state"].to_list(), [
             "contractual_pik",           # Q1 inception with PIK=0.02
             "seasoned_pik_continuation", # Q2 ongoing 0.02
@@ -131,7 +131,7 @@ class TestPIKMetrics(unittest.TestCase):
         """Test sector time-series multi-period sweep."""
         df = pl.DataFrame({
             "cik": ["1", "1", "2", "2"],
-            "investment_identifier": ["L1", "L1", "L2", "L2"],
+            "position_key": ["L1", "L1", "L2", "L2"],
             "cal_q": ["2024Q1", "2024Q2", "2024Q1", "2024Q2"],
             "sector": ["Technology", "Technology", "Healthcare", "Healthcare"],
             "rate_pik": [0.0, 0.04, 0.02, 0.02],

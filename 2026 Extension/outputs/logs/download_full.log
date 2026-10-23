@@ -1,0 +1,1278 @@
+[FULL] total CIKs=425 from C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\data\processed\BDC_intervals.csv
+
+[1/425] CIK=1000209 | window: NaT -> 2018-04-02 00:00:00
+[1000209] metadata rows=85 | downloaded=0, skipped=83, failed=2
+
+[2/425] CIK=1006459 | window: 2003-06-03 00:00:00 -> 2006-01-05 00:00:00
+[1006459] metadata rows=7 | downloaded=0, skipped=7, failed=0
+
+[3/425] CIK=1011843 | window: NaT -> 2001-01-02 00:00:00
+[1011843] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[4/425] CIK=1019852 | window: 2004-01-13 00:00:00 -> 2006-09-21 00:00:00
+[1019852] metadata rows=4 | downloaded=0, skipped=4, failed=0
+
+[5/425] CIK=1021009 | window: NaT -> 2009-07-22 00:00:00
+[1021009] metadata rows=27 | downloaded=0, skipped=27, failed=0
+
+[6/425] CIK=1023957 | window: NaT -> 2011-05-04 00:00:00
+[1023957] metadata rows=57 | downloaded=0, skipped=54, failed=3
+
+[7/425] CIK=1034416 | window: NaT -> 2003-03-27 00:00:00
+[1034416] metadata rows=20 | downloaded=0, skipped=18, failed=2
+
+[8/425] CIK=1036052 | window: NaT -> 2008-01-29 00:00:00
+[1036052] metadata rows=42 | downloaded=0, skipped=38, failed=4
+
+[9/425] CIK=1039802 | window: NaT -> 2003-08-21 00:00:00
+[1039802] metadata rows=21 | downloaded=3, skipped=18, failed=0
+
+[10/425] CIK=1040241 | window: NaT -> 2006-05-30 00:00:00
+[1040241] metadata rows=30 | downloaded=0, skipped=30, failed=0
+
+[11/425] CIK=1040415 | window: 2004-10-06 00:00:00 -> NaT
+[1040415] metadata rows=7 | downloaded=0, skipped=7, failed=0
+
+[12/425] CIK=1042482 | window: 2002-08-08 00:00:00 -> 2004-05-13 00:00:00
+[1042482] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[13/425] CIK=1043161 | window: NaT -> 2001-11-13 00:00:00
+[1043161] metadata rows=13 | downloaded=0, skipped=12, failed=1
+
+[14/425] CIK=1047557 | window: 2002-10-04 00:00:00 -> NaT
+[1047557] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[15/425] CIK=1054311 | window: 2003-01-23 00:00:00 -> 2003-03-04 00:00:00
+[1054311] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[16/425] CIK=1057327 | window: 2005-01-10 00:00:00 -> 2007-03-09 00:00:00
+[1057327] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[17/425] CIK=1065468 | window: 2005-04-29 00:00:00 -> NaT
+[1065468] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[18/425] CIK=1065598 | window: 2004-12-10 00:00:00 -> 2006-09-01 00:00:00
+[1065598] metadata rows=2 | downloaded=0, skipped=2, failed=0
+
+[19/425] CIK=1077800 | window: 2001-04-05 00:00:00 -> 2003-10-01 00:00:00
+[1077800] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[20/425] CIK=1084133 | window: 2003-06-19 00:00:00 -> 2008-01-02 00:00:00
+[1084133] metadata rows=15 | downloaded=0, skipped=15, failed=0
+
+[21/425] CIK=1084263 | window: 2004-11-16 00:00:00 -> 2004-12-29 00:00:00
+[1084263] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[22/425] CIK=1084415 | window: NaT -> 2001-12-14 00:00:00
+[1084415] metadata rows=8 | downloaded=0, skipped=6, failed=2
+
+[23/425] CIK=1089773 | window: 2005-01-04 00:00:00 -> 2006-05-02 00:00:00
+[1089773] metadata rows=4 | downloaded=0, skipped=4, failed=0
+
+[24/425] CIK=1090870 | window: 2003-08-27 00:00:00 -> NaT
+[1090870] metadata rows=3 | downloaded=0, skipped=3, failed=0
+
+[25/425] CIK=1092448 | window: 2004-01-20 00:00:00 -> 2006-04-18 00:00:00
+[1092448] metadata rows=2 | downloaded=0, skipped=2, failed=0
+
+[26/425] CIK=1094788 | window: 2005-02-11 00:00:00 -> 2007-05-07 00:00:00
+[1094788] metadata rows=2 | downloaded=0, skipped=2, failed=0
+
+[27/425] CIK=1095133 | window: 2012-06-29 00:00:00 -> NaT
+[1095133] metadata rows=14 | downloaded=0, skipped=14, failed=0
+
+[28/425] CIK=1095924 | window: NaT -> 2003-04-30 00:00:00
+[1095924] metadata rows=3 | downloaded=0, skipped=2, failed=1
+
+[29/425] CIK=1096935 | window: 2006-03-20 00:00:00 -> 2010-08-16 00:00:00
+[1096935] metadata rows=19 | downloaded=0, skipped=19, failed=0
+
+[30/425] CIK=1096938 | window: 2006-02-28 00:00:00 -> 2010-08-17 00:00:00
+[1096938] metadata rows=19 | downloaded=0, skipped=19, failed=0
+
+[31/425] CIK=1098482 | window: NaT -> 2009-10-01 00:00:00
+[1098482] metadata rows=36 | downloaded=0, skipped=35, failed=1
+
+[32/425] CIK=1099941 | window: NaT -> 2020-12-23 00:00:00
+[1099941] metadata rows=82 | downloaded=0, skipped=81, failed=1
+
+[33/425] CIK=1100748 | window: 2004-10-19 00:00:00 -> 2005-10-21 00:00:00
+[1100748] metadata rows=2 | downloaded=0, skipped=2, failed=0
+
+[34/425] CIK=1102414 | window: 2005-04-11 00:00:00 -> 2006-06-30 00:00:00
+[1102414] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[35/425] CIK=1103076 | window: NaT -> 2010-01-29 00:00:00
+[1103076] metadata rows=37 | downloaded=0, skipped=35, failed=2
+
+[36/425] CIK=1104673 | window: 2005-01-25 00:00:00 -> NaT
+[1104673] metadata rows=6 | downloaded=0, skipped=6, failed=0
+
+[37/425] CIK=1105301 | window: 2004-12-21 00:00:00 -> 2006-02-08 00:00:00
+[1105301] metadata rows=4 | downloaded=0, skipped=4, failed=0
+
+[38/425] CIK=1105307 | window: 2005-07-21 00:00:00 -> 2005-08-15 00:00:00
+[1105307] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[39/425] CIK=1105310 | window: 2005-02-04 00:00:00 -> 2007-05-25 00:00:00
+[1105310] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[40/425] CIK=1105413 | window: 2004-12-22 00:00:00 -> NaT
+[1105413] metadata rows=5 | downloaded=0, skipped=5, failed=0
+
+[41/425] CIK=1106838 | window: 2005-06-01 00:00:00 -> 2008-07-21 00:00:00
+[1106838] metadata rows=12 | downloaded=0, skipped=12, failed=0
+
+[42/425] CIK=1107274 | window: NaT -> 2005-12-21 00:00:00
+[1107274] metadata rows=22 | downloaded=2, skipped=20, failed=0
+
+[43/425] CIK=1107809 | window: 2004-03-04 00:00:00 -> 2007-07-03 00:00:00
+[1107809] metadata rows=4 | downloaded=4, skipped=0, failed=0
+
+[44/425] CIK=1107998 | window: 2004-06-30 00:00:00 -> 2005-07-19 00:00:00
+[1107998] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[45/425] CIK=1109697 | window: 2017-12-05 00:00:00 -> 2018-01-03 00:00:00
+[1109697] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[46/425] CIK=1110737 | window: 2004-07-12 00:00:00 -> 2005-10-12 00:00:00
+[1110737] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[47/425] CIK=1111391 | window: 2004-01-12 00:00:00 -> 2007-04-03 00:00:00
+[1111391] metadata rows=8 | downloaded=0, skipped=8, failed=0
+
+[48/425] CIK=1114098 | window: 2004-12-06 00:00:00 -> NaT
+[1114098] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[49/425] CIK=1118974 | window: 2005-05-31 00:00:00 -> 2010-09-10 00:00:00
+[1118974] metadata rows=10 | downloaded=0, skipped=10, failed=0
+
+[50/425] CIK=1120210 | window: 2005-02-14 00:00:00 -> 2006-02-22 00:00:00
+[1120210] metadata rows=3 | downloaded=0, skipped=3, failed=0
+
+[51/425] CIK=1123312 | window: 2003-11-24 00:00:00 -> 2004-12-08 00:00:00
+[1123312] metadata rows=3 | downloaded=0, skipped=3, failed=0
+
+[52/425] CIK=1128949 | window: 2004-09-17 00:00:00 -> 2005-12-20 00:00:00
+[1128949] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[53/425] CIK=1132686 | window: 2004-11-24 00:00:00 -> 2007-10-18 00:00:00
+[1132686] metadata rows=4 | downloaded=0, skipped=4, failed=0
+
+[54/425] CIK=1133901 | window: 2006-05-12 00:00:00 -> NaT
+[1133901] metadata rows=32 | downloaded=0, skipped=32, failed=0
+
+[55/425] CIK=1136725 | window: 2003-12-23 00:00:00 -> 2006-11-27 00:00:00
+[1136725] metadata rows=1 | downloaded=0, skipped=1, failed=0
+
+[56/425] CIK=1137587 | window: 2004-08-03 00:00:00 -> 2008-03-14 00:00:00
+[1137587] metadata rows=12 | downloaded=0, skipped=12, failed=0
+
+[57/425] CIK=1138654 | window: 2004-10-29 00:00:00 -> 2005-08-15 00:00:00
+[1138654] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[58/425] CIK=1140298 | window: 2004-12-15 00:00:00 -> NaT
+[1140298] metadata rows=4 | downloaded=0, skipped=4, failed=0
+
+[59/425] CIK=1140299 | window: 2004-12-15 00:00:00 -> 2005-05-16 00:00:00
+[1140299] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[60/425] CIK=1141299 | window: 2001-12-04 00:00:00 -> 2015-08-18 00:00:00
+[1141299] metadata rows=55 | downloaded=0, skipped=55, failed=0
+
+[61/425] CIK=1143513 | window: 2001-08-23 00:00:00 -> NaT
+[1143513] metadata rows=101 | downloaded=0, skipped=101, failed=0
+
+[62/425] CIK=1144499 | window: 2005-01-03 00:00:00 -> 2005-02-08 00:00:00
+[1144499] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[63/425] CIK=1158420 | window: 2003-05-16 00:00:00 -> 2006-04-28 00:00:00
+[1158420] metadata rows=2 | downloaded=0, skipped=2, failed=0
+
+[64/425] CIK=1160598 | window: 2004-12-23 00:00:00 -> 2007-03-13 00:00:00
+[1160598] metadata rows=2 | downloaded=0, skipped=2, failed=0
+
+[65/425] CIK=1161647 | window: 2004-04-12 00:00:00 -> 2006-04-06 00:00:00
+[1161647] metadata rows=7 | downloaded=0, skipped=7, failed=0
+
+[66/425] CIK=1190711 | window: 2007-02-21 00:00:00 -> NaT
+[1190711] metadata rows=7 | downloaded=0, skipped=7, failed=0
+
+[67/425] CIK=1199923 | window: 2002-10-24 00:00:00 -> NaT
+[1199923] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[68/425] CIK=1200934 | window: 2002-12-31 00:00:00 -> 2005-04-14 00:00:00
+[1200934] metadata rows=6 | downloaded=0, skipped=6, failed=0
+
+[69/425] CIK=1221483 | window: 2013-09-24 00:00:00 -> NaT
+[1221483] metadata rows=3 | downloaded=0, skipped=3, failed=0
+
+[70/425] CIK=1259429 | window: 2003-09-23 00:00:00 -> NaT
+[1259429] metadata rows=91 | downloaded=0, skipped=91, failed=0
+
+[71/425] CIK=1271808 | window: 2003-12-10 00:00:00 -> 2011-10-31 00:00:00
+[1271808] metadata rows=29 | downloaded=0, skipped=29, failed=0
+
+[72/425] CIK=1273534 | window: 2003-12-19 00:00:00 -> 2007-01-25 00:00:00
+[1273534] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[73/425] CIK=1278752 | window: 2004-02-06 00:00:00 -> NaT
+[1278752] metadata rows=88 | downloaded=21, skipped=67, failed=0
+
+[74/425] CIK=1279740 | window: 2004-09-07 00:00:00 -> 2008-07-14 00:00:00
+[1279740] metadata rows=14 | downloaded=0, skipped=14, failed=0
+
+[75/425] CIK=1280784 | window: 2005-02-22 00:00:00 -> NaT
+[1280784] metadata rows=85 | downloaded=0, skipped=85, failed=0
+
+[76/425] CIK=1281845 | window: 2004-08-04 00:00:00 -> 2008-07-14 00:00:00
+[1281845] metadata rows=11 | downloaded=0, skipped=11, failed=0
+
+[77/425] CIK=1286685 | window: 2004-04-14 00:00:00 -> NaT
+[1286685] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[78/425] CIK=1286738 | window: 2004-04-12 00:00:00 -> NaT
+[1286738] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[79/425] CIK=1286848 | window: 2004-04-14 00:00:00 -> NaT
+[1286848] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[80/425] CIK=1286881 | window: 2004-04-14 00:00:00 -> NaT
+[1286881] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[81/425] CIK=1287032 | window: 2004-04-16 00:00:00 -> NaT
+[1287032] metadata rows=87 | downloaded=0, skipped=87, failed=0
+
+[82/425] CIK=1287234 | window: 2004-04-16 00:00:00 -> 2011-10-18 00:00:00
+[1287234] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[83/425] CIK=1287243 | window: 2004-05-04 00:00:00 -> NaT
+[1287243] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[84/425] CIK=1287289 | window: 2004-04-16 00:00:00 -> 2005-04-20 00:00:00
+[1287289] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[85/425] CIK=1287671 | window: 2004-04-20 00:00:00 -> NaT
+[1287671] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[86/425] CIK=1287684 | window: 2004-04-19 00:00:00 -> NaT
+[1287684] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[87/425] CIK=1287750 | window: 2004-04-21 00:00:00 -> NaT
+[1287750] metadata rows=88 | downloaded=0, skipped=88, failed=0
+
+[88/425] CIK=1287970 | window: 2004-05-11 00:00:00 -> NaT
+[1287970] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[89/425] CIK=1288156 | window: 2004-05-06 00:00:00 -> NaT
+[1288156] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[90/425] CIK=1294345 | window: 2004-09-20 00:00:00 -> NaT
+[1294345] metadata rows=25 | downloaded=0, skipped=25, failed=0
+
+[91/425] CIK=1297704 | window: 2004-08-16 00:00:00 -> 2019-12-19 00:00:00
+[1297704] metadata rows=60 | downloaded=1, skipped=59, failed=0
+
+[92/425] CIK=1307901 | window: 2004-11-09 00:00:00 -> 2006-01-25 00:00:00
+[1307901] metadata rows=1 | downloaded=0, skipped=1, failed=0
+
+[93/425] CIK=1308569 | window: 2005-02-18 00:00:00 -> 2011-11-01 00:00:00
+[1308569] metadata rows=27 | downloaded=0, skipped=27, failed=0
+
+[94/425] CIK=1317683 | window: 2006-02-14 00:00:00 -> NaT
+[1317683] metadata rows=5 | downloaded=0, skipped=5, failed=0
+
+[95/425] CIK=1321560 | window: 2005-07-27 00:00:00 -> 2009-12-04 00:00:00
+[1321560] metadata rows=18 | downloaded=0, skipped=18, failed=0
+
+[96/425] CIK=1321741 | window: 2005-03-31 00:00:00 -> NaT
+[1321741] metadata rows=85 | downloaded=0, skipped=85, failed=0
+
+[97/425] CIK=1326003 | window: 2005-07-22 00:00:00 -> 2024-03-18 00:00:00
+[1326003] metadata rows=74 | downloaded=0, skipped=74, failed=0
+
+[98/425] CIK=1327557 | window: 2005-12-16 00:00:00 -> 2006-02-24 00:00:00
+[1327557] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[99/425] CIK=1329549 | window: 2008-01-07 00:00:00 -> 2008-09-29 00:00:00
+[1329549] metadata rows=2 | downloaded=0, skipped=2, failed=0
+
+[100/425] CIK=1347652 | window: 2007-02-01 00:00:00 -> 2011-09-21 00:00:00
+[1347652] metadata rows=18 | downloaded=0, skipped=18, failed=0
+
+[101/425] CIK=1354548 | window: 2006-05-09 00:00:00 -> 2006-09-08 00:00:00
+[1354548] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[102/425] CIK=1359272 | window: 2006-11-14 00:00:00 -> 2008-11-06 00:00:00
+[1359272] metadata rows=2 | downloaded=0, skipped=2, failed=0
+
+[103/425] CIK=1363533 | window: 2006-06-23 00:00:00 -> 2007-04-20 00:00:00
+[1363533] metadata rows=3 | downloaded=0, skipped=3, failed=0
+
+[104/425] CIK=1363890 | window: 2006-06-08 00:00:00 -> 2010-07-07 00:00:00
+[1363890] metadata rows=14 | downloaded=0, skipped=14, failed=0
+
+[105/425] CIK=1366823 | window: 2009-04-23 00:00:00 -> 2010-08-17 00:00:00
+[1366823] metadata rows=6 | downloaded=0, skipped=6, failed=0
+
+[106/425] CIK=1370754 | window: 2012-04-02 00:00:00 -> 2018-08-01 00:00:00
+[1370754] metadata rows=24 | downloaded=0, skipped=24, failed=0
+
+[107/425] CIK=1370755 | window: 2012-04-02 00:00:00 -> NaT
+[1370755] metadata rows=57 | downloaded=0, skipped=57, failed=0
+
+[108/425] CIK=1372807 | window: 2006-12-05 00:00:00 -> NaT
+[1372807] metadata rows=79 | downloaded=0, skipped=79, failed=0
+
+[109/425] CIK=1373641 | window: 2006-09-19 00:00:00 -> 2009-06-15 00:00:00
+[1373641] metadata rows=9 | downloaded=0, skipped=9, failed=0
+
+[110/425] CIK=1376067 | window: 2006-10-11 00:00:00 -> 2014-08-07 00:00:00
+[1376067] metadata rows=29 | downloaded=0, skipped=29, failed=0
+
+[111/425] CIK=1376724 | window: 2006-09-28 00:00:00 -> NaT
+[1376724] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[112/425] CIK=1377936 | window: 2007-03-21 00:00:00 -> NaT
+[1377936] metadata rows=78 | downloaded=0, skipped=78, failed=0
+
+[113/425] CIK=1379785 | window: 2006-11-03 00:00:00 -> NaT
+[1379785] metadata rows=79 | downloaded=0, skipped=79, failed=0
+
+[114/425] CIK=1383414 | window: 2007-04-19 00:00:00 -> NaT
+[1383414] metadata rows=78 | downloaded=0, skipped=78, failed=0
+
+[115/425] CIK=1387034 | window: 2007-05-01 00:00:00 -> 2010-12-30 00:00:00
+[1387034] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[116/425] CIK=1396440 | window: 2007-10-04 00:00:00 -> NaT
+[1396440] metadata rows=76 | downloaded=0, skipped=76, failed=0
+
+[117/425] CIK=1396950 | window: 2007-07-26 00:00:00 -> NaT
+[1396950] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[118/425] CIK=1397081 | window: 2009-05-07 00:00:00 -> 2011-11-14 00:00:00
+[1397081] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[119/425] CIK=1404641 | window: 2011-06-20 00:00:00 -> NaT
+[1404641] metadata rows=2 | downloaded=0, skipped=2, failed=0
+
+[120/425] CIK=1410646 | window: 2007-08-27 00:00:00 -> NaT
+[1410646] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[121/425] CIK=1414932 | window: 2008-01-02 00:00:00 -> NaT
+[1414932] metadata rows=73 | downloaded=0, skipped=73, failed=0
+
+[122/425] CIK=1418076 | window: 2010-02-09 00:00:00 -> NaT
+[1418076] metadata rows=67 | downloaded=0, skipped=67, failed=0
+
+[123/425] CIK=1422183 | window: 2008-09-18 00:00:00 -> NaT
+[1422183] metadata rows=72 | downloaded=0, skipped=72, failed=0
+
+[124/425] CIK=1425355 | window: 2013-02-07 00:00:00 -> 2019-12-27 00:00:00
+[1425355] metadata rows=28 | downloaded=0, skipped=28, failed=0
+
+[125/425] CIK=1425883 | window: 2008-04-24 00:00:00 -> 2009-10-05 00:00:00
+[1425883] metadata rows=5 | downloaded=0, skipped=5, failed=0
+
+[126/425] CIK=1430415 | window: 2008-11-17 00:00:00 -> 2010-11-19 00:00:00
+[1430415] metadata rows=7 | downloaded=0, skipped=7, failed=0
+
+[127/425] CIK=1439675 | window: 2008-07-31 00:00:00 -> 2009-12-10 00:00:00
+[1439675] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[128/425] CIK=1444706 | window: 2008-11-20 00:00:00 -> 2017-06-23 00:00:00
+[1444706] metadata rows=34 | downloaded=0, skipped=34, failed=0
+
+[129/425] CIK=1445175 | window: 2013-11-08 00:00:00 -> 2014-02-11 00:00:00
+[1445175] metadata rows=1 | downloaded=0, skipped=1, failed=0
+
+[130/425] CIK=1455656 | window: 2012-03-28 00:00:00 -> 2021-12-30 00:00:00
+[1455656] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[131/425] CIK=1462441 | window: 2013-09-24 00:00:00 -> NaT
+[1462441] metadata rows=3 | downloaded=0, skipped=3, failed=0
+
+[132/425] CIK=1464791 | window: 2009-05-27 00:00:00 -> NaT
+[1464791] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[133/425] CIK=1464802 | window: 2009-06-10 00:00:00 -> 2009-06-16 00:00:00
+[1464802] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[134/425] CIK=1464963 | window: 2010-04-21 00:00:00 -> 2023-03-10 00:00:00
+[1464963] metadata rows=50 | downloaded=0, skipped=50, failed=0
+
+[135/425] CIK=1471039 | window: 2010-08-02 00:00:00 -> 2011-01-12 00:00:00
+[1471039] metadata rows=1 | downloaded=0, skipped=1, failed=0
+
+[136/425] CIK=1476765 | window: 2010-04-12 00:00:00 -> NaT
+[1476765] metadata rows=66 | downloaded=0, skipped=66, failed=0
+
+[137/425] CIK=1482199 | window: 2010-02-09 00:00:00 -> 2017-09-14 00:00:00
+[1482199] metadata rows=29 | downloaded=0, skipped=29, failed=0
+
+[138/425] CIK=1487328 | window: 2010-09-20 00:00:00 -> 2010-12-21 00:00:00
+[1487328] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[139/425] CIK=1487428 | window: 2010-10-28 00:00:00 -> NaT
+[1487428] metadata rows=63 | downloaded=0, skipped=63, failed=0
+
+[140/425] CIK=1487918 | window: 2012-11-07 00:00:00 -> NaT
+[1487918] metadata rows=56 | downloaded=0, skipped=56, failed=0
+
+[141/425] CIK=1490013 | window: 2010-08-31 00:00:00 -> 2016-11-04 00:00:00
+[1490013] metadata rows=25 | downloaded=0, skipped=25, failed=0
+
+[142/425] CIK=1490349 | window: 2011-01-20 00:00:00 -> NaT
+[1490349] metadata rows=63 | downloaded=0, skipped=63, failed=0
+
+[143/425] CIK=1490927 | window: 2011-01-21 00:00:00 -> 2024-01-24 00:00:00
+[1490927] metadata rows=52 | downloaded=0, skipped=52, failed=0
+
+[144/425] CIK=1491925 | window: 2011-05-19 00:00:00 -> 2014-05-08 00:00:00
+[1491925] metadata rows=12 | downloaded=0, skipped=12, failed=0
+
+[145/425] CIK=1494538 | window: 2011-04-04 00:00:00 -> 2019-04-02 00:00:00
+[1494538] metadata rows=31 | downloaded=0, skipped=31, failed=0
+
+[146/425] CIK=1495584 | window: 2010-07-19 00:00:00 -> NaT
+[1495584] metadata rows=60 | downloaded=0, skipped=60, failed=0
+
+[147/425] CIK=1496099 | window: 2011-05-19 00:00:00 -> NaT
+[1496099] metadata rows=61 | downloaded=0, skipped=61, failed=0
+
+[148/425] CIK=1501729 | window: 2011-05-11 00:00:00 -> 2025-10-28 00:00:00
+[1501729] metadata rows=58 | downloaded=0, skipped=58, failed=0
+
+[149/425] CIK=1504619 | window: 2011-04-07 00:00:00 -> NaT
+[1504619] metadata rows=62 | downloaded=0, skipped=62, failed=0
+
+[150/425] CIK=1508171 | window: 2011-02-24 00:00:00 -> 2022-04-01 00:00:00
+[1508171] metadata rows=44 | downloaded=0, skipped=44, failed=0
+
+[151/425] CIK=1508655 | window: 2011-04-15 00:00:00 -> NaT
+[1508655] metadata rows=62 | downloaded=0, skipped=62, failed=0
+
+[152/425] CIK=1509470 | window: 2011-04-27 00:00:00 -> NaT
+[1509470] metadata rows=62 | downloaded=0, skipped=62, failed=0
+
+[153/425] CIK=1509892 | window: 2012-10-09 00:00:00 -> 2020-10-28 00:00:00
+[1509892] metadata rows=30 | downloaded=0, skipped=30, failed=0
+
+[154/425] CIK=1512931 | window: 2012-10-24 00:00:00 -> 2026-04-14 00:00:00
+[1512931] metadata rows=53 | downloaded=0, skipped=53, failed=0
+
+[155/425] CIK=1513363 | window: 2011-06-20 00:00:00 -> NaT
+[1513363] metadata rows=61 | downloaded=0, skipped=61, failed=0
+
+[156/425] CIK=1514183 | window: 2013-10-04 00:00:00 -> 2018-09-28 00:00:00
+[1514183] metadata rows=20 | downloaded=0, skipped=20, failed=0
+
+[157/425] CIK=1515173 | window: 2011-05-19 00:00:00 -> 2014-04-15 00:00:00
+[1515173] metadata rows=11 | downloaded=0, skipped=11, failed=0
+
+[158/425] CIK=1521945 | window: 2013-01-11 00:00:00 -> NaT
+[1521945] metadata rows=54 | downloaded=0, skipped=54, failed=0
+
+[159/425] CIK=1523526 | window: 2012-04-13 00:00:00 -> 2022-02-25 00:00:00
+[1523526] metadata rows=38 | downloaded=0, skipped=38, failed=0
+
+[160/425] CIK=1525759 | window: 2012-02-13 00:00:00 -> 2021-06-16 00:00:00
+[1525759] metadata rows=37 | downloaded=0, skipped=37, failed=0
+
+[161/425] CIK=1527385 | window: 2012-03-01 00:00:00 -> NaT
+[1527385] metadata rows=24 | downloaded=0, skipped=24, failed=0
+
+[162/425] CIK=1534254 | window: 2012-07-02 00:00:00 -> NaT
+[1534254] metadata rows=57 | downloaded=0, skipped=57, failed=0
+
+[163/425] CIK=1535778 | window: 2012-05-31 00:00:00 -> NaT
+[1535778] metadata rows=57 | downloaded=0, skipped=57, failed=0
+
+[164/425] CIK=1544206 | window: 2013-05-02 00:00:00 -> NaT
+[1544206] metadata rows=54 | downloaded=0, skipped=54, failed=0
+
+[165/425] CIK=1550913 | window: 2013-07-18 00:00:00 -> 2020-12-31 00:00:00
+[1550913] metadata rows=31 | downloaded=0, skipped=31, failed=0
+
+[166/425] CIK=1551901 | window: 2012-11-07 00:00:00 -> NaT
+[1551901] metadata rows=55 | downloaded=0, skipped=55, failed=0
+
+[167/425] CIK=1552198 | window: 2012-12-04 00:00:00 -> NaT
+[1552198] metadata rows=55 | downloaded=0, skipped=55, failed=0
+
+[168/425] CIK=1557424 | window: 2012-09-19 00:00:00 -> 2021-07-19 00:00:00
+[1557424] metadata rows=34 | downloaded=0, skipped=34, failed=0
+
+[169/425] CIK=1559909 | window: 2013-05-02 00:00:00 -> 2021-06-10 00:00:00
+[1559909] metadata rows=33 | downloaded=0, skipped=33, failed=0
+
+[170/425] CIK=1561528 | window: 2013-08-05 00:00:00 -> 2017-06-13 00:00:00
+[1561528] metadata rows=15 | downloaded=0, skipped=15, failed=0
+
+[171/425] CIK=1571329 | window: 2013-09-24 00:00:00 -> 2025-07-15 00:00:00
+[1571329] metadata rows=47 | downloaded=0, skipped=47, failed=0
+
+[172/425] CIK=1572694 | window: 2013-03-29 00:00:00 -> NaT
+[1572694] metadata rows=46 | downloaded=0, skipped=46, failed=0
+
+[173/425] CIK=1577134 | window: 2015-04-20 00:00:00 -> 2022-09-29 00:00:00
+[1577134] metadata rows=29 | downloaded=0, skipped=29, failed=0
+
+[174/425] CIK=1577791 | window: 2013-07-11 00:00:00 -> 2021-03-19 00:00:00
+[1577791] metadata rows=30 | downloaded=0, skipped=30, failed=0
+
+[175/425] CIK=1578348 | window: 2014-02-05 00:00:00 -> NaT
+[1578348] metadata rows=49 | downloaded=0, skipped=49, failed=0
+
+[176/425] CIK=1578620 | window: 2014-05-08 00:00:00 -> 2020-01-31 00:00:00
+[1578620] metadata rows=23 | downloaded=0, skipped=23, failed=0
+
+[177/425] CIK=1579412 | window: 2013-12-30 00:00:00 -> 2019-12-18 00:00:00
+[1579412] metadata rows=24 | downloaded=1, skipped=23, failed=0
+
+[178/425] CIK=1580345 | window: 2014-03-05 00:00:00 -> NaT
+[1580345] metadata rows=50 | downloaded=0, skipped=50, failed=0
+
+[179/425] CIK=1581934 | window: 2014-01-15 00:00:00 -> 2018-09-19 00:00:00
+[1581934] metadata rows=18 | downloaded=0, skipped=18, failed=0
+
+[180/425] CIK=1587987 | window: 2014-11-12 00:00:00 -> 2023-01-06 00:00:00
+[1587987] metadata rows=33 | downloaded=0, skipped=33, failed=0
+
+[181/425] CIK=1588272 | window: 2014-08-18 00:00:00 -> NaT
+[1588272] metadata rows=48 | downloaded=0, skipped=48, failed=0
+
+[182/425] CIK=1589829 | window: 2014-06-04 00:00:00 -> NaT
+[1589829] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[183/425] CIK=1598893 | window: 2014-10-28 00:00:00 -> 2017-11-14 00:00:00
+[1598893] metadata rows=10 | downloaded=0, skipped=10, failed=0
+
+[184/425] CIK=1599750 | window: 2014-08-25 00:00:00 -> 2016-12-23 00:00:00
+[1599750] metadata rows=9 | downloaded=0, skipped=9, failed=0
+
+[185/425] CIK=1603480 | window: 2014-12-30 00:00:00 -> NaT
+[1603480] metadata rows=46 | downloaded=0, skipped=46, failed=0
+
+[186/425] CIK=1606657 | window: 2014-09-08 00:00:00 -> 2016-04-21 00:00:00
+[1606657] metadata rows=5 | downloaded=0, skipped=5, failed=0
+
+[187/425] CIK=1609336 | window: 2015-01-20 00:00:00 -> 2017-10-06 00:00:00
+[1609336] metadata rows=11 | downloaded=0, skipped=11, failed=0
+
+[188/425] CIK=1614173 | window: 2015-07-01 00:00:00 -> 2019-11-04 00:00:00
+[1614173] metadata rows=15 | downloaded=0, skipped=15, failed=0
+
+[189/425] CIK=1617572 | window: 2015-09-02 00:00:00 -> 2025-01-24 00:00:00
+[1617572] metadata rows=19 | downloaded=0, skipped=19, failed=0
+
+[190/425] CIK=1617896 | window: 2015-10-09 00:00:00 -> 2019-12-18 00:00:00
+[1617896] metadata rows=17 | downloaded=0, skipped=17, failed=0
+
+[191/425] CIK=1618694 | window: 2015-07-17 00:00:00 -> 2025-06-27 00:00:00
+[1618694] metadata rows=39 | downloaded=0, skipped=39, failed=0
+
+[192/425] CIK=1618696 | window: 2015-07-29 00:00:00 -> 2025-06-27 00:00:00
+[1618696] metadata rows=39 | downloaded=0, skipped=39, failed=0
+
+[193/425] CIK=1618697 | window: 2015-04-01 00:00:00 -> 2025-06-27 00:00:00
+[1618697] metadata rows=41 | downloaded=0, skipped=41, failed=0
+
+[194/425] CIK=1619239 | window: 2015-02-02 00:00:00 -> 2016-09-30 00:00:00
+[1619239] metadata rows=6 | downloaded=0, skipped=6, failed=0
+
+[195/425] CIK=1626899 | window: 2016-02-12 00:00:00 -> 2020-04-29 00:00:00
+[1626899] metadata rows=15 | downloaded=0, skipped=15, failed=0
+
+[196/425] CIK=1627515 | window: 2014-12-31 00:00:00 -> 2019-09-16 00:00:00
+[1627515] metadata rows=11 | downloaded=0, skipped=11, failed=0
+
+[197/425] CIK=1633336 | window: 2015-06-05 00:00:00 -> NaT
+[1633336] metadata rows=45 | downloaded=0, skipped=45, failed=0
+
+[198/425] CIK=1633858 | window: 2015-06-18 00:00:00 -> NaT
+[1633858] metadata rows=44 | downloaded=0, skipped=44, failed=0
+
+[199/425] CIK=1634452 | window: 2016-10-06 00:00:00 -> NaT
+[1634452] metadata rows=39 | downloaded=1, skipped=38, failed=0
+
+[200/425] CIK=1637417 | window: 2015-10-09 00:00:00 -> 2019-12-18 00:00:00
+[1637417] metadata rows=17 | downloaded=17, skipped=0, failed=0
+
+[201/425] CIK=1642862 | window: 2015-08-04 00:00:00 -> 2023-10-12 00:00:00
+[1642862] metadata rows=32 | downloaded=32, skipped=0, failed=0
+
+[202/425] CIK=1646614 | window: 2021-12-30 00:00:00 -> NaT
+[1646614] metadata rows=13 | downloaded=13, skipped=0, failed=0
+
+[203/425] CIK=1653384 | window: 2016-12-15 00:00:00 -> NaT
+[1653384] metadata rows=39 | downloaded=39, skipped=0, failed=0
+
+[204/425] CIK=1655050 | window: 2016-10-06 00:00:00 -> NaT
+[1655050] metadata rows=39 | downloaded=39, skipped=0, failed=0
+
+[205/425] CIK=1655887 | window: 2017-02-03 00:00:00 -> NaT
+[1655887] metadata rows=38 | downloaded=38, skipped=0, failed=0
+
+[206/425] CIK=1655888 | window: 2016-03-03 00:00:00 -> NaT
+[1655888] metadata rows=41 | downloaded=0, skipped=41, failed=0
+
+[207/425] CIK=1659295 | window: 2015-11-30 00:00:00 -> NaT
+[1659295] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[208/425] CIK=1661306 | window: 2016-07-15 00:00:00 -> NaT
+[1661306] metadata rows=41 | downloaded=0, skipped=41, failed=0
+
+[209/425] CIK=1666384 | window: 2019-07-03 00:00:00 -> 2023-07-28 00:00:00
+[1666384] metadata rows=15 | downloaded=0, skipped=15, failed=0
+
+[210/425] CIK=1674760 | window: 2016-07-13 00:00:00 -> NaT
+[1674760] metadata rows=41 | downloaded=0, skipped=41, failed=0
+
+[211/425] CIK=1674786 | window: 2016-10-03 00:00:00 -> 2021-03-31 00:00:00
+[1674786] metadata rows=5 | downloaded=5, skipped=0, failed=0
+
+[212/425] CIK=1675033 | window: 2016-09-27 00:00:00 -> NaT
+[1675033] metadata rows=40 | downloaded=0, skipped=40, failed=0
+
+[213/425] CIK=1683074 | window: 2017-01-27 00:00:00 -> 2020-10-13 00:00:00
+[1683074] metadata rows=14 | downloaded=0, skipped=14, failed=0
+
+[214/425] CIK=1685711 | window: 2016-10-13 00:00:00 -> 2016-12-08 00:00:00
+[1685711] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[215/425] CIK=1701724 | window: 2017-06-21 00:00:00 -> 2020-12-02 00:00:00
+[1701724] metadata rows=14 | downloaded=0, skipped=14, failed=0
+
+[216/425] CIK=1702510 | window: 2017-10-02 00:00:00 -> NaT
+[1702510] metadata rows=35 | downloaded=0, skipped=35, failed=0
+
+[217/425] CIK=1715268 | window: 2017-09-29 00:00:00 -> 2024-06-03 00:00:00
+[1715268] metadata rows=26 | downloaded=0, skipped=26, failed=0
+
+[218/425] CIK=1715933 | window: 2017-12-29 00:00:00 -> NaT
+[1715933] metadata rows=34 | downloaded=0, skipped=34, failed=0
+
+[219/425] CIK=1717310 | window: 2017-12-26 00:00:00 -> 2026-07-22 00:00:00
+[1717310] metadata rows=34 | downloaded=0, skipped=34, failed=0
+
+[220/425] CIK=1726548 | window: 2018-04-23 00:00:00 -> NaT
+[1726548] metadata rows=33 | downloaded=0, skipped=33, failed=0
+
+[221/425] CIK=1736035 | window: 2018-10-26 00:00:00 -> NaT
+[1736035] metadata rows=31 | downloaded=0, skipped=31, failed=0
+
+[222/425] CIK=1737924 | window: 2019-12-31 00:00:00 -> NaT
+[1737924] metadata rows=26 | downloaded=0, skipped=26, failed=0
+
+[223/425] CIK=1742313 | window: 2019-01-14 00:00:00 -> NaT
+[1742313] metadata rows=31 | downloaded=0, skipped=31, failed=0
+
+[224/425] CIK=1743415 | window: 2018-10-04 00:00:00 -> NaT
+[1743415] metadata rows=32 | downloaded=0, skipped=32, failed=0
+
+[225/425] CIK=1744179 | window: 2018-08-03 00:00:00 -> 2023-01-23 00:00:00
+[1744179] metadata rows=17 | downloaded=0, skipped=17, failed=0
+
+[226/425] CIK=1747172 | window: 2021-02-05 00:00:00 -> NaT
+[1747172] metadata rows=23 | downloaded=3, skipped=20, failed=0
+
+[227/425] CIK=1747777 | window: 2018-08-10 00:00:00 -> NaT
+[1747777] metadata rows=32 | downloaded=32, skipped=0, failed=0
+
+[228/425] CIK=1766037 | window: 2020-01-17 00:00:00 -> NaT
+[1766037] metadata rows=26 | downloaded=26, skipped=0, failed=0
+
+[229/425] CIK=1772704 | window: 2019-05-02 00:00:00 -> NaT
+[1772704] metadata rows=29 | downloaded=29, skipped=0, failed=0
+
+[230/425] CIK=1772918 | window: 2026-04-01 00:00:00 -> NaT
+[1772918] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[231/425] CIK=1779523 | window: 2019-08-16 00:00:00 -> NaT
+[1779523] metadata rows=27 | downloaded=0, skipped=27, failed=0
+
+[232/425] CIK=1781870 | window: 2019-07-15 00:00:00 -> 2024-12-19 00:00:00
+[1781870] metadata rows=21 | downloaded=0, skipped=21, failed=0
+
+[233/425] CIK=1782524 | window: 2019-11-25 00:00:00 -> NaT
+[1782524] metadata rows=27 | downloaded=0, skipped=27, failed=0
+
+[234/425] CIK=1784700 | window: 2022-06-02 00:00:00 -> NaT
+[1784700] metadata rows=17 | downloaded=0, skipped=17, failed=0
+
+[235/425] CIK=1786108 | window: 2020-01-16 00:00:00 -> NaT
+[1786108] metadata rows=26 | downloaded=0, skipped=26, failed=0
+
+[236/425] CIK=1786835 | window: 2021-05-13 00:00:00 -> NaT
+[1786835] metadata rows=20 | downloaded=0, skipped=20, failed=0
+
+[237/425] CIK=1792509 | window: 2020-05-27 00:00:00 -> NaT
+[1792509] metadata rows=24 | downloaded=0, skipped=24, failed=0
+
+[238/425] CIK=1794776 | window: 2020-01-16 00:00:00 -> NaT
+[1794776] metadata rows=26 | downloaded=0, skipped=26, failed=0
+
+[239/425] CIK=1800381 | window: 2022-02-18 00:00:00 -> NaT
+[1800381] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[240/425] CIK=1803498 | window: 2020-10-05 00:00:00 -> NaT
+[1803498] metadata rows=23 | downloaded=0, skipped=23, failed=0
+
+[241/425] CIK=1807427 | window: 2020-06-05 00:00:00 -> 2025-01-13 00:00:00
+[1807427] metadata rows=17 | downloaded=0, skipped=17, failed=0
+
+[242/425] CIK=1811972 | window: 2020-06-26 00:00:00 -> NaT
+[1811972] metadata rows=24 | downloaded=22, skipped=2, failed=0
+
+[243/425] CIK=1812554 | window: 2020-10-16 00:00:00 -> NaT
+[1812554] metadata rows=23 | downloaded=22, skipped=1, failed=0
+
+[244/425] CIK=1817825 | window: 2020-10-07 00:00:00 -> NaT
+[1817825] metadata rows=23 | downloaded=22, skipped=1, failed=0
+
+[245/425] CIK=1822523 | window: 2025-12-31 00:00:00 -> NaT
+[1822523] metadata rows=2 | downloaded=0, skipped=2, failed=0
+
+[246/425] CIK=1825248 | window: 2020-09-23 00:00:00 -> NaT
+[1825248] metadata rows=22 | downloaded=21, skipped=1, failed=0
+
+[247/425] CIK=1825265 | window: 2021-07-22 00:00:00 -> NaT
+[1825265] metadata rows=20 | downloaded=18, skipped=1, failed=1
+
+[248/425] CIK=1825384 | window: 2020-11-30 00:00:00 -> NaT
+[1825384] metadata rows=22 | downloaded=21, skipped=1, failed=0
+
+[249/425] CIK=1825590 | window: 2020-10-06 00:00:00 -> 2024-07-15 00:00:00
+[1825590] metadata rows=14 | downloaded=13, skipped=1, failed=0
+
+[250/425] CIK=1827994 | window: 2020-10-27 00:00:00 -> 2020-12-03 00:00:00
+[1827994] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[251/425] CIK=1832148 | window: 2021-02-02 00:00:00 -> NaT
+[1832148] metadata rows=22 | downloaded=21, skipped=1, failed=0
+
+[252/425] CIK=1834543 | window: 2020-12-10 00:00:00 -> NaT
+[1834543] metadata rows=23 | downloaded=22, skipped=1, failed=0
+
+[253/425] CIK=1837532 | window: 2021-10-29 00:00:00 -> NaT
+[1837532] metadata rows=19 | downloaded=18, skipped=1, failed=0
+
+[254/425] CIK=1838126 | window: 2022-01-03 00:00:00 -> NaT
+[1838126] metadata rows=17 | downloaded=16, skipped=1, failed=0
+
+[255/425] CIK=1841514 | window: 2021-07-06 00:00:00 -> NaT
+[1841514] metadata rows=20 | downloaded=19, skipped=1, failed=0
+
+[256/425] CIK=1843162 | window: 2021-06-29 00:00:00 -> NaT
+[1843162] metadata rows=16 | downloaded=15, skipped=1, failed=0
+
+[257/425] CIK=1844684 | window: 2021-06-02 00:00:00 -> 2022-08-12 00:00:00
+[1844684] metadata rows=5 | downloaded=3, skipped=2, failed=0
+
+[258/425] CIK=1849089 | window: 2021-07-27 00:00:00 -> NaT
+[1849089] metadata rows=20 | downloaded=19, skipped=1, failed=0
+
+[259/425] CIK=1849894 | window: 2021-12-29 00:00:00 -> NaT
+[1849894] metadata rows=17 | downloaded=16, skipped=1, failed=0
+
+[260/425] CIK=1850787 | window: 2021-05-11 00:00:00 -> NaT
+[1850787] metadata rows=21 | downloaded=20, skipped=1, failed=0
+
+[261/425] CIK=1850938 | window: 2021-07-20 00:00:00 -> NaT
+[1850938] metadata rows=19 | downloaded=18, skipped=1, failed=0
+
+[262/425] CIK=1851277 | window: 2021-06-30 00:00:00 -> 2025-03-28 00:00:00
+[1851277] metadata rows=13 | downloaded=12, skipped=1, failed=0
+
+[263/425] CIK=1851322 | window: 2022-01-24 00:00:00 -> NaT
+[1851322] metadata rows=18 | downloaded=17, skipped=1, failed=0
+
+[264/425] CIK=1859919 | window: 2021-05-12 00:00:00 -> NaT
+[1859919] metadata rows=21 | downloaded=20, skipped=1, failed=0
+
+[265/425] CIK=1860424 | window: 2021-10-01 00:00:00 -> NaT
+[1860424] metadata rows=19 | downloaded=18, skipped=1, failed=0
+
+[266/425] CIK=1865174 | window: 2021-11-22 00:00:00 -> 2025-10-14 00:00:00
+[1865174] metadata rows=15 | downloaded=14, skipped=1, failed=0
+
+[267/425] CIK=1865266 | window: 2021-08-03 00:00:00 -> NaT
+[1865266] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[268/425] CIK=1868878 | window: 2021-06-30 00:00:00 -> NaT
+[1868878] metadata rows=19 | downloaded=18, skipped=1, failed=0
+
+[269/425] CIK=1869453 | window: 2021-10-06 00:00:00 -> NaT
+[1869453] metadata rows=19 | downloaded=19, skipped=0, failed=0
+
+[270/425] CIK=1870267 | window: 2022-04-01 00:00:00 -> 2026-02-27 00:00:00
+[1870267] metadata rows=14 | downloaded=13, skipped=1, failed=0
+
+[271/425] CIK=1872371 | window: 2022-02-03 00:00:00 -> NaT
+[1872371] metadata rows=19 | downloaded=18, skipped=1, failed=0
+
+[272/425] CIK=1879008 | window: 2021-10-19 00:00:00 -> 2022-06-21 00:00:00
+[1879008] metadata rows=2 | downloaded=2, skipped=0, failed=0
+
+[273/425] CIK=1879017 | window: 2021-10-19 00:00:00 -> 2022-06-21 00:00:00
+[1879017] metadata rows=2 | downloaded=0, skipped=2, failed=0
+
+[274/425] CIK=1879018 | window: 2021-10-19 00:00:00 -> 2022-06-21 00:00:00
+[1879018] metadata rows=2 | downloaded=0, skipped=2, failed=0
+
+[275/425] CIK=1885968 | window: 2021-10-19 00:00:00 -> NaT
+[1885968] metadata rows=19 | downloaded=18, skipped=1, failed=0
+
+[276/425] CIK=1889668 | window: 2021-12-01 00:00:00 -> 2025-03-24 00:00:00
+[1889668] metadata rows=13 | downloaded=11, skipped=2, failed=0
+
+[277/425] CIK=1890107 | window: 2023-05-31 00:00:00 -> NaT
+[1890107] metadata rows=12 | downloaded=11, skipped=1, failed=0
+
+[278/425] CIK=1892091 | window: 2022-04-29 00:00:00 -> 2022-09-16 00:00:00
+[1892091] metadata rows=1 | downloaded=0, skipped=1, failed=0
+
+[279/425] CIK=1895316 | window: 2022-07-29 00:00:00 -> NaT
+[1895316] metadata rows=16 | downloaded=14, skipped=2, failed=0
+
+[280/425] CIK=1899017 | window: 2023-02-03 00:00:00 -> NaT
+[1899017] metadata rows=14 | downloaded=13, skipped=1, failed=0
+
+[281/425] CIK=1899996 | window: 2023-06-01 00:00:00 -> NaT
+[1899996] metadata rows=12 | downloaded=11, skipped=1, failed=0
+
+[282/425] CIK=1901037 | window: 2021-12-22 00:00:00 -> NaT
+[1901037] metadata rows=17 | downloaded=16, skipped=1, failed=0
+
+[283/425] CIK=1901164 | window: 2023-06-30 00:00:00 -> NaT
+[1901164] metadata rows=12 | downloaded=11, skipped=1, failed=0
+
+[284/425] CIK=1901606 | window: 2022-03-31 00:00:00 -> NaT
+[1901606] metadata rows=17 | downloaded=16, skipped=1, failed=0
+
+[285/425] CIK=1901612 | window: 2022-03-31 00:00:00 -> NaT
+[1901612] metadata rows=17 | downloaded=16, skipped=1, failed=0
+
+[286/425] CIK=1902649 | window: 2022-05-02 00:00:00 -> NaT
+[1902649] metadata rows=17 | downloaded=16, skipped=1, failed=0
+
+[287/425] CIK=1905824 | window: 2022-07-11 00:00:00 -> NaT
+[1905824] metadata rows=16 | downloaded=14, skipped=2, failed=0
+
+[288/425] CIK=1911066 | window: 2022-03-31 00:00:00 -> NaT
+[1911066] metadata rows=17 | downloaded=16, skipped=1, failed=0
+
+[289/425] CIK=1911321 | window: 2022-12-29 00:00:00 -> NaT
+[1911321] metadata rows=13 | downloaded=12, skipped=1, failed=0
+
+[290/425] CIK=1913721 | window: 2022-04-18 00:00:00 -> 2023-01-05 00:00:00
+[1913721] metadata rows=2 | downloaded=0, skipped=2, failed=0
+
+[291/425] CIK=1913724 | window: 2022-12-13 00:00:00 -> NaT
+[1913724] metadata rows=15 | downloaded=14, skipped=1, failed=0
+
+[292/425] CIK=1916099 | window: 2023-12-15 00:00:00 -> NaT
+[1916099] metadata rows=10 | downloaded=9, skipped=1, failed=0
+
+[293/425] CIK=1916608 | window: 2022-09-01 00:00:00 -> NaT
+[1916608] metadata rows=15 | downloaded=14, skipped=1, failed=0
+
+[294/425] CIK=1918712 | window: 2022-11-22 00:00:00 -> NaT
+[1918712] metadata rows=14 | downloaded=13, skipped=1, failed=0
+
+[295/425] CIK=1919369 | window: 2023-06-15 00:00:00 -> NaT
+[1919369] metadata rows=12 | downloaded=11, skipped=1, failed=0
+
+[296/425] CIK=1920145 | window: 2023-04-05 00:00:00 -> NaT
+[1920145] metadata rows=13 | downloaded=12, skipped=1, failed=0
+
+[297/425] CIK=1920453 | window: 2023-01-09 00:00:00 -> NaT
+[1920453] metadata rows=14 | downloaded=13, skipped=1, failed=0
+
+[298/425] CIK=1922947 | window: 2022-05-03 00:00:00 -> 2025-07-25 00:00:00
+[1922947] metadata rows=12 | downloaded=11, skipped=1, failed=0
+
+[299/425] CIK=1923622 | window: 2023-05-05 00:00:00 -> NaT
+[1923622] metadata rows=13 | downloaded=12, skipped=1, failed=0
+
+[300/425] CIK=1925309 | window: 2022-06-28 00:00:00 -> NaT
+[1925309] metadata rows=16 | downloaded=15, skipped=1, failed=0
+
+[301/425] CIK=1925531 | window: 2022-05-06 00:00:00 -> NaT
+[1925531] metadata rows=17 | downloaded=16, skipped=1, failed=0
+
+[302/425] CIK=1930087 | window: 2023-04-07 00:00:00 -> NaT
+[1930087] metadata rows=13 | downloaded=12, skipped=1, failed=0
+
+[303/425] CIK=1930679 | window: 2023-03-31 00:00:00 -> NaT
+[1930679] metadata rows=12 | downloaded=11, skipped=1, failed=0
+
+[304/425] CIK=1932591 | window: 2023-02-01 00:00:00 -> NaT
+[1932591] metadata rows=14 | downloaded=13, skipped=1, failed=0
+
+[305/425] CIK=1938649 | window: 2025-12-19 00:00:00 -> NaT
+[1938649] metadata rows=2 | downloaded=1, skipped=1, failed=0
+
+[306/425] CIK=1944831 | window: 2024-11-08 00:00:00 -> NaT
+[1944831] metadata rows=7 | downloaded=6, skipped=1, failed=0
+
+[307/425] CIK=1948368 | window: 2022-10-21 00:00:00 -> NaT
+[1948368] metadata rows=15 | downloaded=14, skipped=1, failed=0
+
+[308/425] CIK=1948565 | window: 2023-01-18 00:00:00 -> 2024-02-01 00:00:00
+[1948565] metadata rows=3 | downloaded=2, skipped=1, failed=0
+
+[309/425] CIK=1950572 | window: 2023-08-23 00:00:00 -> NaT
+[1950572] metadata rows=12 | downloaded=11, skipped=1, failed=0
+
+[310/425] CIK=1950803 | window: 2023-04-03 00:00:00 -> NaT
+[1950803] metadata rows=12 | downloaded=12, skipped=0, failed=0
+
+[311/425] CIK=1950976 | window: 2023-10-03 00:00:00 -> NaT
+[1950976] metadata rows=11 | downloaded=11, skipped=0, failed=0
+
+[312/425] CIK=1954360 | window: 2023-05-03 00:00:00 -> NaT
+[1954360] metadata rows=11 | downloaded=11, skipped=0, failed=0
+
+[313/425] CIK=1955010 | window: 2022-12-02 00:00:00 -> NaT
+[1955010] metadata rows=14 | downloaded=14, skipped=0, failed=0
+
+[314/425] CIK=1955963 | window: 2023-10-31 00:00:00 -> NaT
+[1955963] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[315/425] CIK=1959568 | window: 2023-12-05 00:00:00 -> NaT
+[1959568] metadata rows=11 | downloaded=11, skipped=0, failed=0
+
+[316/425] CIK=1959604 | window: 2023-12-05 00:00:00 -> NaT
+[1959604] metadata rows=11 | downloaded=11, skipped=0, failed=0
+
+[317/425] CIK=1962244 | window: 2024-10-07 00:00:00 -> NaT
+[1962244] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[318/425] CIK=1965934 | window: 2024-01-12 00:00:00 -> NaT
+[1965934] metadata rows=9 | downloaded=9, skipped=0, failed=0
+
+[319/425] CIK=1973476 | window: 2023-07-13 00:00:00 -> NaT
+[1973476] metadata rows=12 | downloaded=12, skipped=0, failed=0
+
+[320/425] CIK=1974793 | window: 2023-05-05 00:00:00 -> NaT
+[1974793] metadata rows=13 | downloaded=13, skipped=0, failed=0
+
+[321/425] CIK=1975736 | window: 2024-02-20 00:00:00 -> NaT
+[1975736] metadata rows=9 | downloaded=9, skipped=0, failed=0
+
+[322/425] CIK=1976336 | window: 2024-11-05 00:00:00 -> NaT
+[1976336] metadata rows=6 | downloaded=6, skipped=0, failed=0
+
+[323/425] CIK=1976719 | window: 2023-05-22 00:00:00 -> NaT
+[1976719] metadata rows=12 | downloaded=12, skipped=0, failed=0
+
+[324/425] CIK=1979306 | window: 2023-10-30 00:00:00 -> NaT
+[1979306] metadata rows=10 | downloaded=10, skipped=0, failed=0
+
+[325/425] CIK=1982701 | window: 2024-08-07 00:00:00 -> NaT
+[1982701] metadata rows=8 | downloaded=8, skipped=0, failed=0
+
+[326/425] CIK=1983514 | window: 2023-12-01 00:00:00 -> NaT
+[1983514] metadata rows=11 | downloaded=11, skipped=0, failed=0
+
+[327/425] CIK=1984739 | window: 2026-01-05 00:00:00 -> NaT
+[1984739] metadata rows=1 | downloaded=1, skipped=0, failed=0
+
+[328/425] CIK=1985375 | window: 2023-09-15 00:00:00 -> NaT
+[1985375] metadata rows=11 | downloaded=11, skipped=0, failed=0
+
+[329/425] CIK=1987221 | window: 2023-10-24 00:00:00 -> NaT
+[1987221] metadata rows=10 | downloaded=10, skipped=0, failed=0
+
+[330/425] CIK=1987731 | window: 2024-04-11 00:00:00 -> NaT
+[1987731] metadata rows=9 | downloaded=9, skipped=0, failed=0
+
+[331/425] CIK=1988280 | window: 2023-10-03 00:00:00 -> NaT
+[1988280] metadata rows=10 | downloaded=10, skipped=0, failed=0
+
+[332/425] CIK=1989817 | window: 2024-04-08 00:00:00 -> NaT
+[1989817] metadata rows=9 | downloaded=9, skipped=0, failed=0
+
+[333/425] CIK=1993402 | window: 2024-01-22 00:00:00 -> NaT
+[1993402] metadata rows=9 | downloaded=9, skipped=0, failed=0
+
+[334/425] CIK=1998387 | window: 2024-08-30 00:00:00 -> NaT
+[1998387] metadata rows=8 | downloaded=8, skipped=0, failed=0
+
+[335/425] CIK=1999538 | window: 2023-11-02 00:00:00 -> 2026-06-17 00:00:00
+[1999538] metadata rows=10 | downloaded=10, skipped=0, failed=0
+
+[336/425] CIK=1999699 | window: 2025-07-10 00:00:00 -> NaT
+[1999699] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[337/425] CIK=2006758 | window: 2024-03-15 00:00:00 -> NaT
+[2006758] metadata rows=8 | downloaded=8, skipped=0, failed=0
+
+[338/425] CIK=2008748 | window: 2024-10-04 00:00:00 -> NaT
+[2008748] metadata rows=7 | downloaded=7, skipped=0, failed=0
+
+[339/425] CIK=2011498 | window: 2024-10-11 00:00:00 -> NaT
+[2011498] metadata rows=8 | downloaded=8, skipped=0, failed=0
+
+[340/425] CIK=2012139 | window: 2025-08-01 00:00:00 -> NaT
+[2012139] metadata rows=5 | downloaded=5, skipped=0, failed=0
+
+[341/425] CIK=2012839 | window: 2024-04-19 00:00:00 -> NaT
+[2012839] metadata rows=8 | downloaded=8, skipped=0, failed=0
+
+[342/425] CIK=2017636 | window: 2024-12-31 00:00:00 -> NaT
+[2017636] metadata rows=5 | downloaded=5, skipped=0, failed=0
+
+[343/425] CIK=2018545 | window: 2024-06-06 00:00:00 -> 2025-10-20 00:00:00
+[2018545] metadata rows=5 | downloaded=5, skipped=0, failed=0
+
+[344/425] CIK=2020354 | window: 2024-09-24 00:00:00 -> NaT
+[2020354] metadata rows=8 | downloaded=8, skipped=0, failed=0
+
+[345/425] CIK=2022625 | window: 2024-07-23 00:00:00 -> 2024-12-13 00:00:00
+[2022625] metadata rows=1 | downloaded=1, skipped=0, failed=0
+
+[346/425] CIK=2023668 | window: 2024-05-23 00:00:00 -> NaT
+[2023668] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[347/425] CIK=2025369 | window: 2026-04-07 00:00:00 -> NaT
+[2025369] metadata rows=1 | downloaded=1, skipped=0, failed=0
+
+[348/425] CIK=2027033 | window: 2025-08-28 00:00:00 -> NaT
+[2027033] metadata rows=3 | downloaded=3, skipped=0, failed=0
+
+[349/425] CIK=2028686 | window: 2024-09-12 00:00:00 -> NaT
+[2028686] metadata rows=6 | downloaded=6, skipped=0, failed=0
+
+[350/425] CIK=2031283 | window: 2024-10-11 00:00:00 -> NaT
+[2031283] metadata rows=6 | downloaded=6, skipped=0, failed=0
+
+[351/425] CIK=2031750 | window: 2024-12-02 00:00:00 -> NaT
+[2031750] metadata rows=8 | downloaded=8, skipped=0, failed=0
+
+[352/425] CIK=2033362 | window: 2025-04-23 00:00:00 -> NaT
+[2033362] metadata rows=4 | downloaded=4, skipped=0, failed=0
+
+[353/425] CIK=2033382 | window: 2026-02-02 00:00:00 -> NaT
+[2033382] metadata rows=2 | downloaded=2, skipped=0, failed=0
+
+[354/425] CIK=2035713 | window: 2025-09-02 00:00:00 -> NaT
+[2035713] metadata rows=3 | downloaded=3, skipped=0, failed=0
+
+[355/425] CIK=2037804 | window: 2024-09-27 00:00:00 -> NaT
+[2037804] metadata rows=7 | downloaded=7, skipped=0, failed=0
+
+[356/425] CIK=2041841 | window: 2025-04-01 00:00:00 -> NaT
+[2041841] metadata rows=5 | downloaded=5, skipped=0, failed=0
+
+[357/425] CIK=2043133 | window: 2025-09-08 00:00:00 -> NaT
+[2043133] metadata rows=2 | downloaded=2, skipped=0, failed=0
+
+[358/425] CIK=2043759 | window: 2025-03-03 00:00:00 -> NaT
+[2043759] metadata rows=6 | downloaded=6, skipped=0, failed=0
+
+[359/425] CIK=2045370 | window: 2025-09-05 00:00:00 -> NaT
+[2045370] metadata rows=3 | downloaded=3, skipped=0, failed=0
+
+[360/425] CIK=2049733 | window: 2025-04-15 00:00:00 -> NaT
+[2049733] metadata rows=5 | downloaded=5, skipped=0, failed=0
+
+[361/425] CIK=2050809 | window: 2026-07-31 00:00:00 -> NaT
+[2050809] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[362/425] CIK=2052152 | window: 2025-01-28 00:00:00 -> NaT
+[2052152] metadata rows=5 | downloaded=5, skipped=0, failed=0
+
+[363/425] CIK=2052153 | window: 2025-01-28 00:00:00 -> NaT
+[2052153] metadata rows=5 | downloaded=5, skipped=0, failed=0
+
+[364/425] CIK=2056516 | window: 2026-06-01 00:00:00 -> NaT
+[2056516] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[365/425] CIK=2061174 | window: 2025-12-15 00:00:00 -> NaT
+[2061174] metadata rows=2 | downloaded=2, skipped=0, failed=0
+
+[366/425] CIK=2061670 | window: 2025-11-20 00:00:00 -> NaT
+[2061670] metadata rows=3 | downloaded=3, skipped=0, failed=0
+
+[367/425] CIK=2065397 | window: 2025-07-21 00:00:00 -> NaT
+[2065397] metadata rows=3 | downloaded=3, skipped=0, failed=0
+
+[368/425] CIK=2066811 | window: 2026-04-01 00:00:00 -> NaT
+[2066811] metadata rows=1 | downloaded=1, skipped=0, failed=0
+
+[369/425] CIK=2071136 | window: 2025-08-05 00:00:00 -> 2026-05-12 00:00:00
+[2071136] metadata rows=2 | downloaded=2, skipped=0, failed=0
+
+[370/425] CIK=2077250 | window: 2025-09-26 00:00:00 -> NaT
+[2077250] metadata rows=3 | downloaded=3, skipped=0, failed=0
+
+[371/425] CIK=2082557 | window: 2025-12-31 00:00:00 -> NaT
+[2082557] metadata rows=2 | downloaded=2, skipped=0, failed=0
+
+[372/425] CIK=2082559 | window: 2025-12-31 00:00:00 -> NaT
+[2082559] metadata rows=2 | downloaded=2, skipped=0, failed=0
+
+[373/425] CIK=2083477 | window: 2026-01-02 00:00:00 -> NaT
+[2083477] metadata rows=2 | downloaded=2, skipped=0, failed=0
+
+[374/425] CIK=2089126 | window: 2025-10-31 00:00:00 -> NaT
+[2089126] metadata rows=3 | downloaded=3, skipped=0, failed=0
+
+[375/425] CIK=2107057 | window: 2026-07-01 00:00:00 -> NaT
+[2107057] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[376/425] CIK=2112554 | window: 2026-07-23 00:00:00 -> NaT
+[2112554] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[377/425] CIK=2131040 | window: 2026-07-20 00:00:00 -> NaT
+[2131040] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[378/425] CIK=217222 | window: NaT -> 2005-10-27 00:00:00
+[217222] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[379/425] CIK=317438 | window: 2004-09-13 00:00:00 -> 2007-05-30 00:00:00
+[317438] metadata rows=11 | downloaded=11, skipped=0, failed=0
+
+[380/425] CIK=352868 | window: NaT -> 2005-06-10 00:00:00
+[352868] metadata rows=36 | downloaded=32, skipped=0, failed=4
+
+[381/425] CIK=3898 | window: NaT -> 2005-08-23 00:00:00
+[3898] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[382/425] CIK=3906 | window: NaT -> 2010-04-01 00:00:00
+[3906] metadata rows=59 | downloaded=59, skipped=0, failed=0
+
+[383/425] CIK=54175 | window: 2004-08-20 00:00:00 -> NaT
+[54175] metadata rows=8 | downloaded=8, skipped=0, failed=0
+
+[384/425] CIK=722571 | window: NaT -> 2004-03-01 00:00:00
+[722571] metadata rows=26 | downloaded=25, skipped=0, failed=1
+
+[385/425] CIK=748268 | window: NaT -> 2014-07-23 00:00:00
+[748268] metadata rows=58 | downloaded=56, skipped=0, failed=2
+
+[386/425] CIK=755328 | window: 2006-03-07 00:00:00 -> 2008-01-11 00:00:00
+[755328] metadata rows=8 | downloaded=8, skipped=0, failed=0
+
+[387/425] CIK=789538 | window: NaT -> 2001-04-02 00:00:00
+[789538] metadata rows=29 | downloaded=26, skipped=0, failed=3
+
+[388/425] CIK=793986 | window: 2004-12-06 00:00:00 -> 2007-04-03 00:00:00
+[793986] metadata rows=6 | downloaded=6, skipped=0, failed=0
+
+[389/425] CIK=808066 | window: NaT -> 2006-07-10 00:00:00
+[808066] metadata rows=46 | downloaded=42, skipped=0, failed=4
+
+[390/425] CIK=810270 | window: 2004-03-09 00:00:00 -> 2008-08-13 00:00:00
+[810270] metadata rows=18 | downloaded=18, skipped=0, failed=0
+
+[391/425] CIK=812301 | window: NaT -> 2005-03-31 00:00:00
+[812301] metadata rows=28 | downloaded=26, skipped=0, failed=2
+
+[392/425] CIK=812805 | window: 2003-04-30 00:00:00 -> 2007-09-19 00:00:00
+[812805] metadata rows=9 | downloaded=9, skipped=0, failed=0
+
+[393/425] CIK=813343 | window: NaT -> 2001-01-09 00:00:00
+[813343] metadata rows=19 | downloaded=19, skipped=0, failed=0
+
+[394/425] CIK=817473 | window: NaT -> 2017-01-03 00:00:00
+[817473] metadata rows=77 | downloaded=76, skipped=0, failed=1
+
+[395/425] CIK=818897 | window: NaT -> 2018-08-07 00:00:00
+[818897] metadata rows=7 | downloaded=6, skipped=0, failed=1
+
+[396/425] CIK=81955 | window: 2001-08-16 00:00:00 -> NaT
+[81955] metadata rows=101 | downloaded=101, skipped=0, failed=0
+
+[397/425] CIK=821524 | window: 2004-07-01 00:00:00 -> 2005-03-28 00:00:00
+[821524] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[398/425] CIK=822874 | window: NaT -> 2018-08-07 00:00:00
+[822874] metadata rows=4 | downloaded=4, skipped=0, failed=0
+
+[399/425] CIK=826595 | window: NaT -> 2006-07-10 00:00:00
+[826595] metadata rows=45 | downloaded=43, skipped=0, failed=2
+
+[400/425] CIK=826674 | window: 2003-04-14 00:00:00 -> 2003-09-08 00:00:00
+[826674] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[401/425] CIK=840334 | window: NaT -> 2003-03-24 00:00:00
+[840334] metadata rows=31 | downloaded=29, skipped=0, failed=2
+
+[402/425] CIK=841687 | window: NaT -> 2001-12-26 00:00:00
+[841687] metadata rows=22 | downloaded=22, skipped=0, failed=0
+
+[403/425] CIK=841688 | window: NaT -> 2001-12-26 00:00:00
+[841688] metadata rows=22 | downloaded=22, skipped=0, failed=0
+
+[404/425] CIK=842722 | window: 2007-04-05 00:00:00 -> 2009-01-20 00:00:00
+[842722] metadata rows=7 | downloaded=7, skipped=0, failed=0
+
+[405/425] CIK=843387 | window: NaT -> 2003-03-24 00:00:00
+[843387] metadata rows=31 | downloaded=27, skipped=0, failed=4
+
+[406/425] CIK=843626 | window: NaT -> 2003-11-12 00:00:00
+[843626] metadata rows=27 | downloaded=25, skipped=0, failed=2
+
+[407/425] CIK=845385 | window: 2005-06-15 00:00:00 -> NaT
+[845385] metadata rows=79 | downloaded=0, skipped=0, failed=0
+
+[408/425] CIK=850877 | window: NaT -> 2006-07-10 00:00:00
+[850877] metadata rows=46 | downloaded=44, skipped=0, failed=2
+
+[409/425] CIK=856670 | window: NaT -> 2001-09-27 00:00:00
+[856670] metadata rows=24 | downloaded=23, skipped=0, failed=1
+
+[410/425] CIK=878802 | window: 2005-03-15 00:00:00 -> 2006-05-15 00:00:00
+[878802] metadata rows=4 | downloaded=4, skipped=0, failed=0
+
+[411/425] CIK=887499 | window: NaT -> 2001-11-13 00:00:00
+[887499] metadata rows=23 | downloaded=22, skipped=0, failed=1
+
+[412/425] CIK=888702 | window: 2002-04-04 00:00:00 -> 2006-07-06 00:00:00
+[888702] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[413/425] CIK=893739 | window: NaT -> 2017-03-30 00:00:00
+[893739] metadata rows=86 | downloaded=84, skipped=0, failed=2
+
+[414/425] CIK=893755 | window: NaT -> 2004-11-12 00:00:00
+[893755] metadata rows=39 | downloaded=37, skipped=0, failed=2
+
+[415/425] CIK=895993 | window: NaT -> 2002-01-10 00:00:00
+[895993] metadata rows=22 | downloaded=17, skipped=0, failed=5
+
+[416/425] CIK=912844 | window: 2006-03-07 00:00:00 -> 2015-07-24 00:00:00
+[912844] metadata rows=36 | downloaded=36, skipped=0, failed=0
+
+[417/425] CIK=917032 | window: NaT -> 2002-01-10 00:00:00
+[917032] metadata rows=23 | downloaded=20, skipped=0, failed=3
+
+[418/425] CIK=919567 | window: NaT -> 2009-05-21 00:00:00
+[919567] metadata rows=54 | downloaded=51, skipped=0, failed=3
+
+[419/425] CIK=923808 | window: NaT -> 2011-10-04 00:00:00
+[923808] metadata rows=63 | downloaded=63, skipped=0, failed=0
+
+[420/425] CIK=924386 | window: NaT -> 2002-01-10 00:00:00
+[924386] metadata rows=23 | downloaded=20, skipped=0, failed=3
+
+[421/425] CIK=925709 | window: NaT -> 2008-05-15 00:00:00
+[925709] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[422/425] CIK=930454 | window: NaT -> 2004-03-19 00:00:00
+[930454] metadata rows=36 | downloaded=28, skipped=0, failed=8
+
+[423/425] CIK=937969 | window: NaT -> 2012-03-30 00:00:00
+[937969] metadata rows=38 | downloaded=38, skipped=0, failed=0
+
+[424/425] CIK=944020 | window: 2005-01-25 00:00:00 -> 2006-11-15 00:00:00
+[944020] metadata rows=5 | downloaded=5, skipped=0, failed=0
+
+[425/425] CIK=95047 | window: 2004-09-10 00:00:00 -> 2005-12-15 00:00:00
+[95047] metadata rows=0 | downloaded=0, skipped=0, failed=0
+
+[FULL] done.

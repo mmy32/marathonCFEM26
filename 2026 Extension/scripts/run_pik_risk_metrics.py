@@ -16,8 +16,10 @@ import sys
 from pathlib import Path
 import logging
 
-ROOT = Path(__file__).resolve().parents[1]  # 2026 Extension/
-sys.path.append(str(ROOT / "src"))
+ROOT = Path(__file__).resolve().parents[1]  # project root
+sys.path.insert(0, str(ROOT / "src" / "1_data_processing"))  # for paths.py
+from paths import FINAL_DIR, PIK_DIR, PIK_PLOTS_DIR, add_code_dirs_to_path
+add_code_dirs_to_path()  # modules live in src/*/
 
 import polars as pl
 
@@ -54,8 +56,8 @@ logger = logging.getLogger("run_pik_risk_metrics")
 
 
 def main():
-    data_csv = ROOT / "data" / "data_private_credit_FINAL_enriched.csv"
-    outputs_dir = ROOT / "outputs"
+    data_csv = FINAL_DIR / "FINAL_DATASET.csv"
+    outputs_dir = PIK_DIR
     outputs_dir.mkdir(parents=True, exist_ok=True)
 
     if not data_csv.exists():
@@ -156,7 +158,7 @@ def main():
     # -------------------------------------------------------------------------
     # 7. Time-Series Visualization Suite
     # -------------------------------------------------------------------------
-    plots_dir = outputs_dir / "pik_plots"
+    plots_dir = PIK_PLOTS_DIR
     plots_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Generating time-series chart figures in {plots_dir}...")
 

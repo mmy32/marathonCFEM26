@@ -1,22 +1,24 @@
-import sys
 import warnings
-from pathlib import Path
-
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[1]  # 2026 Extension/
-sys.path.append(str(ROOT / "src"))
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parents[1] / "src" / "1_data_processing"))  # for paths.py
+from paths import CLEANED_DIR, PARSED_DIR, REFERENCE_DIR, add_code_dirs_to_path
+add_code_dirs_to_path()  # ixbrl_utils lives in src/1_data_processing/
 
 from ixbrl_utils import (
     normalize_interest_columns,
     convert_currencies,
     normalize_value_scale,
     cap_equity_unit_principal,
+    fix_value_sign,
     flag_filer_quarter_outliers,
     rescale_filer_quarter_outliers,
     drop_subtotal_rows,
     load_base_rates,
     resolve_rates,
+    flag_value_gaps,
 )
 
 warnings.filterwarnings("ignore")
@@ -44,6 +46,7 @@ def run_pipeline(data_path: str, fx_path: str, sofr_path: str = "SOFR_augmented.
     df = convert_currencies(df, fx_path)            # also sets df["currency"]
     df = normalize_value_scale(df)
     df = cap_equity_unit_principal(df)              # equity unit counts reported as principal
+    df = fix_value_sign(df)                         # funded positions tagged with a negative cost / FV
 
     # Filings that mis-tag FV, cost and principal together (e.g. TCW Direct Lending VIII,
     # 2023Q1): rescale the mis-tagged positions first; drop the quarter only if it is still
@@ -58,8 +61,10 @@ def run_pipeline(data_path: str, fx_path: str, sofr_path: str = "SOFR_augmented.
     # -------------------------
     # Rates: role repairs -> fills -> base-rate estimate -> flags
     # -------------------------
-    return resolve_rates(df, load_base_rates(sofr_path))
+    # Label (never change) rows whose principal, cost and FV are out of line as reported.
+    return flag_value_gaps(resolve_rates(df, load_base_rates(sofr_path)))
 
 
 if __name__ == "__main__":
-    run_pipeline("ixbrl_clean.csv", "FX.csv", "SOFR_augmented.csv").to_csv("ixbrl_cleaned_out.csv", index=False)
+    run_pipeline(PARSED_DIR / "ixbrl_clean.csv", REFERENCE_DIR / "FX.csv", REFERENCE_DIR / "SOFR_augmented.csv").to_csv(
+        CLEANED_DIR / "ixbrl_cleaned_out.csv", index=False)
