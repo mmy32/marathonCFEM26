@@ -7,3 +7,6 @@ claude_api_key.txt
 # local only
 _archive/
 .claude/
+# large intermediate panels, rebuilt by the scripts (60MB / 30MB)
+outputs/pik/pik_tranche_signals.csv
+outputs/risk_monitor/distress/borrower_quarter_panel.csv

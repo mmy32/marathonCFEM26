@@ -10,4 +10,6 @@ polars==1.44.1
 pyarrow==25.0.1  # polars .to_pandas() in src/5_pik/ and outputs/exploratory_analysis.py
 seaborn==0.13.2  # outputs/exploratory_analysis.py
 ipython==8.14.0  # display() in outputs/exploratory_analysis.py
+scipy==1.10.0  # src/8_risk_monitor/evaluation.py: rank-based AUC
+scikit-learn==1.2.1  # src/8_risk_monitor/evaluation.py: logistic baseline
 anthropic==0.86.0

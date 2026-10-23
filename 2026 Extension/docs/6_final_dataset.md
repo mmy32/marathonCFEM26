@@ -96,6 +96,39 @@ For every row:
      whose total sat in the spread column; the spread is blanked.
 
    In both cases the cash rate becomes the old reported rate and `rate_source` becomes `derived`.
+4. Appends `bdc_type`: `listed`, `non-traded` or `private` for the row's BDC in that quarter,
+   from `data/reference/bdc_type.csv`. That table is built by `src/1_data_processing/bdc_type.py`
+   from each BDC's EDGAR filing history (cached in `cache/sec_submissions/`):
+   - **listed** from the first Form 8-A12B, for BDCs with an exchange ticker today or a later
+     Form 25 (merged away), until the delisting;
+   - **non-traded** from the first prospectus (424B, or 497) after an N-2, when there are at
+     least three (a public continuous offering);
+   - **private** otherwise (Form 10 private placements, or an N-2 that never led to an offering).
+
+   Two OTC-traded BDCs are set by hand (Princeton Capital, Firsthand Technology Value Fund).
+   Types change over time: Morgan Stanley Direct Lending, Nuveen Churchill Direct Lending, Palmer
+   Square and Kayne Anderson listed in 2024, MSC Income Fund (non-traded since 2012) and Blue Owl
+   Technology Finance in 2025; Ares Strategic Income and Golub Capital Private Credit turned
+   non-traded in 2023. At 2026Q2: 48 listed BDCs ($153bn FV), 24 non-traded ($233bn), 99
+   private ($142bn).
+5. Appends `non_accrual`: `1` when the row's XBRL facts carry a non-accrual footnote, `0` when
+   not and the filing's non-accrual status is known, blank when unknown.
+   - `src/1_data_processing/nonaccrual_scan.py` reads every XBRL instance in
+     `data/ixbrl/raw_xml/` and writes the footnotes that mention non-accrual, the contexts they
+     are linked to, and any non-accrual totals and net assets the BDC tags
+     (`data/parsed/nonaccrual/`). About 20 minutes.
+   - `nonaccrual_flags.py` keeps footnotes whose wording says the marked investment is on
+     non-accrual ("loan was on non-accrual status as of ...", "non-accrual investment") and
+     drops general notes ("interest rate ... excluding those on non-accrual", "there were no
+     investments on non-accrual", notes linked to most of a filing's lines).
+   - A filing's status is known when it has a flag-type footnote or says no investment is on
+     non-accrual: 1,109 of 1,986 filings, 86% of fair value (listed 98%, non-traded 99%,
+     private 70% at 2026Q2). Other BDCs mark non-accrual only in the HTML table.
+   - Checks: flagged fair value equals the BDC's own tagged non-accrual total in most filings
+     that tag one; mean non-accrual at cost across BDCs at 2026Q2 is 4.2% for listed and 1.0%
+     for non-traded BDCs, against 4.2% and 1.1% in Financing the Economy 2026 (Fig 39).
+   - Some BDCs also footnote preferred equity on non-accrual (non-cash dividends); use debt
+     rows (par > 0) for loan outcomes.
 
 ### Safety checks
 
@@ -132,6 +165,8 @@ From `AUDIT_SUMMARY.md`:
 | Rates (decimals) | `InvestmentInterestRate_normalized`, `..._PaidInCash_normalized`, `..._PaidInKind_normalized`, `InvestmentBasisSpreadVariableRate_normalized`, `InvestmentInterestRateFloor_normalized` |
 | Rate flags | `currency`, `RateType`, `is_fixed`, `is_prime`, `rate_source`, `check_2`, `check_1`, `principal_cost_check` (see `2_ixbrl_cleaning.md`) |
 | Validation | `validation_id` and the confidence, evidence, action and reason columns |
+| BDC | `bdc_type` (`listed` / `non-traded` / `private`, by quarter; added 2026-10-23) |
+| Status | `non_accrual` (`1` / `0` / blank = unknown; added 2026-10-23) |
 
 `index_construction.load_and_prepare_investment_data()` reads this file into the short names
 the analyses use: `FV`, `COST`, `PAR`, `rate_cash`, `interest_rate` and `rate_pik`.

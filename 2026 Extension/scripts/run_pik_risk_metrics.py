@@ -32,6 +32,7 @@ from index_construction import (
     safe_div,
 )
 from subindex_construction import prepare_subindex_input
+from tranches import build_tranche_panel
 from pik_metrics import (
     classify_pik_provenance,
     aggregate_pik_provenance,
@@ -99,10 +100,20 @@ def main():
     logger.info("Provenance summary by quarter:\n" + str(prov_summary["quarterly"].filter(pl.col("pik_provenance") != "zero_pik")))
 
     # -------------------------------------------------------------------------
-    # 3. Position-Level Cash Flows and Market Weights
+    # 3. Tranche chains, cash flows and market weights
     # -------------------------------------------------------------------------
-    logger.info("Computing position-level flows, lags, and market weights...")
-    flow_df = compute_position_level_flows(df, qsort_expr, safe_div)
+    # Loans are matched within a borrower on lien, spread and maturity (tranches.py), so a PIK
+    # toggle is on the same loan. Only funded debt is kept: unfunded commitments and equity
+    # carry no PIK.
+    logger.info("Building tranche chains (lien, spread, maturity within borrower)...")
+    tr = build_tranche_panel(df)
+    tr["tranche_id"] = tr["chain_id"].astype(str)
+    logger.info(f"Tranche panel: {len(tr):,} tranche-quarters, {tr['chain_id'].nunique():,} chains; "
+                f"link rules {tr['link_rule'].value_counts().sort_index().to_dict()}")
+    tr_pl = pl.from_pandas(tr.drop(columns=["maturity"]).assign(cik=tr["cik"].astype(str)))
+
+    logger.info("Computing tranche-level flows, lags, and market weights...")
+    flow_df = compute_position_level_flows(tr_pl, qsort_expr, safe_div, group_cols=["cik", "tranche_id"])
     flow_df = compute_market_weights(flow_df, safe_div)
     logger.info(f"Flow-computed panel: {flow_df.height:,} rows")
 
@@ -110,8 +121,19 @@ def main():
     # 4. Contractual vs. Distress Amendment Classification (Item 1)
     # -------------------------------------------------------------------------
     logger.info("Running Step 1: Classifying loan-level transitions (contractual vs. distress amendment)...")
-    flow_df = classify_loan_pik_transitions(flow_df, min_amendment_bps=0.015)
+    flow_df = classify_loan_pik_transitions(flow_df)
     trans_summary = aggregate_pik_transitions(flow_df)
+
+    # Loan-level P1-P3 for the signal tests (Risk Dimensions doc, section 2)
+    signals = flow_df.select([
+        "cik", "family", "cal_q", "borrower_key", "lien", "tranche_id", "xb_id", "xb_tier", "link_rule",
+        "sector", "PAR", "FV", "COST", "price", "PIK_Final", "IR_Final", "pik_share", "P1_pct",
+        "is_distress_amendment", "pik_transition_state", "pik_at_origination", "origination_censored",
+        "pik_acquired", "check_2",
+    ])
+    signals_csv = outputs_dir / "pik_tranche_signals.csv"
+    signals.write_csv(str(signals_csv))
+    logger.info(f"Saved tranche-level PIK signals to {signals_csv}")
 
     trans_csv = outputs_dir / "pik_transitions_summary.csv"
     trans_summary.write_csv(str(trans_csv))

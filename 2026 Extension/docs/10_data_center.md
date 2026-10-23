@@ -65,8 +65,11 @@ The current list tags 122 borrower-name variants:
   - `bdc_exposure_panel.csv`: BDC by quarter.
   - Four charts.
   - **Base:** these tables count every tagged borrower, i.e. the upper-bound set. BDCs are
-    grouped by asset manager with `manager()`: a list of name patterns plus `CIK_MANAGERS`. A BDC
-    that matches none is its own manager.
+    grouped by asset manager with `manager()` from `src/1_data_processing/manager_family.py`
+    (shared with crowding and dispersion; see `11_tranche_matching.md`): a list of name
+    patterns plus `CIK_FAMILIES`. A BDC that matches none is its own manager. The list was
+    extended on 2026-10-23 (TCW, PennantPark, Oaktree, SLR, Sixth Street and others), so the
+    manager charts can group a few more BDCs than the saved outputs, which have not been rerun.
 - **`plot_data_center_timeseries.py`:**
   - **Totals:** splits loans into the three scopes and the nested estimates
     (`dc_loans_timeseries.csv`, `dc_loans_total.png`). A loan is a tagged row that is not equity

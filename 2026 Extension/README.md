@@ -129,15 +129,28 @@ All read `FINAL_DATASET.csv` and write to `outputs/`.
 | Market index vs. CDLI, return decompositions (market, Technology, senior loans), senior loans vs. CDLI-S, index vs. SOFR | `python src/2_index_construction/index_construction.py` | `outputs/index_construction_plots/` |
 | Data coverage: filings by type, parsing success by quarter | `python src/1_data_processing/plot_data_coverage.py` | `outputs/index_construction_plots/` |
 | Sector sub-indices | `python src/7_sector/subindex_construction.py` | `outputs/sector_subindices_plots/` |
-| Concentration and crowding | `python src/3_concentration_crowding/concentration_crowding.py` | `outputs/concentration_crowding_plots/` |
+| Concentration and crowding (C1-C4 by manager family) | `python src/3_concentration_crowding/concentration_crowding.py` | `outputs/concentration_crowding_plots/`, `outputs/risk_signals/crowding_borrower_metrics.csv` |
 | BDC universe growth | `python src/1_data_processing/bdc_growth.py` | `outputs/eda_plots/` |
 | PIK risk metrics | `python scripts/run_pik_risk_metrics.py` | `outputs/pik/`, `outputs/pik_plots/` |
 | Data-center tagging | `python src/6_data_center/classify_data_center_borrowers.py` | `data/data_center/` |
 | Data-center exposure | `python src/6_data_center/data_center_analysis.py`, `plot_data_center_timeseries.py`, `plot_data_center_lenders.py` | `outputs/data_center_plots/` |
 | Data-center screen (from saved chat replies) | `python src/6_data_center/screen_via_chat.py merge` | `data/data_center/data_center_screen.csv` |
-| Valuation dispersion | functions in `outputs/exploratory_analysis.py`, for a notebook | shown inline |
+| Valuation dispersion (V1, V2, V4 on matched tranches) | `python scripts/run_dispersion_signals.py`; notebook views in `outputs/exploratory_analysis.py` | `outputs/risk_signals/dispersion_tranches.csv`, `tranche_match_coverage.csv` |
 
-Tests: `python tests/test_pik_metrics.py` and `python tests/test_position_matching.py`
+| Risk monitor: benchmark table, peer-relative markdown outcome, signal and evaluation layers | `python scripts/run_risk_monitor.py` | `outputs/risk_monitor/` |
+| Distressed-borrower event study (persistent 20%+ markdowns) | `python scripts/run_distress_event_study.py` | `outputs/risk_monitor/distress/` |
+
+PIK, dispersion and crowding match loans within a borrower on lien, spread and maturity, and
+count each manager family as one holder (`src/1_data_processing/tranches.py`,
+`manager_family.py`; see `docs/11_tranche_matching.md`).
+
+Tests: `python tests/test_pik_metrics.py`, `python tests/test_position_matching.py`,
+`python tests/test_tranches.py` and `python tests/test_nonaccrual_bdc_type.py`
+
+FINAL_DATASET's `bdc_type` and `non_accrual` columns come from
+`python src/1_data_processing/bdc_type.py` (EDGAR filing histories -> `data/reference/bdc_type.csv`)
+and `python src/1_data_processing/nonaccrual_scan.py` (XBRL footnotes -> `data/parsed/nonaccrual/`),
+then `build_final_dataset.py`; see `docs/6_final_dataset.md`.
 
 ## Data
 
@@ -211,6 +224,9 @@ in their FY2025 10-Ks.
 8. [Valuation dispersion](docs/8_valuation_dispersion.md)
 9. [PIK risk metrics](docs/9_pik_metrics.md)
 10. [Data-center lending](docs/10_data_center.md)
+11. [Tranche matching and manager families](docs/11_tranche_matching.md)
+12. [Risk monitor](docs/12_risk_monitor.md): benchmarks, markdown and non-accrual outcomes, evaluation
+13. [Distressed borrowers](docs/13_distress_event_study.md): crowding, concentration, dispersion and PIK around a persistent 20%+ markdown
 - [Nowcasting problem statement](docs/nowcasting_problem.md)
 
 ## Notes

@@ -27,6 +27,8 @@ EDA_PLOTS_DIR           = FIGURES_DIR / "eda_plots"
 PIK_PLOTS_DIR           = FIGURES_DIR / "pik_plots"
 PIK_DIR                 = FIGURES_DIR / "pik"                # PIK summary tables
 DATA_CENTER_PLOTS_DIR   = FIGURES_DIR / "data_center_plots"  # data center tables and charts
+RISK_SIGNALS_DIR        = FIGURES_DIR / "risk_signals"       # loan/borrower signal panels (crowding, dispersion)
+RISK_MONITOR_DIR        = FIGURES_DIR / "risk_monitor"       # benchmark table, outcomes, evaluation tables and charts
 LOGS_DIR                = FIGURES_DIR / "logs"
 
 # ========= Code folders (one per pipeline stage / analysis) =========
@@ -40,6 +42,7 @@ CODE_DIRS = [
     SRC_DIR / "5_pik",
     SRC_DIR / "6_data_center",
     SRC_DIR / "7_sector",
+    SRC_DIR / "8_risk_monitor",
     SCRIPTS_DIR,
     FIGURES_DIR,   # outputs/exploratory_analysis.py
 ]
@@ -92,6 +95,8 @@ def ensure_dirs() -> None:
         PIK_PLOTS_DIR,
         PIK_DIR,
         DATA_CENTER_PLOTS_DIR,
+        RISK_SIGNALS_DIR,
+        RISK_MONITOR_DIR,
         LOGS_DIR,
         CACHE_DIR,
         IXBRL_RAW_XML_DIR,

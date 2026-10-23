@@ -64,40 +64,50 @@ class TestPIKMetrics(unittest.TestCase):
         self.assertEqual(c100["n_inferred_pik"][0], 1)
 
     def test_classify_loan_pik_transitions(self):
-        """Test multi-period loan state transition tracking."""
-        # 2 loans across 4 quarters:
-        # Loan A: starts pure cash (Q1), converts to PIK in Q2 (distress amendment),
-        #         continues PIK in Q3, cures in Q4 back to cash.
-        # Loan B: starts contractual PIK in Q1, continues in Q2, jumps +200bps in Q3 (amendment).
+        """Test multi-period loan state transition tracking along tranche chains."""
+        # Loan A: cash (Q1), PIK switched on in Q2 (P2 toggle), continues in Q3, cures in Q4.
+        # Loan B: PIK at origination (Q1, 20% of the coupon), unchanged in Q2, PIK share up to
+        #         45% in Q3 (P2: share rises >= 10 points), up 3 points more in Q4 (noise, no P2).
+        # Loan C: a BDC enters in Q2 already on PIK, but the loan was cash-pay when it first
+        #         appeared elsewhere (pik_at_origination False): acquired, not contractual.
         df = pl.DataFrame({
-            "cik": ["CIK_A"] * 4 + ["CIK_B"] * 3,
-            "position_key": ["Loan_A"] * 4 + ["Loan_B"] * 3,  # positions are matched on borrower + seniority
-            "cal_q": ["2024Q1", "2024Q2", "2024Q3", "2024Q4", "2024Q1", "2024Q2", "2024Q3"],
-            "PIK_Final": [0.0, 0.03, 0.03, 0.0, 0.02, 0.02, 0.045],
-            "PAR": [100.0, 100.75, 101.5, 101.5, 50.0, 50.25, 50.8],
-            "FV": [100.0, 98.0, 95.0, 99.0, 50.0, 50.0, 48.0],
+            "cik": ["A"] * 4 + ["B"] * 4 + ["C"] * 2,
+            "tranche_id": ["Loan_A"] * 4 + ["Loan_B"] * 4 + ["Loan_C"] * 2,
+            "cal_q": ["2024Q1", "2024Q2", "2024Q3", "2024Q4"] * 2 + ["2024Q2", "2024Q3"],
+            "PIK_Final": [0.0, 0.03, 0.03, 0.0, 0.02, 0.02, 0.045, 0.048, 0.05, 0.05],
+            "IR_Final": [0.10, 0.11, 0.11, 0.10, 0.10, 0.10, 0.10, 0.10, 0.11, 0.11],
+            "PAR": [100.0, 100.75, 101.5, 101.5, 50.0, 50.25, 50.8, 51.4, 30.0, 30.4],
+            "FV": [100.0, 98.0, 95.0, 99.0, 50.0, 50.0, 48.0, 47.0, 28.0, 27.0],
+            "pik_at_origination": [False] * 4 + [True] * 4 + [False] * 2,
         })
 
-        res = classify_loan_pik_transitions(df, min_amendment_bps=0.015)
+        res = classify_loan_pik_transitions(df)
 
-        # Check Loan A classifications
-        res_a = res.filter(pl.col("position_key") == "Loan_A").sort("cal_q")
+        res_a = res.filter(pl.col("tranche_id") == "Loan_A").sort("cal_q")
         self.assertEqual(res_a["pik_transition_state"].to_list(), [
-            "stable_cash",               # Q1 inception with PIK=0
-            "distress_amendment_pik",    # Q2 0 -> >0 transition
-            "seasoned_pik_continuation", # Q3 ongoing 0.03
-            "cured_pik",                 # Q4 >0 -> 0 transition
+            "stable_cash", "distress_amendment_pik", "seasoned_pik_continuation", "cured_pik",
         ])
         self.assertEqual(res_a["is_distress_amendment"].to_list(), [False, True, False, False])
+        self.assertEqual(res_a["pik_acquired"].to_list(), [False, True, True, False])
 
-        # Check Loan B classifications
-        res_b = res.filter(pl.col("position_key") == "Loan_B").sort("cal_q")
+        res_b = res.filter(pl.col("tranche_id") == "Loan_B").sort("cal_q")
         self.assertEqual(res_b["pik_transition_state"].to_list(), [
-            "contractual_pik",           # Q1 inception with PIK=0.02
-            "seasoned_pik_continuation", # Q2 ongoing 0.02
-            "distress_amendment_pik",    # Q3 jumped 0.02 -> 0.045 (+250 bps >= 150 bps)
+            "contractual_pik", "seasoned_pik_continuation", "distress_amendment_pik", "seasoned_pik_continuation",
         ])
-        self.assertEqual(res_b["is_distress_amendment"].to_list(), [False, False, True])
+        np.testing.assert_allclose(res_b["pik_share"].to_numpy(), [0.2, 0.2, 0.45, 0.48])
+
+        res_c = res.filter(pl.col("tranche_id") == "Loan_C").sort("cal_q")
+        self.assertEqual(res_c["pik_transition_state"].to_list(), ["acquired_pik", "seasoned_pik_continuation"])
+        self.assertEqual(res_c["pik_acquired"].to_list(), [True, True])
+
+    def test_pik_under_25bp_is_noise(self):
+        """A PIK rate under 25 bp (total minus cash rounding) is not a toggle."""
+        df = pl.DataFrame({
+            "cik": ["A", "A"], "tranche_id": ["L", "L"], "cal_q": ["2024Q1", "2024Q2"],
+            "PIK_Final": [0.0, 0.001], "IR_Final": [0.10, 0.10], "PAR": [100.0, 100.0], "FV": [99.0, 99.0],
+        })
+        res = classify_loan_pik_transitions(df).sort("cal_q")
+        self.assertEqual(res["is_distress_amendment"].to_list(), [False, False])
 
     def test_compute_non_cash_metrics(self):
         """Test calculation of the three distinct non-cash metrics."""
@@ -131,7 +141,7 @@ class TestPIKMetrics(unittest.TestCase):
         """Test sector time-series multi-period sweep."""
         df = pl.DataFrame({
             "cik": ["1", "1", "2", "2"],
-            "position_key": ["L1", "L1", "L2", "L2"],
+            "tranche_id": ["L1", "L1", "L2", "L2"],
             "cal_q": ["2024Q1", "2024Q2", "2024Q1", "2024Q2"],
             "sector": ["Technology", "Technology", "Healthcare", "Healthcare"],
             "rate_pik": [0.0, 0.04, 0.02, 0.02],

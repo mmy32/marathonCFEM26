@@ -27,7 +27,6 @@ import sys as _sys
 from pathlib import Path as _Path
 _sys.path.insert(0, str(_Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
 
-import re
 import sys
 
 import matplotlib
@@ -54,48 +53,8 @@ TOP_N = 15
 # BDCs smaller than this are left out of the %-of-portfolio ranking (a single loan dominates them)
 MIN_PORTFOLIO_USD = 100e6
 
-# (regex on the BDC name, manager); first match wins
-MANAGERS = [
-    (r"apollo", "Apollo"),
-    (r"\bares\b", "Ares"),
-    (r"blackstone", "Blackstone"),
-    (r"\bowl\b", "Blue Owl"),
-    (r"goldman|phillip street", "Goldman Sachs"),
-    (r"\bkkr\b|^fs investment", "FS KKR"),
-    (r"main street|^hms income", "Main Street"),
-    (r"\bhps\b", "HPS"),
-    (r"carlyle|^tcg bdc", "Carlyle"),
-    (r"north haven|^sl investment|morgan stanley|^t series middle market", "Morgan Stanley"),
-    (r"bain capital", "Bain Capital"),
-    (r"blackrock", "BlackRock"),
-    (r"antares", "Antares"),
-    (r"barings", "Barings"),
-    (r"lord abbett", "Lord Abbett"),
-    (r"new mountain|^nmf slf", "New Mountain"),
-    (r"monroe capital", "Monroe Capital"),
-    (r"golub", "Golub"),
-    (r"^ab private", "AllianceBernstein"),
-    (r"audax", "Audax"),
-    (r"nuveen churchill", "Nuveen Churchill"),
-]
-# BDCs whose name in BDC_filings_2001_present.csv predates a rename (checked against the
-# ticker in their 2026 filing names)
-CIK_MANAGERS = {
-    1414932: "Oaktree",     # "Fifth Street Finance Corp" -> Oaktree Specialty Lending (OCSL)
-    1379785: "Barings",     # "Triangle Capital Corp" -> Barings BDC (BBDC)
-    1370755: "BlackRock",   # "TCP Capital Corp" -> BlackRock TCP Capital (TCPC)
-}
-
-
-def manager(cik, bdc_name):
-    """Asset manager of a BDC; a BDC that matches no rule is its own manager."""
-    if cik in CIK_MANAGERS:
-        return CIK_MANAGERS[cik]
-    bdc_name = bdc_name if isinstance(bdc_name, str) else str(cik)
-    for pat, mgr in MANAGERS:
-        if re.search(pat, bdc_name, re.I):
-            return mgr
-    return bdc_name
+# BDC -> asset manager; the map is shared with crowding and dispersion (one family = one holder)
+from manager_family import manager  # noqa: E402
 
 
 def load():
