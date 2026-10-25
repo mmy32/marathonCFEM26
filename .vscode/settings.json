@@ -1,0 +1,31 @@
+{
+    "workbench.colorTheme": "Monokai",
+
+    "workbench.colorCustomizations": {
+        "editor.background": "#15100F",
+        "sideBar.background": "#1C1412",
+
+        "activityBar.background": "#7A1F1F",
+        "activityBar.foreground": "#FFF4E6",
+
+        "titleBar.activeBackground": "#8B2E2E",
+        "titleBar.activeForeground": "#FFF4E6",
+
+        "statusBar.background": "#5C1A1A",
+        "statusBar.foreground": "#FFE4C4",
+
+        "panel.background": "#120D0C",
+        "terminal.background": "#100B0A",
+
+        "tab.activeBackground": "#2A1A17",
+        "tab.activeForeground": "#FFF1E1",
+        "tab.inactiveBackground": "#1C1412",
+        "tab.inactiveForeground": "#9E8980",
+
+        "sideBarTitle.foreground": "#E8B89A",
+
+        "activityBar.activeBorder": "#D98B45",
+
+        "statusBarItem.hoverBackground": "#9E3A2F"
+    }
+}
