@@ -200,7 +200,8 @@ def case_marks(lenders: pd.DataFrame, borrower: str, path, start: str = "2024Q4"
     for sp in ("left", "bottom"):
         ax.spines[sp].set_visible(False)
     title = CASE_NAMES.get(borrower.upper(), borrower.title())
-    fig.text(0.02, 0.965, f"{title}: same loan, different values", ha="left", va="top", fontsize=13, color=INK, weight="bold")
+    subtitle = "same loan, different values" if len(fams) > 1 else "value of its loan"
+    fig.text(0.02, 0.965, f"{title}: {subtitle}", ha="left", va="top", fontsize=13, color=INK, weight="bold")
     note = f"Hollow circle = lender has stopped counting the interest as income (non-accrual). Label: latest value (par held, {qs[-1]})."
     fig.text(0.02, 0.02, note, ha="left", va="bottom", fontsize=7.5, color=MUTED)
     fig.subplots_adjust(left=0.1, right=0.97, top=0.86, bottom=0.12)

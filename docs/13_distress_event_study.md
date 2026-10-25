@@ -20,7 +20,7 @@ Code: `src/8_risk_monitor/distress_event_study.py`. Reads only `FINAL_DATASET.cs
 | `drop_cutoffs.csv` | Per quarter: eligible borrowers, bottom-1% drops, the cutoff return, share marked down, and what a fixed -20% rule would flag |
 | `distress_events.csv` | First bottom-1% drop per borrower: quarter, drop, its percentile, status, share of the drop regained |
 | `signal_watchlist.csv`, `signal_watchlist_quarters.csv` | **Watchlist**: borrowers with all four signals high at once (46); see "Watchlist" below |
-| `case_studies/` | For each borrower in `data/reference/case_studies.csv` (WebPT, BVI Medical, Medallia, LogRhythm, Premier Imaging): `<name>_quarterly.csv` (signal path by quarter) and `<name>_lenders.csv` (each BDC: family, type, par, its mark, the loan's weight in its book, PIK rate, non-accrual), plus all cases combined. Add a row to the reference file to add a case |
+| `case_studies/` | For each borrower in `data/reference/case_studies.csv` (WebPT, BVI Medical, Medallia, LogRhythm, Premier Imaging, Athletico Management): `<name>_quarterly.csv` (signal path by quarter) and `<name>_lenders.csv` (each BDC: family, type, par, its mark, the loan's weight in its book, PIK rate, non-accrual), plus all cases combined. Add a row to the reference file to add a case |
 | `distressed_borrowers_register.csv` | **The record of distressed borrowers** (541): event quarter and drop, status, price / non-accrual / PIK before and after, lender families and number of BDCs before the event, BDC exposure, data center tag, and the outside check with its source where one was done |
 | `event_profiles.csv` | Mean of each signal at k = -4..+2 for four event groups and matched controls, with n |
 | `pre_event_contrast.csv` | Persistent vs recovered events before the drop (k = -2, -1), rank-sum p-values |
@@ -255,7 +255,7 @@ Also on watch: **LogRhythm** (7 families; dispersion jumped in 2025Q4; PIK appea
   and a falling lender count add to the price baseline and hold out of sample.
 - **Persistence cannot be predicted from these signals** (persistent and recovered look alike
   beforehand), except that prior PIK amendments point to a restructuring that later recovers.
-- **Two-thirds of events have a single lender family**, so dispersion and the crowding
+- **Most events have a single lender family** (88% of all 541; 82% of the 334 persistent ones), so dispersion and the crowding
   measures rest on the 59 multi-family persistent events (Computer Data Source is a single-family case).
 
 ## Limitations
