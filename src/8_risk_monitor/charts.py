@@ -187,16 +187,20 @@ def case_marks(lenders: pd.DataFrame, borrower: str, path, start: str = "2024Q4"
         na = s[s["na"] == 1]
         ax.scatter([x[q] for q in na["cal_q"]], na["mark"], s=110, facecolor=SURFACE, edgecolor=c, linewidth=2, zorder=4)
         name = fam if len(fam) <= 18 else fam[:17].rstrip() + "…"
-        ends.append((xs[-1], s["mark"].iloc[-1], f"{name} {s['mark'].iloc[-1]:.0f}  (${s['par'].iloc[-1] / 1e6:,.0f}M)", fam == low))
+        ends.append((xs[-1], s["mark"].iloc[-1], f"{name} {s['mark'].iloc[-1]:.0f}  (${s['par'].iloc[-1] / 1e6:,.0f}M)",
+                     fam == low, c))
     lo, hi = ax.get_ylim()
-    ys = _spread([e[1] for e in ends], gap=(hi - lo) * 0.055)
-    for (xe, ye, text, is_low), yl in zip(ends, ys):
-        ax.annotate(text, (xe, ye), xytext=(len(qs) - 1 + 0.25, yl), textcoords="data", va="center", fontsize=8.5,
-                    color=INK, weight="bold" if is_low else "normal",
-                    arrowprops=dict(arrowstyle="-", color=GRID, linewidth=0.8) if abs(yl - ye) > 0.5 or xe < len(qs) - 1 else None)
+    ys = _spread([e[1] for e in ends], gap=(hi - lo) * 0.06)
+    # Each label gets a key in its line's colour and a leader line in that colour from the line's end,
+    # so lines that finish close together can still be told apart. The label text stays in ink.
+    x_key = len(qs) - 1 + 0.35
+    for (xe, ye, text, is_low, c), yl in zip(ends, ys):
+        ax.plot([xe + 0.1, x_key - 0.06], [ye, yl], color=c, linewidth=1.1, alpha=0.75, zorder=2)
+        ax.plot([x_key, x_key + 0.32], [yl, yl], color=c, linewidth=4, solid_capstyle="round", zorder=3)
+        ax.text(x_key + 0.45, yl, text, va="center", fontsize=8.5, color=INK, weight="bold" if is_low else "normal")
     ax.set_ylim(lo, max(hi, max(ys) + (hi - lo) * 0.03))
     ax.set_xticks(range(len(qs)), qs)
-    ax.set_xlim(-0.3, len(qs) + 2.1)
+    ax.set_xlim(-0.3, len(qs) + 2.6)
     for sp in ("left", "bottom"):
         ax.spines[sp].set_visible(False)
     title = CASE_NAMES.get(borrower.upper(), borrower.title())

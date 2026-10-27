@@ -158,6 +158,14 @@ Fund Index (Fig 15: 9.5% in 2025, 0.9% in Q1 2026). Outputs in
 `summary_vs_bdc_market.csv` and `summary_vs_msci.csv` (FV weight at 2026Q2, 2025 and Q1 2026
 returns, and the gap to MSCI).
 
+It also draws one **return decomposition** per report sector, `decomp_<sector>.png`, in the same
+format as `index_construction_plots/technology_sector_decomposition.png`
+(`plot_sector_decompositions`, added 2026-10-26): the sector's positions re-weighted within the
+sector, and each quarter's return split into price change, cash interest and PIK interest. One
+panel per sector, so it is the simpler chart to present. Numbers in `decomposition_by_sector.csv`.
+Software, 2026Q1: price -3.33%, cash interest 2.10%, PIK 0.09%, total -1.14% (the only negative
+sector; every sector lost some value that quarter).
+
 | Sector | FV weight | 2025 | Q1 2026 |
 |---|---|---|---|
 | Energy & Utilities | 1.7% | 7.9% | 1.9% |

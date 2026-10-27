@@ -1,0 +1,120 @@
+C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\src\8_risk_monitor\benchmarks.py:68: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  t["pik_toggle"] = t["is_distress_amendment"].astype(bool)
+C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\src\8_risk_monitor\benchmarks.py:69: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  t["spread_chg"] = (t["spread"] - t["spread_prev"]).abs() >= 0.0025
+C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\src\8_risk_monitor\benchmarks.py:70: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  t["spread_up"] = (t["spread"] - t["spread_prev"]) >= 0.0025
+C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\src\8_risk_monitor\benchmarks.py:71: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  t["maturity_chg"] = (t["maturity"] - t["maturity_prev"]).dt.days.abs() > 31
+C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\src\8_risk_monitor\benchmarks.py:72: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  t["any_change"] = t["pik_toggle"] | t["spread_chg"] | t["maturity_chg"]
+C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\src\8_risk_monitor\benchmarks.py:74: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  t["stress_change"] = t["pik_toggle"] | t["spread_up"] | t["maturity_chg"]
+Building the loan-quarter panel (tranche chains, outcomes, signals) ...
+  282,749 tranche-quarters
+Market layer ...
+           figure                                                                                      reported                                                                                                                                                                                                                                                                                  panel  status
+Fig 1 / p.39 text                                                            Market $4.1tn; BDCs ~$500bn (~12%)                                                                                                                                                                                                                                   $528bn at 2026Q2 (12.9% of $4.1tn); $522bn at 2025Q4    done
+           Fig 18             BDC sector weights Jul 2026: business services 25%, software 21%, industrials 17%   Software 16.2%; Healthcare 15.9%; Consumer 11.6%; Industrials (ex-business services) 10.9%; Business Services 10.3%; Other / Unclassified 10.2%; Financials & Insurance 9.2% | excl. unclassified: Software 18.1%, Business Services 11.5%, Industrials (ex-business services) 12.1%    done
+           Fig 10                                              Top 20% of managers deployed 88% of 2025 capital                                                                                                                                                                                                                                         79% (top 20% of 80 BDC manager families, 2025)    done
+           Fig 11                                                         Deals above $1bn ~12% of transactions                                                                                                                                                                                                                                        0.4% of borrowers (11% of BDC-held par), 2026Q2    done
+           Fig 15 MSCI private credit closed-end index: 9.5% in 2025, 0.9% in Q1 2026; CDLI 9.3% in 2025 (p.23)                                                                                                                                                                                                                                         9.6% in 2025; 1.0% in Q1 2026; 1.7% in Q2 2026    done
+           Fig 40                                Share of loans with a significant amendment: mean 10.6% (2025)                                                                                                                                         mean across 151 BDCs: 18.3% stress-type change (PIK toggle 4.1%, spread up 7.6%, maturity moved 9.8%); 29.7% any term change incl. spread cuts    done
+           Fig 27                       BDC gross assets by type (listed / non-traded / private), 2015-Apr 2026                                                                                                                                                                                                         listed $153bn (48 BDCs); non-traded $233bn (24 BDCs); private $142bn (99 BDCs)    done
+           Fig 37                Non-accruals: 79% of flagship funds <= 2.5% of NAV, 17% above 5%, 3% in 2.6-5%                                                                                                                                                                                                                           67% of 111 BDCs <= 2.5% of NAV, 18% above 5%, 15% in between    done
+           Fig 39                             Non-accruals 4.2% public (listed) vs 1.1% private BDCs, June 2026 listed mean 4.1% (median 3.4%, cost-weighted 2.8%, 42 BDCs); non-traded mean 1.0% (median 0.4%, cost-weighted 1.1%, 21 BDCs); private mean 4.3% (median 1.2%, cost-weighted 1.5%, 49 BDCs); all non-listed (non-traded + private) cost-weighted 1.2% (mean 3.3%, median 0.8%, 70 BDCs)    done
+           Fig 38                    Default rate by industry, Q2 2026 (healthcare highest, 2.7% size-weighted) Transportation 5.2%; Real Estate 2.7%; Software 2.6%; Communication & Media 2.4%; Healthcare 2.1%; Materials 2.0%; Consumer 1.9%; Industrials (ex-business services) 1.7%; Energy & Utilities 1.6%; Business Services 0.9%; Technology (ex-software) 0.9%; Financials & Insurance 0.5%    done
+           Fig 25                    Non-listed BDC fundraising $12.2bn 1Q25 -> $2.0bn 2Q26; redemptions $5.9bn                                                                                                                                                                                                                                                                                        pending
+Outcome, rung 1 ...
+Signal layer ...
+  rules: {'crowding': 0.1, 'disagreement': 0.1, 'pik_half': 0.5, 'pik_switch_q': 0.0, 'pik_switched': 0.0}
+sign    crowding  disagreement  distress  pik_half  pik_switch_q  pik_switched
+cal_q                                                                         
+2023Q1     0.068         0.099     0.017     0.031           NaN           NaN
+2023Q2     0.067         0.100     0.018     0.032         0.016           NaN
+2023Q3     0.054         0.100     0.020     0.030         0.023           NaN
+2023Q4     0.065         0.099     0.020     0.030         0.024           NaN
+2024Q1     0.062         0.099     0.080     0.034         0.023         0.062
+2024Q2     0.049         0.100     0.082     0.036         0.021         0.064
+2024Q3     0.046         0.100     0.082     0.036         0.025         0.065
+2024Q4     0.065         0.100     0.084     0.037         0.026         0.067
+2025Q1     0.047         0.100     0.086     0.038         0.024         0.068
+2025Q2     0.050         0.100     0.082     0.041         0.020         0.065
+2025Q3     0.050         0.100     0.085     0.043         0.024         0.066
+2025Q4     0.052         0.100     0.081     0.044         0.021         0.063
+2026Q1     0.053         0.100     0.081     0.042         0.022         0.064
+2026Q2     0.060         0.100     0.082     0.045         0.022         0.065
+bucket      1      2      3    4–5     6+
+cal_q                                    
+2023Q1  0.510  0.194  0.087  0.121  0.087
+2023Q2  0.494  0.196  0.091  0.116  0.104
+2023Q3  0.450  0.214  0.095  0.120  0.120
+2023Q4  0.446  0.206  0.088  0.127  0.132
+2024Q1  0.431  0.195  0.094  0.135  0.146
+2024Q2  0.418  0.194  0.102  0.134  0.151
+2024Q3  0.410  0.190  0.103  0.129  0.167
+2024Q4  0.404  0.182  0.117  0.130  0.167
+2025Q1  0.392  0.190  0.109  0.137  0.172
+2025Q2  0.383  0.181  0.121  0.139  0.176
+2025Q3  0.376  0.186  0.124  0.135  0.179
+2025Q4  0.377  0.185  0.115  0.133  0.189
+2026Q1  0.400  0.177  0.124  0.120  0.179
+2026Q2  0.394  0.173  0.119  0.126  0.188
+ cal_q  borrowers          par  p50_borrowers  p50_dollars  p90_borrowers  p90_dollars  p95_borrowers  p95_dollars
+2023Q1        876 1.043650e+11         0.0112       0.0200         0.0557       0.0556         0.0870       0.0700
+2023Q2        980 1.146107e+11         0.0113       0.0189         0.0574       0.0509         0.1009       0.0806
+2023Q3       1181 1.264862e+11         0.0096       0.0150         0.0417       0.0447         0.0754       0.0627
+2023Q4       1217 1.444718e+11         0.0097       0.0130         0.0480       0.0484         0.0908       0.0898
+2024Q1       1398 1.599759e+11         0.0068       0.0102         0.0385       0.0417         0.0701       0.0722
+2024Q2       1527 1.788739e+11         0.0051       0.0099         0.0306       0.0378         0.0515       0.0509
+2024Q3       1628 2.004524e+11         0.0050       0.0080         0.0300       0.0438         0.0527       0.0623
+2024Q4       1750 2.185147e+11         0.0050       0.0091         0.0278       0.0385         0.0509       0.0607
+2025Q1       1848 2.433656e+11         0.0050       0.0079         0.0281       0.0337         0.0534       0.0681
+2025Q2       1989 2.664540e+11         0.0050       0.0075         0.0286       0.0388         0.0566       0.0714
+2025Q3       2149 2.879832e+11         0.0047       0.0073         0.0305       0.0413         0.0601       0.0738
+2025Q4       2226 3.045730e+11         0.0047       0.0074         0.0304       0.0355         0.0585       0.0576
+2026Q1       2186 2.879196e+11         0.0063       0.0116         0.0363       0.0500         0.0644       0.0950
+2026Q2       2258 3.019456e+11         0.0059       0.0120         0.0397       0.0631         0.0744       0.0930
+ cal_q  bdcs  median_exposure  over_line  share_over_line  single_name_over  share_single_name_over
+2024Q1   119            0.125         16            0.134                11                   0.092
+2024Q2   126            0.131         29            0.230                12                   0.095
+2024Q3   130            0.123         32            0.246                 9                   0.069
+2024Q4   132            0.137         33            0.250                12                   0.091
+2025Q1   138            0.134         30            0.217                14                   0.101
+2025Q2   148            0.128         27            0.182                15                   0.101
+2025Q3   149            0.125         27            0.181                16                   0.107
+2025Q4   150            0.113         20            0.133                16                   0.107
+2026Q1   155            0.122         32            0.206                16                   0.103
+2026Q2   158            0.124         36            0.228                17                   0.108
+ size_quintile  borrowers  mean_families  p90_families  median_par_musd  share_1  share_2  share_3  share_4–5  share_6+  spearman_size_vs_families_median_q
+             1      20689          1.032           1.0            1.777    0.970    0.027    0.002      0.000     0.000                               0.471
+             2      20681          1.126           2.0            6.944    0.894    0.089    0.014      0.003     0.000                               0.471
+             3      20682          1.265           2.0           16.477    0.807    0.141    0.038      0.014     0.001                               0.471
+             4      20681          1.568           3.0           36.832    0.657    0.209    0.078      0.048     0.008                               0.471
+             5      20687          2.664           6.0          115.574    0.411    0.221    0.130      0.135     0.103                               0.471
+  signal layer -> C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\outputs\risk_monitor\signals
+Done (evaluation skipped): C:\Users\IEEA_GC_Laptop_05\OneDrive\Desktop\Fall 2026\ORIE 5220\Cornell x Marathon Capstone Project 2025 (1)\Cornell x Marathon Capstone Project 2025\Final Code\Final Code\outputs\risk_monitor

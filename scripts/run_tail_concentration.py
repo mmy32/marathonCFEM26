@@ -88,8 +88,8 @@ def chart(t: pd.DataFrame, na: pd.DataFrame, path: Path) -> None:
     h = 0.36
     for i, p in enumerate(TAILS):
         fv, loss = pooled.loc[p, "fv_share"] * 100, pooled.loc[p, "loss_share"] * 100
-        ax.barh(i - h / 2 - 0.01, fv, height=h, color=VALUE_GREY, label="Share of loan value" if i == 0 else None)
-        ax.barh(i + h / 2 + 0.01, loss, height=h, color=BLUE, label="Share of all markdown dollars" if i == 0 else None)
+        ax.barh(i - h / 2 - 0.01, fv, height=h, color=VALUE_GREY, label="% of loan value" if i == 0 else None)
+        ax.barh(i + h / 2 + 0.01, loss, height=h, color=BLUE, label="% of all markdown dollars" if i == 0 else None)
         ax.text(fv + 0.8, i - h / 2 - 0.01, f"{fv:.1f}%", va="center", fontsize=9, color=MUTED)
         ax.text(loss + 0.8, i + h / 2 + 0.01, f"{loss:.0f}%", va="center", fontsize=10, color=INK, weight="bold")
     ax.set_yticks(list(y), [f"Worst {int(p * 100)}%\nof borrowers" for p in TAILS], fontsize=10, color=INK)
@@ -111,14 +111,16 @@ def chart(t: pd.DataFrame, na: pd.DataFrame, path: Path) -> None:
     ax.legend(frameon=False, fontsize=9, loc="lower left", bbox_to_anchor=(-0.01, 1.0), ncol=2,
               labelcolor=INK, handlelength=1.2)
     n1 = na[na["tail"] == 0.01].iloc[0]
-    note = (f"Non-accruals are even more concentrated: in {n1['cal_q']}, {n1['borrowers']} borrowers (1%) hold "
-            f"{n1['na_share'] * 100:.0f}% of non-accrual dollars.\n"
-            f"Exception: in 2026Q1, when spreads widened across the market, the worst 10% caused "
+    # The non-accrual point is a finding in its own right, so it gets its own, larger line.
+    fig.text(0.02, 0.135, f"Non-accruals are more concentrated still: 1% of borrowers ({n1['borrowers']}) hold "
+             f"{n1['na_share'] * 100:.0f}% of non-accrual dollars ({n1['cal_q']})", fontsize=10.5, color=INK,
+             ha="left", va="bottom")
+    note = (f"Exception: in 2026Q1, when spreads widened across the market, the worst 10% caused "
             f"{q1.loc[0.10, 'loss_share'] * 100:.0f}% of markdowns (vs {pooled.loc[0.10, 'loss_share'] * 100:.0f}% pooled).\n"
             "Change in value = change in fair value net of new lending and repayments; borrowers with prior value ≥ $1M. "
             "Source: FINAL_DATASET.")
     fig.text(0.02, 0.015, note, fontsize=7.5, color=MUTED, ha="left", va="bottom", linespacing=1.5)
-    fig.subplots_adjust(left=0.15, right=0.97, top=0.78, bottom=0.25)
+    fig.subplots_adjust(left=0.15, right=0.97, top=0.78, bottom=0.28)
     fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)
 

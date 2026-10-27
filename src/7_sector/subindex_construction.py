@@ -542,6 +542,42 @@ def _safe_filename(name: str) -> str:
     return "_".join(filter(None, "".join(keep).split("_")))
 
 
+def plot_sector_decompositions(
+    flows: pl.DataFrame,
+    dimension: str = "sector_report",
+    out_dir = _Path(__file__).resolve().parents[2] / "outputs" / "sector_subindices_report_plots",
+    exclude: tuple[str, ...] = DEFAULT_UNKNOWN_SECTOR_LABELS,
+):
+    """
+    One quarterly return decomposition chart per sector (price return, cash interest, PIK
+    interest), in the same format as index_construction_plots/technology_sector_decomposition.png:
+    the sector's positions re-weighted within the sector, then the market decomposition run on
+    them. Saved as decomp_<sector>.png in `out_dir`; returns the numbers, one row per
+    sector and quarter (contributions as fractions; total = price + cash + PIK).
+
+    Simpler to read than the sub-index charts (plot_sector_subindices): one panel, and the
+    total return split into where it came from.
+    """
+    import pandas as pd
+    from index_construction import plot_quarterly_return_decomposition
+
+    out_dir = _Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for name in sorted(flows.select(pl.col(dimension).drop_nulls().unique()).to_series().to_list()):
+        if name in exclude:
+            continue
+        weighted = compute_market_weights(flows.filter(pl.col(dimension) == name), safe_div)
+        d = aggregate_return_decomposition(weighted, safe_div).to_pandas()
+        plot_quarterly_return_decomposition(
+            d, title=f"Market-Level BDC Index – Quarterly Return Decomposition - {name} only\n",
+            save_path=out_dir / f"decomp_{_safe_filename(name)}.png",
+        )
+        d["total"] = d["contrib_price"] + d["contrib_cash"] + d["contrib_pik"]
+        rows.append(d.assign(sector=name))
+    return pd.concat(rows, ignore_index=True)
+
+
 def plot_sector_subindices(
     sector_results: dict[str, dict],
     market_index: pl.DataFrame,
@@ -791,6 +827,9 @@ if __name__ == "__main__":
     report_results = build_all_subindices_for_dimension(flows, "sector_report")
     report_summary = plot_sector_subindices(report_results, market_index, out_dir=report_dir)
     report_summary.to_csv(report_dir / "summary_vs_bdc_market.csv", index=False)
+    # one-panel version of the same story: each sector's quarterly return split into price, cash and PIK
+    plot_sector_decompositions(flows, "sector_report", out_dir=report_dir).to_csv(
+        report_dir / "decomposition_by_sector.csv", index=False)
     vs_msci = msci_comparison(report_results, market_index, flows)
     vs_msci.to_csv(report_dir / "summary_vs_msci.csv", index=False)
     print("\n--- report-aligned sector sub-indices vs. MSCI private credit index (2025, Q1 2026) ---")

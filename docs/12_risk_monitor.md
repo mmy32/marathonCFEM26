@@ -24,10 +24,14 @@ Code: `src/8_risk_monitor/` (`monitor_panel.py`, `benchmarks.py`, `evaluation.py
 | `benchmark_table.csv`, `market_series.csv`, `market_layer.png` | Market layer |
 | `outcome_rung1_by_quarter.csv` | Eligible loans, events, decile cutoff and share marked down per quarter |
 | `signal_tail_by_bdc.csv`, `signal_layer.png` | Signal layer, all signals combined |
-| `signals/signal_tail_<signal>.png`, `signal_tail_summary.csv` | Signal layer, one chart per signal (concentration, crowding, dispersion, pik_total, pik_amendment) |
-| `signals/bdc_signals.csv`, `signals/borrower_signals.csv` | The signal values per BDC-quarter and borrower-quarter |
+| `signals/borrower_warning_flags.csv`, `signals/warning_tail_summary.csv` | Warning signs per borrower-quarter (0/1 per sign, plus the rank behind the two ranked signs) and the share of borrowers flagged per quarter |
+| `signals/warning_crowding.png`, `crowding_distribution.csv` | Crowding as a distribution: share of borrowers and of BDC-held debt by manager count (1, 2, 3, 4-5, 6+), each quarter |
+| `signals/warning_disagreement.png`, `disagreement_percentiles.csv` | Disagreement as a distribution: median, 90th and 95th percentile of the gap, by borrowers and by dollars, each quarter |
+| `signals/warning_pik.png` | PIK: borrowers paying more than half their interest in kind; borrowers switching to PIK each quarter |
+| `signals/bdc_exposure.csv`, `bdc_exposure_by_quarter.csv`, `bdc_exposure.png` | Each BDC's exposure to flagged borrowers: share of portfolio, largest single flagged borrower |
+| `signals/bdc_exposure_by_type.*` | Exposure by BDC type, latest quarter |
+| `signals/borrower_signals.csv`, `signals/confounder_size.*` | Lender families and size per borrower-quarter; crowding by borrower size |
 | `signals/pairwise_overlap*.csv`, `signals/pairwise_overlap.png` | Portfolio overlap between manager families (C5) |
-| `signals/confounder_size.*`, `signals/confounder_bdc_type.*` | Preliminary confounder splits |
 | `evaluation_summary.csv`, `evaluation_buckets.csv`, `evaluation_h{1,2,4}.png` | Evaluation layer |
 | `evaluation_summary_sector_outcome.csv` | The same at h = 2 with the outcome defined within quarter x sector |
 
@@ -105,26 +109,99 @@ The rise from 2023 is partly mechanical: C4 needs four quarters of history, and 
 loans held by 2+ families (needed for V2 and the distance) grows with the panel. The
 guideline's growth confound applies; compare quarters from 2024Q1 on.
 
-## Signal layer, one signal at a time (`signal_tails.py`)
+## Signal layer: warning signs per borrower, exposure per BDC (`signal_tails.py`)
 
-The guideline asks for each signal's cross-section by quarter, with the right tail marked and
-whether the tail is growing. A within-quarter percentile always puts 10% in its top decile, so
-the tail threshold is fixed instead: **the 90th percentile of the pooled 2023Q2-2024Q4
-cross-section**. Each chart shows the 10-25-50-75-90 percentiles by quarter with the tail units
-as points, and the share of units above the threshold (dotted line: the baseline share).
+Borrowers default; a BDC is hurt when a borrower it holds defaults, in proportion to how much
+of its portfolio that borrower is. So the warning signs are measured on the **borrower**, and
+BDC risk is measured second, as **exposure** to the flagged borrowers. (Changed 2026-10-26: the
+signal layer used to score concentration, dispersion and PIK per BDC. Concentration is a BDC
+measure and stays one, inside exposure; dispersion and PIK are now borrower measures.)
 
-| Signal (unit) | Definition | Tail threshold | Units in the tail | Reading |
+The borrower-quarter panel is `distress_event_study.borrower_quarter_panel` (also used for the
+stress events).
+
+**Distributions, not fixed cutoffs** (changed 2026-10-26, on the sponsor's advice). Each sign is
+shown as its whole distribution each quarter, counted by number of borrowers and by dollars of
+BDC-held debt; that shows whether the tail is growing. Individual borrowers are flagged by rank:
+in the top 10% of the quarter (crowding: of its size group, a fifth of BDC-held par). A rank
+always flags about 10%, so it says who is in the tail, not whether the tail grows. Ties are never
+split (a borrower is in the top 10% when at most 10% of its group have a value at least as high),
+so whole-number manager counts flag a little under 10%. Before this change crowding and
+disagreement were flagged above a fixed line (the 2023-24 90th percentile: more than 3 manager
+families; a gap above 3.9 points of par); the manager-count line fell on a large tie (5.6% of
+borrowers above it, 10.7% at or above).
+
+**Crowding** (`C1_families`), share of borrowers / of BDC-held par by manager count:
+
+| Managers | Borrowers, 2023Q1 | Borrowers, 2026Q2 | Par, 2023Q1 | Par, 2026Q2 |
 |---|---|---|---|---|
-| Concentration (BDC) | HHI of the BDC's book across borrowers, cost weights; effective N = 1/HHI | HHI 0.046 (effective N 22) | 6-13% a quarter, no trend | Books get more diversified: median effective N 59 to 71 borrowers |
-| Crowding (borrower) | Lender manager families holding the borrower | more than 3 families | 4.1% (2023Q1) to 7.2% (2026Q2) | Growing, partly because the panel covers more BDCs over time |
-| Dispersion (BDC) | Par-weighted mean of the BDC's distance from co-lender consensus, loans held by 2+ families | 0.0146 (1.5 points of par) | 4.5-10% in 2024-25, 8.6% in 2026Q1, 11.4% in 2026Q2 (highest since 2023) | The 1H26 stress shows here: median distance up from 0.42 to 0.68 points. 2023 is noisy (few matched loans) |
-| PIK, total (BDC) | Share of debt FV paying any PIK | 20.4% | 7-12%, flat | Market-level PIK is steady |
-| PIK, amendment-driven (BDC) | Share of debt FV on PIK acquired after origination (cash-pay first, PIK now; includes P2 toggles) | 9.2% | 18% (2024Q4) to 20% (2026Q2) | Rising slowly. Before 2024Q4 the rise is mechanical: acquired PIK needs the panel to have seen the loan pay cash first |
+| 1 | 78.9% | 72.5% | 51.0% | 39.4% |
+| 2 | 12.7% | 14.6% | 19.4% | 17.3% |
+| 3 | 4.3% | 5.7% | 8.7% | 11.9% |
+| 4-5 | 3.0% | 4.5% | 12.1% | 12.6% |
+| 6+ | 1.0% | 2.7% | 8.7% | 18.8% |
 
-Dispersion is the lender-versus-consensus measure the outline asks for: it ranks which BDC
-marks away from its co-lenders, not just whether lenders disagree. PIK is split into total
-(the market series the report and Houlihan Lokey publish) and amendment-driven (the sharper
-signal, Hunt p.57), using the origination classification in `9_pik_metrics.md`.
+The far tail moved most. Flag: more manager families than 9 in 10 borrowers of its size fifth
+that quarter, 4.6-6.8% of borrowers. In 2026Q2 4 managers is about the 74th percentile of the
+largest fifth (BVI Medical, WebPT: not flagged); Medallia's 7 in 2025Q1 was in its top 10%.
+
+**Disagreement on value** (`V1_range`: par-weighted range of the lenders' marks over the
+borrower's loans held by 2+ families; only those borrowers, 25% of all), cents per dollar owed:
+
+| Quarter | Median, borrowers | 90th pct, borrowers | Median, dollars | 90th pct, dollars | 95th pct, dollars |
+|---|---|---|---|---|---|
+| 2023Q1 | 1.1 | 5.6 | 2.0 | 5.6 | 7.0 |
+| 2024Q4 | 0.5 | 2.8 | 0.9 | 3.9 | 6.1 |
+| 2025Q4 | 0.5 | 3.0 | 0.7 | 3.6 | 5.8 |
+| 2026Q2 | 0.6 | 4.0 | 1.2 | 6.3 | 9.3 |
+
+"Dollars" weights each borrower by its BDC-held par: the 90th percentile by dollars is the gap
+that 10% of shared dollars exceed. By dollars the 2026Q2 tail is the widest in the panel; by
+borrowers it is up from the 2024 low but below early 2023. Flag: in the top 10% of the quarter.
+
+| Sign (per borrower) | Column | Flagged when | Share of borrowers flagged | Reading |
+|---|---|---|---|---|
+| Crowding | `C1_families` | top 10% of its size fifth that quarter | 4.6-6.8% | See the distribution above |
+| Disagreement on value | `V1_range` | top 10% of the quarter (borrowers with 2+ families) | 10% of those borrowers by construction | See the percentiles above |
+| PIK, more than half | `pik_share` | more than half of its interest is paid in kind (par-weighted PIK share of the coupon, e.g. 6% or more of a 12% rate) | 3.1% (2023Q1) to 4.5% (2026Q2) | Rising steadily. About 12% of borrowers pay some PIK, most of them well under half in kind (median about a third) |
+| PIK switch this quarter | `toggle_par_share` | one of its loans switched to PIK this quarter: PIK starts, or its share of the coupon rises, on a loan that paid cash the quarter before (the P2 toggle) | 1.6% (2023Q2), then 2.0-2.6% a quarter, no trend | Starts in 2023Q2: a switch is a change from the quarter before |
+| PIK switched in the past year | `toggle_par_share` | a switch this quarter or in the three before | 6.2-6.8% from 2024Q1, flat | The distress sign used for exposure; starts in 2024Q1, the first quarter whose year lies inside the data |
+
+A running stock of "PIK now, cash at origination" loans (`acquired_par_share`, used before
+2026-10-26) is no longer a sign: it fills up from zero as the panel ages (5.3% of borrowers in
+2024Q1 to about 7% by 2025) while new switches stay near 2.2% a quarter, so its rise was mostly
+mechanical.
+
+**Distress sign** = disagreement in the top 10% of the quarter, or a PIK switch in the past year:
+8.0-8.6% of borrowers each quarter from 2024Q1 (8.2% in 2026Q2). Crowding is not one (it says how
+many BDCs a default reaches, not how likely it is), nor is paying more than half in kind (some
+loans are written that way).
+
+**BDC exposure** (BDC-quarter, FINAL_DATASET rows, all instruments, fair value > 0; BDCs with
+20+ borrowers): `exposure_<sign>` = share of the BDC's portfolio fair value in borrowers flagged
+on that sign; `exposure_distress` for any distress sign; `top_flagged_weight` / `top_flagged` =
+its largest distress-flagged borrower; `concentration` = HHI of its book (cost weights). From
+2024Q1:
+
+| Quarter | BDCs | Median exposure | BDCs above 20% of portfolio | BDCs with one flagged borrower above 5% |
+|---|---|---|---|---|
+| 2024Q1 | 119 | 12.5% | 16 (13%) | 11 |
+| 2024Q4 | 132 | 13.7% | 33 (25%) | 12 |
+| 2025Q4 | 150 | 11.3% | 20 (13%) | 16 |
+| 2026Q1 | 155 | 12.2% | 32 (21%) | 16 |
+| 2026Q2 | 158 | 12.4% | 36 (23%) | 17 |
+
+The single-name count is the clear trend (9-12 a quarter in 2024, 14-17 since 2025Q1); the share
+above 20% moves between 13% and 25% with no clear trend.
+
+Example (Medallia, 2025Q1, flagged on both distress signs while marked at 90): 5.0% of Onex
+Direct Lending's portfolio, 1.4% of Blackstone Private Credit Fund's ($1.0bn). The largest single
+flagged positions in 2026Q2 are in small funds and sometimes a fund vehicle rather than an
+operating company (Varagon Capital: Senior Direct Lending Program, 21%), so check names before
+quoting them.
+
+By BDC type (2026Q2): above 20% of portfolio, listed 23%, non-traded 17%, private 24%; one flagged
+borrower above 5%, listed 16%, non-traded 13%, private 8%.
 
 ### Pairwise portfolio overlap (C5)
 
@@ -155,33 +232,21 @@ descriptively (no controls yet).
 **Borrower size: are crowded borrowers just big borrowers? Largely yes.** Spearman correlation of
 BDC-held par and lender families: 0.47 in the median quarter. By size quintile (pooled):
 
-| Size quintile (median BDC-held par) | Mean lender families | In the crowding tail |
-|---|---|---|
-| Q1 ($1.8M) | 1.03 | 0.0% |
-| Q2 ($6.9M) | 1.13 | 0.3% |
-| Q3 ($16M) | 1.27 | 1.4% |
-| Q4 ($37M) | 1.57 | 5.6% |
-| Q5 ($116M) | 2.66 | 23.8% |
+| Size quintile (median BDC-held par) | Mean lender families | 90th percentile | 2+ families | 6+ families |
+|---|---|---|---|---|
+| Q1 ($1.8M) | 1.03 | 1 | 3.0% | 0.0% |
+| Q2 ($6.9M) | 1.13 | 2 | 10.6% | 0.0% |
+| Q3 ($16M) | 1.27 | 2 | 19.3% | 0.1% |
+| Q4 ($37M) | 1.57 | 3 | 34.3% | 0.8% |
+| Q5 ($116M) | 2.66 | 6 | 58.9% | 10.3% |
 
-Almost every crowded borrower is in the top size quintile, so crowding has to be read within size
-buckets. This matches the evaluation result below (lender count adds nothing once size is
-controlled).
+Almost every heavily crowded borrower is in the top size quintile, so the crowding flag ranks each
+borrower within its own size quintile and quarter (`warning_flags`). This matches the evaluation
+result below (lender count adds nothing once size is controlled).
 
-**BDC type: do the signals differ for listed vs non-traded BDCs? Yes, on every signal** (2026Q2,
-median BDC):
-
-| Signal | Listed (43) | Non-traded (23) | Private (83) |
-|---|---|---|---|
-| Concentration (HHI) | 0.013 | 0.010 | 0.017 |
-| Dispersion (points of par) | 0.82 | 0.59 | 0.65 |
-| PIK, total | 13.8% | 6.6% | 7.7% |
-| PIK, amendment-driven | 6.9% | 4.5% | 3.9% |
-| Share of BDCs in the PIK-total tail | 21% | 4% | 2% |
-
-Listed BDCs carry about twice the PIK and sit further from consensus, in line with their higher
-non-accrual rate (Fig 39). Non-traded BDCs are the most diversified and almost never in a tail.
-A signal pooled across types partly measures BDC type, so the final evaluation should test the
-signals within type.
+**BDC type.** Listed BDCs carry the most single-name exposure to flagged borrowers (by-type
+numbers above), in line with their higher non-accrual rate (Fig 39). Exposure pooled across types partly measures
+BDC type, so the final evaluation should test it within type.
 
 ## Evaluation layer
 

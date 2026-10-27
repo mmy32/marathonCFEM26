@@ -6,10 +6,12 @@ Quarterly risk monitor, stage 1 (the CFEM guideline's three layers):
 
     market layer      benchmark table: panel aggregates next to the figures in
                       "Financing the Economy 2026" (ACC / Houlihan Lokey)
-    signal layer      share of each BDC's fair value in signal-tail loans, by quarter; and one
-                      chart per signal (cross-section by quarter, tail above a fixed 2023-24
-                      threshold), pairwise portfolio overlap between manager families, and
-                      the two preliminary confounder splits (borrower size, BDC type)
+    signal layer      warning signs measured per borrower (crowding, disagreement on value,
+                      PIK), shown as distributions by number of borrowers and by dollars, with
+                      borrowers flagged by rank (top 10% of the quarter, crowding within size
+                      groups); then each BDC's exposure to the flagged borrowers (share of portfolio,
+                      largest single flagged borrower); pairwise portfolio overlap between
+                      manager families; crowding by borrower size
     evaluation layer  which signals predict the rung-1 outcome (peer-relative markdown:
                       bottom decile of the quarter's valuation returns) at 1, 2 and 4 quarters
 
@@ -22,10 +24,12 @@ Reads data/final_dataset/FINAL_DATASET.csv only. Writes to outputs/risk_monitor/
     benchmark_table.csv, market_series.csv, market_layer.png
     outcome_rung1_by_quarter.csv
     signal_tail_by_bdc.csv, signal_layer.png
-    signals/          signal_tail_<signal>.png and signal_tail_summary.csv (concentration,
-                      crowding, dispersion, pik_total, pik_amendment); bdc_signals.csv,
-                      borrower_signals.csv; pairwise_overlap.csv, pairwise_overlap.png;
-                      confounder_size.csv/.png, confounder_bdc_type.csv/.png
+    signals/          borrower_warning_flags.csv, warning_tail_summary.csv,
+                      warning_crowding.png (+ crowding_distribution.csv), warning_disagreement.png
+                      (+ disagreement_percentiles.csv), warning_pik.png;
+                      bdc_exposure.csv, bdc_exposure_by_quarter.csv, bdc_exposure.png,
+                      bdc_exposure_by_type.csv/.png; borrower_signals.csv;
+                      pairwise_overlap.csv, pairwise_overlap.png; confounder_size.csv/.png
     evaluation_summary.csv, evaluation_buckets.csv, evaluation_h1.png, evaluation_h2.png,
     evaluation_h4.png, evaluation_summary_sector_outcome.csv (outcome within quarter x sector)
     evaluation_na_summary.csv, evaluation_na_buckets.csv, evaluation_na_h{2,4}.png
@@ -55,27 +59,44 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 
 def write_signal_tails(panel, rows, out):
-    """One chart per signal, pairwise overlap, and the size / BDC-type confounder splits."""
+    """Warning signs per borrower (one chart per sign), each BDC's exposure to the flagged
+    borrowers, pairwise overlap, and the borrower-size split of crowding."""
     import signal_tails as S
+    import distress_event_study as D
     out.mkdir(parents=True, exist_ok=True)
-    bdc, bs = S.bdc_signals(panel, rows), S.borrower_signals(panel)
-    bdc.to_csv(out / "bdc_signals.csv", index=False)
+    b = D.borrower_quarter_panel(panel, rows)
+    flags, thr = S.warning_flags(b)
+    flags.to_csv(out / "borrower_warning_flags.csv", index=False)
+    tail = S.warning_tail(flags)
+    tail.assign(threshold=tail["sign"].map(thr)).to_csv(out / "warning_tail_summary.csv", index=False)
+    print(f"  rules: {thr}")
+    print(tail.pivot(index="cal_q", columns="sign", values="share").round(3).to_string())
+    crowd = S.crowding_distribution(b)
+    crowd.to_csv(out / "crowding_distribution.csv", index=False)
+    S.plot_crowding_distribution(crowd, out / "warning_crowding.png")
+    print(crowd.pivot(index="cal_q", columns="bucket", values="share_par").round(3).to_string())
+    disp = S.disagreement_percentiles(b)
+    disp.to_csv(out / "disagreement_percentiles.csv", index=False)
+    S.plot_disagreement_percentiles(disp, out / "warning_disagreement.png")
+    print(disp.round(4).to_string(index=False))
+    S.plot_pik_tail(tail, out / "warning_pik.png")
+    e = S.bdc_exposure(rows, flags)
+    e.to_csv(out / "bdc_exposure.csv", index=False)
+    ex = S.plot_exposure(e, out / "bdc_exposure.png")
+    S.exposure_by_quarter(e).to_csv(out / "bdc_exposure_by_quarter.csv", index=False)
+    print(ex.round(3).to_string(index=False))
+    S.plot_exposure_by_type(e, out / "bdc_exposure_by_type.png").to_csv(out / "bdc_exposure_by_type.csv", index=False)
+    bs = S.borrower_signals(panel)
     bs.to_csv(out / "borrower_signals.csv", index=False)
-    summ = [S.plot_signal_tail(bs if c == "crowding" else bdc, c, out / f"signal_tail_{c}.png") for c in S.SIGNALS]
-    summ = pd.concat(summ, ignore_index=True)
-    summ.to_csv(out / "signal_tail_summary.csv", index=False)
-    print(summ[["signal", "cal_q", "count", "50%", "threshold", "n_tail", "share_tail"]].round(4).to_string(index=False))
     pairs = S.pairwise_overlap(rows)
     pairs.to_csv(out / "pairwise_overlap.csv", index=False)
     mat, over = S.plot_overlap(pairs, rows, out / "pairwise_overlap.png")
     mat.to_csv(out / "pairwise_overlap_matrix_2026Q2.csv")
     over.to_csv(out / "pairwise_overlap_by_quarter.csv", index=False)
-    print(over.to_string(index=False))
     size = S.size_split(bs, out / "confounder_size.png")
     size.to_csv(out / "confounder_size.csv", index=False)
     print(size.round(3).to_string(index=False))
-    S.bdc_type_split(bdc, out / "confounder_bdc_type.png").to_csv(out / "confounder_bdc_type.csv", index=False)
-    print(f"  signal tails -> {out}")
+    print(f"  signal layer -> {out}")
 
 
 def main():

@@ -640,6 +640,7 @@ def plot_quarterly_return_decomposition(
         _Path(save_path).parent.mkdir(parents=True, exist_ok=True)  # output folder may not exist yet
         plt.savefig(save_path, dpi=150)
     plt.show()
+    plt.close()  # one chart per call; scripts draw many (e.g. one per sector)
 
 def compute_flow_based_market_index(
     df: pl.DataFrame,
@@ -980,6 +981,87 @@ def compute_tracking_error(
     return corr, te_q, te_a
 
 
+def benchmark_stats(
+    index_df,
+    cdli_csv_path: str,
+    index_label: str,
+    benchmark_label: str,
+    start_idx: int = 1,
+    periods_per_year: int = 4,
+) -> dict:
+    """
+    Correlation and tracking error of the index's quarterly returns against a
+    CDLI benchmark, plus each calendar year's compounded return for both, over
+    the quarters both cover. The index's first quarter is dropped (start_idx),
+    as in compute_tracking_error and plot_index_vs_cdli_returns, so the numbers
+    match the ones the pipeline prints.
+    """
+    idx = _ensure_pandas(index_df)[["cal_q", "IndexReturn"]].iloc[start_idx:]
+    bench = load_cdli_returns(cdli_csv_path).rename(columns={"CDLI": "Bench"})[["cal_q", "Bench"]]
+    d = idx.merge(bench, on="cal_q")
+    diff = d["IndexReturn"] - d["Bench"]
+    out = {
+        "index": index_label, "benchmark": benchmark_label,
+        "first_q": d["cal_q"].iloc[0], "last_q": d["cal_q"].iloc[-1], "quarters": len(d),
+        "correlation": d["IndexReturn"].corr(d["Bench"]),
+        "tracking_error_q": diff.std(),
+        "tracking_error_ann": diff.std() * np.sqrt(periods_per_year),
+        "mean_gap_q": diff.mean(),
+    }
+    for year, g in d.groupby(d["cal_q"].str[:4]):
+        out[f"index_{year}"] = float((1 + g["IndexReturn"]).prod() - 1)
+        out[f"bench_{year}"] = float((1 + g["Bench"]).prod() - 1)
+        out[f"quarters_{year}"] = len(g)
+    return out
+
+
+def plot_benchmark_comparison(panels, save_path=None):
+    """
+    Presentation chart: one panel per (index, benchmark) pair, quarterly returns
+    of our index (blue) against the CDLI benchmark (orange), with the pair's
+    correlation and annualized tracking error under the panel title.
+
+    panels: list of dicts with keys title, index_df, cdli_csv_path, index_label,
+    benchmark_label, stats (a benchmark_stats result).
+    """
+    surface, ink, muted, grid = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
+    blue, orange = "#2a78d6", "#eb6834"
+    fig, axes = plt.subplots(1, len(panels), figsize=(7 * len(panels), 5.2), facecolor=surface, sharey=True)
+    axes = np.atleast_1d(axes)
+    for ax, p in zip(axes, panels):
+        s = p["stats"]
+        idx = _ensure_pandas(p["index_df"])[["cal_q", "IndexReturn"]]
+        bench = load_cdli_returns(p["cdli_csv_path"]).rename(columns={"CDLI": "Bench"})[["cal_q", "Bench"]]
+        d = idx.merge(bench, on="cal_q")
+        d = d[(d["cal_q"] >= s["first_q"]) & (d["cal_q"] <= s["last_q"])]
+        x = np.arange(len(d))
+        ax.plot(x, 100 * d["Bench"], color=orange, linewidth=2.4, marker="o", markersize=5, label=p["benchmark_label"])
+        ax.plot(x, 100 * d["IndexReturn"], color=blue, linewidth=2.4, marker="o", markersize=5, label=p["index_label"])
+        ax.set_facecolor(surface)
+        ax.set_title(p["title"], loc="left", fontsize=14, color=ink, weight="bold", pad=30)
+        ax.text(0, 1.035, f"Correlation {s['correlation']:.2f} · tracking error {100 * s['tracking_error_ann']:.2f}% a year",
+                transform=ax.transAxes, fontsize=11, color=muted, va="bottom")
+        ax.set_xticks(x, d["cal_q"], rotation=45)
+        ax.yaxis.set_major_formatter(mtick.FuncFormatter(lambda v, _: f"{v:.1f}%"))
+        ax.set_ylim(0, 4)
+        ax.tick_params(colors=muted, labelsize=10, length=0)
+        ax.yaxis.grid(True, color=grid, linewidth=0.8)
+        ax.set_axisbelow(True)
+        for side in ("top", "right", "left"):
+            ax.spines[side].set_visible(False)
+        ax.spines["bottom"].set_color(grid)
+        ax.legend(frameon=False, fontsize=10.5, loc="lower left", labelcolor=ink)
+    axes[0].set_ylabel("Return per quarter", color=muted, fontsize=11)
+    fig.text(0.01, 0.015, "Quarterly total return (interest plus change in value). Tracking error: standard deviation "
+             "of the quarterly gap, times 2 to make it yearly. CDLI: Cliffwater Direct Lending Index.",
+             fontsize=9, color=muted, ha="left", va="bottom")
+    fig.subplots_adjust(left=0.06, right=0.99, top=0.84, bottom=0.22, wspace=0.08)
+    if save_path:
+        _Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(save_path, dpi=200, facecolor=surface)
+    plt.close(fig)
+
+
 def plot_index_cdli_sofr(
     plot_df: pd.DataFrame,
     title: str = "Index Returns Comparison with SOFR Quarterly Averages",
@@ -1108,6 +1190,18 @@ if __name__ == "__main__":
     index_loans = compute_flow_based_market_index(loans)
     plot_index_vs_cdli_returns(index_loans, str(CDLI_S_CSV_PATH), benchmark_label="CDLI-S Returns",
                                save_path=INDEX_PLOTS_DIR / "senior_loans_vs_cdli_s.png")
+
+    # CDLI comparison for the deck: both pairs side by side, the numbers saved next to the chart
+    stats_all = benchmark_stats(index_df, str(CDLI_CSV_PATH), "Our BDC loan index", "CDLI")
+    stats_sen = benchmark_stats(index_loans, str(CDLI_S_CSV_PATH), "Our senior-loan index", "CDLI-S")
+    pd.DataFrame([stats_all, stats_sen]).to_csv(INDEX_PLOTS_DIR / "index_vs_cdli_stats.csv", index=False)
+    plot_benchmark_comparison([
+        dict(title="All BDC loans vs CDLI", index_df=index_df, cdli_csv_path=str(CDLI_CSV_PATH),
+             index_label="Our BDC loan index", benchmark_label="CDLI", stats=stats_all),
+        dict(title="Senior loans vs CDLI-S", index_df=index_loans, cdli_csv_path=str(CDLI_S_CSV_PATH),
+             index_label="Our senior-loan index", benchmark_label="CDLI-S (senior loans)", stats=stats_sen),
+    ], save_path=INDEX_PLOTS_DIR / "index_vs_cdli_panels.png")
+    print(pd.DataFrame([stats_all, stats_sen]).T.to_string())
 
     # index, CDLI and SOFR quarterly averages
     rates = load_quarterly_rates(str(RATES_XLSX))

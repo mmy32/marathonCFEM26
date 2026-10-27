@@ -87,6 +87,7 @@ python src/2_index_construction/index_construction.py
 python src/7_sector/subindex_construction.py
 python src/3_concentration_crowding/concentration_crowding.py
 python src/1_data_processing/bdc_growth.py
+python src/1_data_processing/dataset_overview.py
 python scripts/run_pik_risk_metrics.py
 python src/6_data_center/classify_data_center_borrowers.py
 python src/6_data_center/data_center_analysis.py
@@ -137,9 +138,10 @@ All read `FINAL_DATASET.csv` and write to `outputs/`.
 |---|---|---|
 | Market index vs. CDLI, return decompositions (market, Technology, senior loans), senior loans vs. CDLI-S, index vs. SOFR | `python src/2_index_construction/index_construction.py` | `outputs/index_construction_plots/` |
 | Data coverage: filings by type, parsing success by quarter | `python src/1_data_processing/plot_data_coverage.py` | `outputs/index_construction_plots/` |
-| Sector sub-indices, plus report-aligned sectors (Software, Business Services) vs. MSCI | `python src/7_sector/subindex_construction.py` | `outputs/sector_subindices_plots/`, `outputs/sector_subindices_report_plots/` |
+| Sector sub-indices, plus report-aligned sectors (Software, Business Services) vs. MSCI and one return decomposition per sector | `python src/7_sector/subindex_construction.py` | `outputs/sector_subindices_plots/`, `outputs/sector_subindices_report_plots/` |
 | Concentration and crowding (C1-C4 by manager family) | `python src/3_concentration_crowding/concentration_crowding.py` | `outputs/concentration_crowding_plots/`, `outputs/risk_signals/crowding_borrower_metrics.csv` |
-| BDC universe growth | `python src/1_data_processing/bdc_growth.py` | `outputs/eda_plots/` |
+| BDC universe growth, and BDCs within global private credit (ACC estimates) | `python src/1_data_processing/bdc_growth.py` | `outputs/eda_plots/` |
+| Overview of the cleaned dataset (counts, coverage, sector mix) | `python src/1_data_processing/dataset_overview.py` | `outputs/eda_plots/` |
 | PIK risk metrics | `python scripts/run_pik_risk_metrics.py` | `outputs/pik/`, `outputs/pik_plots/` |
 | Data-center tagging | `python src/6_data_center/classify_data_center_borrowers.py` | `data/data_center/` |
 | Data-center exposure | `python src/6_data_center/data_center_analysis.py`, `plot_data_center_timeseries.py`, `plot_data_center_lenders.py` | `outputs/data_center_plots/` |
