@@ -1,5 +1,7 @@
 # 1. Pipeline Overview
 
+> **Code note (2026-11-08):** combine_wide_frames() and preprocess_combined_wide() were removed from the repo as unused by the midterm deck; the full versions are in `ORIE 5220/miscellaneous/code_before_simplify_2026-11-08/`. Mentions of them below describe that earlier code.
+
 SEC EDGAR (master.idx + submissions JSON)
    ↓
 BDC universe construction (N-54A / N-54C)

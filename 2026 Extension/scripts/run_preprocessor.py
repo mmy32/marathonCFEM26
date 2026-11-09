@@ -1,3 +1,5 @@
+"""Step 4: data/ixbrl/combined/wide_all.csv -> data/parsed/ixbrl_clean.csv, one row per position.
+mode in main(): "full", or "test" (2024Q1-Q2 only, with diagnostics)."""
 from __future__ import annotations
 
 import sys
@@ -16,45 +18,20 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 
 
 def main():
-    user_agent = "Your Name your.email@domain.com"  # not used here, but keep consistent with other scripts
-
     mode = "full"  # "test" | "full"
-
-    if mode == "test":
-        # test: smaller quarter range + diagnostics
-        cfg = PreprocessConfig(
-            quarter_from="2024Q1",
-            quarter_to="2024Q2",
-            only_no_shares=True,
-            drop_amounts_only=True,
-            write_stats_csv=True,
-        )
-        run_preprocess(
-            in_csv=IXBRL_WIDE_ALL_CSV,
-            out_csv=PARSED_DIR / "ixbrl_clean_TEST.csv",
-            cfg=cfg,
-            save_diagnostics=True,
-        )
-        print("[PREPROCESS TEST] done.")
-
-    elif mode == "full":
-        cfg = PreprocessConfig(
-            quarter_from="2023Q1",
-            quarter_to=None,  # no upper bound; a fixed cutoff silently drops every later quarter
-            only_no_shares=True,
-            drop_amounts_only=True,
-            write_stats_csv=False,
-        )
-        run_preprocess(
-            in_csv=IXBRL_WIDE_ALL_CSV,
-            out_csv=PARSED_DIR / "ixbrl_clean.csv",
-            cfg=cfg,
-            save_diagnostics=False,
-        )
-        print("[PREPROCESS FULL] done.")
-
-    else:
+    if mode not in ("test", "full"):
         raise ValueError("mode must be 'test' or 'full'")
+    test = mode == "test"
+    cfg = PreprocessConfig(
+        quarter_from="2024Q1" if test else "2023Q1",
+        quarter_to="2024Q2" if test else None,  # full: no upper bound; a fixed cutoff drops every later quarter
+        only_no_shares=True,
+        drop_amounts_only=True,
+        write_stats_csv=test,
+    )
+    out_csv = PARSED_DIR / ("ixbrl_clean_TEST.csv" if test else "ixbrl_clean.csv")
+    run_preprocess(in_csv=IXBRL_WIDE_ALL_CSV, out_csv=out_csv, cfg=cfg, save_diagnostics=test)
+    print(f"[PREPROCESS {mode.upper()}] done.")
 
 
 if __name__ == "__main__":

@@ -1,223 +1,79 @@
-import sys as _sys
-from pathlib import Path as _Path
-_sys.path.insert(0, str(_Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
+"""Flow-based BDC loan index (slide 8): positions matched across quarters on borrower + seniority, returns
+net of draws and paydowns, market-value weighted, compared with the CDLI and CDLI-S (correlation,
+tracking error). Run as a script: index_vs_cdli_panels.png and index_vs_cdli_stats.csv in
+outputs/index_construction_plots/. See docs/4_index_construction.md."""
+import sys
+from pathlib import Path
+from typing import Callable, Optional
 
-import polars as pl
-import polars.selectors as cs
-import pandas as pd
-from typing import Callable, Optional, Union
-import numpy as np
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
+
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
-from matplotlib.patches import Patch
-def load_and_prepare_investment_data(
-    csv_path: str,
-    infer_schema_length: int = 100_000
-) -> pl.DataFrame:
-    """
-    Load investment data from CSV, filter valid fair value rows,
-    and cast selected normalized columns to Float64 with cleaner aliases.
-    """
-    df = pl.read_csv(csv_path, infer_schema_length=infer_schema_length)
-    df = (
-        df.filter(pl.col("InvestmentOwnedAtFairValue_normalized").is_not_null())
-          .with_columns([
-              pl.col("InvestmentOwnedAtFairValue_normalized")
-                .cast(pl.Float64)
-                .alias("FV"),
-              pl.col("InvestmentOwnedAtCost_normalized")
-                .cast(pl.Float64)
-                .alias("COST"),
-              pl.col("InvestmentOwnedBalancePrincipalAmount_normalized")
-                .cast(pl.Float64)
-                .alias("PAR"),
-              pl.col("InvestmentInterestRatePaidInCash_normalized")
-                .cast(pl.Float64)
-                .alias("rate_cash"),
-              pl.col("InvestmentInterestRate_normalized")
-                .cast(pl.Float64)
-                .alias("interest_rate"),
-              pl.col("InvestmentInterestRatePaidInKind_normalized")
-                .cast(pl.Float64)
-                .alias("rate_pik"),
-          ])
-    )
-    return df
+import numpy as np
+import pandas as pd
+import polars as pl
 
-def missing_percentage_summary(
-    df: pl.DataFrame,
-    cols: list[str],
-    as_pandas: bool = True
-):
-    """
-    Compute percentage of missing values per column.
+# FINAL_DATASET column -> short name, cast to Float64
+NUMERIC_ALIASES = {
+    "InvestmentOwnedAtFairValue_normalized": "FV",
+    "InvestmentOwnedAtCost_normalized": "COST",
+    "InvestmentOwnedBalancePrincipalAmount_normalized": "PAR",
+    "InvestmentInterestRatePaidInCash_normalized": "rate_cash",
+    "InvestmentInterestRate_normalized": "interest_rate",
+    "InvestmentInterestRatePaidInKind_normalized": "rate_pik",
+}
 
-    Parameters
-    ----------
-    df : pl.DataFrame
-        Input dataframe
-    cols : list[str]
-        Columns to evaluate
-    as_pandas : bool, default True
-        If True, return pandas DataFrame; otherwise return Polars DataFrame
-    """
-    n = df.height
 
-    summary = df.select([
-        (pl.col(c).is_null().sum() * 100 / n).alias(f"{c}_missing")
-        for c in cols
-    ])
-
-    return summary.to_pandas() if as_pandas else summary
-
-def interest_rate_null_combinations(
-    df: pl.DataFrame,
-    interest_cols: list[str],
-    as_pandas: bool = True
-) -> Union[pd.DataFrame, pl.DataFrame]:
-    """
-    Compute row counts for all combinations of null / non-null
-    across interest rate columns.
-    """
-    null_flag_cols = [f"{c}_isnull" for c in interest_cols]
-
-    result = (
-        df.with_columns([
-            pl.col(c).is_null().alias(f"{c}_isnull")
-            for c in interest_cols
-        ])
-        .group_by(null_flag_cols)
-        .agg(pl.len().alias("rows"))
-        .sort(null_flag_cols)
+def load_and_prepare_investment_data(csv_path: str, infer_schema_length: int = 100_000) -> pl.DataFrame:
+    """Rows with a fair value, plus the NUMERIC_ALIASES columns as Float64 under short names."""
+    return (
+        pl.read_csv(csv_path, infer_schema_length=infer_schema_length)
+        .filter(pl.col("InvestmentOwnedAtFairValue_normalized").is_not_null())
+        .with_columns([pl.col(src).cast(pl.Float64).alias(dst) for src, dst in NUMERIC_ALIASES.items()])
     )
 
-    return result.to_pandas() if as_pandas else result
 
 def compute_final_interest_rates(
     df: pl.DataFrame,
     interest_cols: list[str] = ["rate_cash", "interest_rate", "rate_pik"]
 ) -> pl.DataFrame:
     """
-    Compute final PIC, PIK, and total interest rate (IR_Final)
-    based on available cash, PIK, and total interest rate columns.
+    PIC_Final (cash), PIK_Final and IR_Final = PIC + PIK from the cash, total and PIK rates. A rate
+    that is reported is used; with one of the three missing it is derived from the other two
+    (cash = total - PIK, PIK = total - cash); a total with no PIK is all cash; anything else is 0.
     Rows with all three missing are dropped.
     """
-
-    df = df.with_columns(
-        missing_count=pl.sum_horizontal([pl.col(c).is_null() for c in interest_cols])
+    missing = pl.sum_horizontal([pl.col(c).is_null() for c in interest_cols])
+    cash, total, pik = pl.col("rate_cash"), pl.col("interest_rate"), pl.col("rate_pik")
+    return (
+        df.with_columns(missing_count=missing)
+        .filter(pl.col("missing_count") < 3)
+        .with_columns([
+            pl.when(cash.is_not_null()).then(cash)
+            .when(pl.col("missing_count") == 1).then(total - pik)
+            .when(total.is_not_null() & pik.is_null()).then(total)
+            .otherwise(0)
+            .alias("PIC_Final"),
+            pl.when(pik.is_not_null()).then(pik)
+            .when(pl.col("missing_count") == 1).then(total - cash)
+            .otherwise(0)
+            .alias("PIK_Final"),
+        ])
+        .with_columns((pl.col("PIC_Final") + pl.col("PIK_Final")).alias("IR_Final"))
+        .drop("missing_count")
     )
 
-    # drop rows where all interest fields are missing
-    df = df.filter(pl.col("missing_count") < 3)
-
-    df = df.with_columns([
-
-        # PIC_Final
-        pl.when(pl.col("rate_cash").is_not_null())
-            .then(pl.col("rate_cash"))
-
-        .when(pl.col("missing_count") == 1)
-            .then(pl.col("interest_rate") - pl.col("rate_pik"))
-
-        .when(pl.col("interest_rate").is_not_null() & pl.col("rate_pik").is_null())
-            .then(pl.col("interest_rate"))
-
-        .when(pl.col("rate_pik").is_not_null() & pl.col("interest_rate").is_null())
-            .then(0)
-
-        .otherwise(0)
-        .alias("PIC_Final"),
-
-        # PIK_Final
-        pl.when(pl.col("rate_pik").is_not_null())
-            .then(pl.col("rate_pik"))
-
-        .when(pl.col("missing_count") == 1)
-            .then(pl.col("interest_rate") - pl.col("rate_cash"))
-
-        .when(pl.col("rate_cash").is_not_null() & pl.col("interest_rate").is_null())
-            .then(0)
-
-        .when(pl.col("interest_rate").is_not_null() & pl.col("rate_cash").is_null())
-            .then(0)
-
-        .otherwise(0)
-        .alias("PIK_Final"),
-    ])
-
-    df = df.with_columns(
-        (pl.col("PIC_Final") + pl.col("PIK_Final")).alias("IR_Final")
-    ).drop("missing_count")
-
-    return df
 
 def qsort_expr():
     y = pl.col("cal_q").str.slice(0, 4).cast(pl.Int32)
     q = pl.col("cal_q").str.slice(-1).cast(pl.Int32)
     return (y * 4 + q).alias("qsort")
 
+
 def safe_div(x, y):
     return pl.when(y.is_null() | (y == 0)).then(0.0).otherwise(x / y)
 
-DEFAULT_START_IDX = 1
-
-def flag_first_quarter_artifact(
-    df: pl.DataFrame,
-    quarter_col: str = "cal_q",
-    start_idx: int = DEFAULT_START_IDX,
-) -> pl.DataFrame:
-    """
-    One row per distinct quarter in `df`, with a boolean `is_inception_quarter`
-    flag = True for the `start_idx` earliest quarters (by the same
-    year*4+quarter ordering `qsort_expr()` uses) -- the panel's first quarter
-    has no position with a genuine prior-quarter fair value at all, so its
-    reported return is structurally undefined, not just unreliable. Applied
-    unconditionally, independent of whatever a caller's own reliability
-    checks find, since an inception-quarter artifact can look adequately
-    populated while still being pure artifact. Originally lived in
-    subindex_construction.py (sub-index-specific home for a fact that's
-    actually about the whole panel); moved here since risk_1.py needed it
-    without any other dependency on that module.
-    """
-    ranked = (
-        df.select(quarter_col).unique()
-        .with_columns(
-            (
-                pl.col(quarter_col).str.slice(0, 4).cast(pl.Int32) * 4
-                + pl.col(quarter_col).str.slice(-1).cast(pl.Int32)
-            ).alias("_qsort")
-        )
-        .sort("_qsort")
-        .with_row_index("_rank")
-        .with_columns((pl.col("_rank") < start_idx).alias("is_inception_quarter"))
-        .drop(["_qsort", "_rank"])
-    )
-    return ranked
-
-def normalize_positions(
-    df: pl.DataFrame,
-    identifier_col: str = "borrower_canonical",
-    fv_col: str = "FV",
-) -> pl.DataFrame:
-    """
-    Shared cleanup for cross-BDC measures (crowding in
-    concentration_crowding.py): filters to FV > 0 (a non-positive fair value
-    isn't a real held position) and normalizes identifier_col
-    (whitespace-trimmed, upper-cased) into a new `_ident_norm` column,
-    dropping rows where it is null or blank -- otherwise every such row
-    across every CIK would be treated as holding the same "position".
-
-    Matches on the validated borrower name by default. investment_identifier
-    is free text that BDCs word differently from one another and change
-    between filings, so it is not used for matching.
-    """
-    return (
-        df.filter(pl.col(fv_col) > 0)
-        .with_columns(
-            pl.col(identifier_col).str.strip_chars().str.to_uppercase().alias("_ident_norm")
-        )
-        .filter(pl.col("_ident_norm").is_not_null() & (pl.col("_ident_norm") != ""))
-    )
 
 POSITION_GROUP_COLS = ["cik", "position_key"]
 SUM_COLS = ["FV", "COST", "PAR"]
@@ -361,91 +217,6 @@ def compute_position_level_flows(
     )
     return df
 
-def quarter_count_distribution(
-    df: pl.DataFrame,
-    group_cols: list[str] = POSITION_GROUP_COLS,
-    quarter_col: str = "qsort"
-) -> pl.DataFrame:
-    """
-    Compute distribution of number of unique quarters per position
-    (cik, borrower + seniority; see add_position_key), i.e. position longevity.
-    """
-    if "position_key" in group_cols and "position_key" not in df.columns:
-        df = add_position_key(df)
-
-    summary = (
-        df.group_by(group_cols)
-          .agg(pl.col(quarter_col).n_unique().alias("num_quarters"))
-    )
-
-    num_unique_pairs = summary.height
-
-    distribution = (
-        summary["num_quarters"]
-          .value_counts()
-          .sort("num_quarters")
-          .with_columns(
-              (pl.col("count") / num_unique_pairs).alias("proportion")
-          )
-    )
-
-    return distribution
-
-def quarterly_cik_entry_exit_aum(
-    df: pl.DataFrame,
-    fv_col: str = "FV",
-    cik_col: str = "cik",
-    cal_q_col: str = "cal_q",
-    qsort_col: str = "qsort",
-    scale: float = 1e6
-) -> pl.DataFrame:
-    """
-    Compute quarterly AUM entering and exiting at the CIK level.
-    """
-
-    # AUM per CIK-quarter
-    aum_cik_q = (
-        df.group_by([cik_col, cal_q_col, qsort_col])
-          .agg(pl.sum(fv_col).alias("aum"))
-          .with_columns((pl.col("aum") / scale).alias("aum_m"))
-          .sort([cik_col, qsort_col])
-    )
-
-    # Entries: first appearance of a CIK (frame is sorted chronologically)
-    cik_entries = aum_cik_q.group_by(cik_col).first()
-
-    # Exits: last appearance of a CIK
-    cik_exits = aum_cik_q.group_by(cik_col).last()
-
-    # Aggregate entries by quarter
-    aum_in_cik = (
-        cik_entries.group_by(cal_q_col)
-                   .agg(
-                       pl.sum("aum_m").alias("aum_in_m_cik"),
-                       pl.len().alias("unique_cik_in")
-                   )
-    )
-
-    # Aggregate exits by quarter
-    aum_out_cik = (
-        cik_exits.group_by(cal_q_col)
-                 .agg(
-                     pl.sum("aum_m").alias("aum_out_m_cik"),
-                     pl.len().alias("unique_cik_out")
-                 )
-    )
-
-    # Final quarterly summary
-    # 'full' join keeps quarters with exits but no entries (and vice versa)
-    quarterly_summary = (
-        aum_in_cik
-        .join(aum_out_cik, on=cal_q_col, how="full", coalesce=True)
-        .fill_null(0)
-        .sort(cal_q_col)
-        .with_columns(cs.numeric().round(2))
-    )
-
-    return quarterly_summary
 
 def compute_market_weights(
     df: pl.DataFrame,
@@ -509,7 +280,7 @@ def aggregate_return_decomposition(
     df_decomp = (
         df
         .filter(pl.col("w_mkt") > 0)
-        .group_by(quarter_col)
+        .group_by(quarter_col, maintain_order=True)
         .agg(
             # weighted return contributions
             calc_contrib(pl.col("dFV") - pl.col("dCOST"), "contrib_price"),
@@ -522,7 +293,7 @@ def aggregate_return_decomposition(
             calc_weighted_avg("PIK_Final", "avg_rate_pik"),
         )
     )
-    all_q = df.select(quarter_col).unique()
+    all_q = df.select(quarter_col).unique(maintain_order=True)
     df_decomp = (
         all_q.join(df_decomp, on=quarter_col, how="left")
         .with_columns(pl.exclude(quarter_col).fill_null(0))
@@ -531,115 +302,6 @@ def aggregate_return_decomposition(
 
     return df_decomp
 
-def plot_quarterly_return_decomposition(
-    df_decomp_pd,
-    title: str,
-    figsize=(14, 8),
-    save_path: str = None,
-):
-    """
-    Plot stacked quarterly return decomposition:
-    price (±), cash interest, and PIK interest.
-
-    Pass save_path to also write the figure to disk (e.g. a .png path).
-    """
-
-    plt.figure(figsize=figsize)
-    ax = plt.gca()
-
-    quarters = df_decomp_pd["cal_q"][1:].values
-    price = df_decomp_pd["contrib_price"][1:].values
-    cash = df_decomp_pd["contrib_cash"][1:].values
-    pik = df_decomp_pd["contrib_pik"][1:].values
-    total = price + cash + pik
-
-    for q, p, c, pi, t in zip(quarters, price, cash, pik, total):
-
-        # Stack cash/PIK on top of price when price is non-negative (so the
-        # bars sit end-to-end and the visual top matches the true total);
-        # when price is negative it dips below the axis, so cash/PIK still
-        # stack from 0 upward.
-        if p >= 0:
-            c_bottom = p
-            pi_bottom = p + c
-        else:
-            c_bottom = 0
-            pi_bottom = c
-
-        # --- Price return (positive / negative) ---
-        if p < 0:
-            ax.bar(q, p, bottom=0, color="red", alpha=0.7,
-                   edgecolor="darkred", linewidth=1)
-        else:
-            ax.bar(q, p, bottom=0, color="green", alpha=0.7,
-                   edgecolor="darkgreen", linewidth=1)
-
-        if p != 0:
-            ax.text(q, p / 2, f"{p*100:.2f}%",
-                    ha="center", va="center",
-                    fontsize=12, fontweight="bold")
-
-        # --- Cash interest ---
-        ax.bar(q, c, bottom=c_bottom,
-               color="grey", alpha=0.6,
-               edgecolor="black", linewidth=1)
-
-        if c != 0:
-            ax.text(q, c_bottom + (c / 2), f"{c*100:.2f}%",
-                    ha="center", va="center",
-                    fontsize=12, fontweight="bold")
-
-        # --- PIK interest ---
-        ax.bar(q, pi, bottom=pi_bottom,
-               color="orange", alpha=0.6,
-               edgecolor="black", linewidth=1)
-
-        if pi != 0:
-            ax.text(q, pi_bottom + (pi / 2), f"{pi*100:.2f}%",
-                    ha="center", va="center",
-                    fontsize=12, fontweight="bold")
-
-    # --- Legend ---
-    legend_handles = [
-        Patch(facecolor="green", edgecolor="darkgreen", label="Price Return (Positive)"),
-        Patch(facecolor="red", edgecolor="darkred", label="Price Return (Negative)"),
-        Patch(facecolor="grey", edgecolor="black", label="Cash Interest"),
-        Patch(facecolor="orange", edgecolor="black", label="PIK Interest"),
-    ]
-
-    ax.legend(
-        handles=legend_handles,
-        loc="upper center",
-        bbox_to_anchor=(0.5, 1.06),
-        ncol=4,
-        fontsize=12,
-        frameon=True
-    )
-
-    # --- Axes formatting ---
-    ax.set_title(title, fontsize=14, fontweight="bold", pad=20)
-    ax.set_xticks(quarters)
-    ax.set_xticklabels(quarters, rotation=45)
-    ax.grid(axis="y", alpha=0.2, linestyle="--")
-    ax.yaxis.set_major_formatter(mtick.PercentFormatter(1.0))
-
-    # --- Dynamic y-limits ---
-    stacked_top = cash + pik
-    all_values = np.concatenate([price, stacked_top, total])
-
-    base_min, base_max = np.min(all_values), np.max(all_values)
-    margin = max((base_max - base_min) * 0.03, 0.005)
-
-    y_min = min(base_min - margin, -0.01)
-    y_max = base_max + margin + 0.01
-
-    ax.set_ylim(y_min, y_max)
-
-    plt.tight_layout()
-    if save_path:
-        _Path(save_path).parent.mkdir(parents=True, exist_ok=True)  # output folder may not exist yet
-        plt.savefig(save_path, dpi=150)
-    plt.show()
 
 def compute_flow_based_market_index(
     df: pl.DataFrame,
@@ -663,7 +325,7 @@ def compute_flow_based_market_index(
     returns = (
         df
         .filter(pl.col(weight_col) > 0)
-        .group_by(quarter_col)
+        .group_by(quarter_col, maintain_order=True)
         .agg(
             (pl.col(weight_col) * pl.col(return_col))
             .sum()
@@ -671,7 +333,7 @@ def compute_flow_based_market_index(
         )
     )
     index_df = (
-        df.select(quarter_col).unique()
+        df.select(quarter_col).unique(maintain_order=True)
         .join(returns, on=quarter_col, how="left")
         .sort(quarter_col)
         .with_columns(
@@ -690,9 +352,11 @@ def compute_flow_based_market_index(
 
     return index_df
 
+
 def _ensure_pandas(df):
     """Coerce a Polars or pandas frame to pandas."""
     return df.to_pandas() if not isinstance(df, pd.DataFrame) else df
+
 
 def load_cdli_returns(cdli_csv_path: str, quarter_col: str = "cal_q") -> pd.DataFrame:
     """
@@ -702,73 +366,9 @@ def load_cdli_returns(cdli_csv_path: str, quarter_col: str = "cal_q") -> pd.Data
     cdli_returns[quarter_col] = cdli_returns["Quarter"].astype(str)
     return cdli_returns
 
-def _finish_return_plot(title, ylabel, ylim, grid=False, save_path=None):
-    """Shared tail for QoQ return/rate line plots: legend, axes, labels, layout."""
-    plt.legend()
-    plt.ylim(*ylim)
-    plt.xticks(rotation=45)
-    plt.xlabel("Quarter")
-    plt.ylabel(ylabel)
-    plt.title(title)
-    if grid:
-        plt.grid(True)
-    plt.tight_layout()
-    if save_path:
-        _Path(save_path).parent.mkdir(parents=True, exist_ok=True)  # output folder may not exist yet
-        plt.savefig(save_path, dpi=150)
-    plt.show()
 
-def plot_index_vs_cdli_returns(
-    index_df,
-    cdli_csv_path: str,
-    quarter_col: str = "cal_q",
-    index_return_col: str = "IndexReturn",
-    cdli_col: str = "CDLI",
-    title: str = "Index Returns QoQ(%)",
-    figsize=(10, 5),
-    ylims=(0.0, 4.0),
-    start_idx: int = 1,
-    save_path: str = None,
-    benchmark_label: str = "CDLI Returns",
-):
-    """
-    Plot QoQ returns of flow-based index vs CDLI benchmark (benchmark_label
-    names the benchmark line, e.g. "CDLI-S Returns" for the senior-loans index).
-
-    The index's first quarter has no prior-quarter FV to difference against,
-    so its return is structurally undefined; any non-zero value there comes
-    from same-quarter duplicate rows standing in for a prior period. start_idx
-    drops that leading row, matching plot_quarterly_return_decomposition and
-    compute_tracking_error.
-
-    Pass save_path to also write the figure to disk (e.g. a .png path).
-    """
-
-    cdli_returns = load_cdli_returns(cdli_csv_path, quarter_col)
-    index_df = _ensure_pandas(index_df).iloc[start_idx:]
-    # Align CDLI to the same quarters as the (now-truncated) index line so the
-    # shared categorical x-axis stays chronologically ordered.
-    cdli_returns = cdli_returns[cdli_returns[quarter_col].isin(index_df[quarter_col])]
-
-    plt.figure(figsize=figsize)
-
-    plt.plot(
-        index_df[quarter_col],
-        index_df[index_return_col] * 100,
-        label="Index Returns"
-    )
-
-    plt.plot(
-        cdli_returns[quarter_col],
-        cdli_returns[cdli_col] * 100,
-        label=benchmark_label
-    )
-
-    _finish_return_plot(title, "Returns QoQ (%)", ylims, save_path=save_path)
-
-### annualized volatility on raw marks understates true risk (see
-### unsmooth_ar1_returns / compute_unsmoothed_return_and_vol below, and
-### compute_max_drawdown as a smoothing-immune alternative)
+# Annualized volatility on raw marks understates true risk: see unsmooth_ar1_returns /
+# compute_unsmoothed_return_and_vol below, and compute_max_drawdown as a smoothing-immune alternative.
 def compute_annualized_return_and_vol(
     returns,
     periods_per_year: int = 4,
@@ -795,9 +395,8 @@ def compute_annualized_return_and_vol(
         Number of leading periods to drop. The index's first quarter has no
         prior-quarter fair value to difference against, so its return is
         structurally undefined; including it inflates both the geometric return
-        and the volatility. Defaults to 1 to drop it, matching
-        plot_quarterly_return_decomposition, plot_index_vs_cdli_returns and
-        compute_tracking_error. Pass 0 to keep the full series.
+        and the volatility. Defaults to 1 to drop it, matching benchmark_stats.
+        Pass 0 to keep the full series.
 
     Returns
     -------
@@ -902,62 +501,6 @@ def compute_max_drawdown(level) -> float:
     return float(drawdown.min())
 
 
-def load_quarterly_rates(
-    excel_path: str,
-    rate_cols=("EFFR", "SOFR")
-) -> pd.DataFrame:
-    """
-    Load daily rate data from Excel and compute quarterly averages.
-    """
-
-    values = pd.read_excel(excel_path).iloc[:, :3]
-
-    values = values.pivot(
-        index=values.columns[0],
-        columns=values.columns[1],
-        values=values.columns[2]
-    )
-
-    values.index = pd.to_datetime(values.index)
-    values.sort_index(inplace=True)
-
-    quarterly_rates = values[list(rate_cols)].resample("Q").mean()
-    quarterly_rates["cal_q"] = quarterly_rates.index.to_period("Q").astype(str)
-
-    return quarterly_rates.reset_index(drop=True)
-
-
-def build_quarterly_comparison_df(
-    quarterly_rates: pd.DataFrame,
-    index_mkt_flow,
-    cdli_csv_path: pd.DataFrame
-) -> pd.DataFrame:
-    """
-    Merge index returns, CDLI returns, and quarterly SOFR / EFFR averages.
-    """
-    cdli_returns = load_cdli_returns(cdli_csv_path).rename(columns={"CDLI": "CDLI_Return"})
-    index_mkt_flow = _ensure_pandas(index_mkt_flow)
-
-    plot_df = (
-        pd.DataFrame({
-            "Quarter": quarterly_rates["cal_q"],
-            "EFFR_avg": quarterly_rates["EFFR"] / 400,
-            "SOFR_avg": quarterly_rates["SOFR"] / 400,
-        })
-        .merge(
-            index_mkt_flow[["cal_q", "IndexReturn"]],
-            left_on="Quarter", right_on="cal_q", how="left"
-        )
-        .merge(
-            cdli_returns[["cal_q", "CDLI_Return"]],
-            left_on="Quarter", right_on="cal_q", how="left"
-        )
-        .drop(columns=["cal_q_x", "cal_q_y"], errors="ignore")
-    )
-
-    return plot_df
-
-
 def compute_tracking_error(
     plot_df: pd.DataFrame,
     start_idx: int = 2,
@@ -980,56 +523,97 @@ def compute_tracking_error(
     return corr, te_q, te_a
 
 
-def plot_index_cdli_sofr(
-    plot_df: pd.DataFrame,
-    title: str = "Index Returns Comparison with SOFR Quarterly Averages",
-    ylim=(0.0, 4.0),
-    figsize=(10, 5),
-    start_idx: int = 2,
-    save_path=None,
-    benchmark_label: str = "CDLI Return",
-):
+def benchmark_stats(
+    index_df,
+    cdli_csv_path: str,
+    index_label: str,
+    benchmark_label: str,
+    start_idx: int = 1,
+    periods_per_year: int = 4,
+) -> dict:
     """
-    Plot index returns, CDLI returns, and SOFR quarterly averages.
-
-    start_idx drops the leading rates-only row and the structurally
-    undefined first index quarter, matching compute_tracking_error.
+    Correlation and tracking error of the index's quarterly returns against a
+    CDLI benchmark, plus each calendar year's compounded return for both, over
+    the quarters both cover. The index's first quarter is dropped (start_idx), as in
+    compute_tracking_error, so the numbers match the ones the script prints.
     """
+    idx = _ensure_pandas(index_df)[["cal_q", "IndexReturn"]].iloc[start_idx:]
+    bench = load_cdli_returns(cdli_csv_path).rename(columns={"CDLI": "Bench"})[["cal_q", "Bench"]]
+    d = idx.merge(bench, on="cal_q")
+    diff = d["IndexReturn"] - d["Bench"]
+    out = {
+        "index": index_label, "benchmark": benchmark_label,
+        "first_q": d["cal_q"].iloc[0], "last_q": d["cal_q"].iloc[-1], "quarters": len(d),
+        "correlation": d["IndexReturn"].corr(d["Bench"]),
+        "tracking_error_q": diff.std(),
+        "tracking_error_ann": diff.std() * np.sqrt(periods_per_year),
+        "mean_gap_q": diff.mean(),
+    }
+    for year, g in d.groupby(d["cal_q"].str[:4]):
+        out[f"index_{year}"] = float((1 + g["IndexReturn"]).prod() - 1)
+        out[f"bench_{year}"] = float((1 + g["Bench"]).prod() - 1)
+        out[f"quarters_{year}"] = len(g)
+    return out
 
-    plt.figure(figsize=figsize)
 
-    plt.plot(
-        plot_df["Quarter"].iloc[start_idx:],
-        plot_df["IndexReturn"].iloc[start_idx:] * 100,
-        label="Index Return"
-    )
+def plot_benchmark_comparison(panels, save_path=None):
+    """
+    Presentation chart: one panel per (index, benchmark) pair, quarterly returns
+    of our index (blue) against the CDLI benchmark (orange), with the pair's
+    correlation and annualized tracking error under the panel title.
 
-    plt.plot(
-        plot_df["Quarter"].iloc[start_idx:],
-        plot_df["CDLI_Return"].iloc[start_idx:] * 100,
-        label=benchmark_label
-    )
-
-    plt.plot(
-        plot_df["Quarter"].iloc[start_idx:],
-        plot_df["SOFR_avg"].iloc[start_idx:] * 100,
-        label="SOFR Average",
-        linestyle="--"
-    )
-
-    _finish_return_plot(title, "Returns / Rates (%)", ylim, grid=True, save_path=save_path)
+    panels: list of dicts with keys title, index_df, cdli_csv_path, index_label,
+    benchmark_label, stats (a benchmark_stats result).
+    """
+    surface, ink, muted, grid = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
+    blue, orange = "#2a78d6", "#eb6834"
+    fig, axes = plt.subplots(1, len(panels), figsize=(7 * len(panels), 5.2), facecolor=surface, sharey=True)
+    axes = np.atleast_1d(axes)
+    for ax, p in zip(axes, panels):
+        s = p["stats"]
+        idx = _ensure_pandas(p["index_df"])[["cal_q", "IndexReturn"]]
+        bench = load_cdli_returns(p["cdli_csv_path"]).rename(columns={"CDLI": "Bench"})[["cal_q", "Bench"]]
+        d = idx.merge(bench, on="cal_q")
+        d = d[(d["cal_q"] >= s["first_q"]) & (d["cal_q"] <= s["last_q"])]
+        x = np.arange(len(d))
+        ax.plot(x, 100 * d["Bench"], color=orange, linewidth=2.4, marker="o", markersize=5, label=p["benchmark_label"])
+        ax.plot(x, 100 * d["IndexReturn"], color=blue, linewidth=2.4, marker="o", markersize=5, label=p["index_label"])
+        ax.set_facecolor(surface)
+        ax.set_title(p["title"], loc="left", fontsize=14, color=ink, weight="bold", pad=30)
+        ax.text(0, 1.035, f"Correlation {s['correlation']:.2f} · tracking error {100 * s['tracking_error_ann']:.2f}% a year",
+                transform=ax.transAxes, fontsize=11, color=muted, va="bottom")
+        ax.set_xticks(x, d["cal_q"], rotation=45)
+        ax.yaxis.set_major_formatter(mtick.FuncFormatter(lambda v, _: f"{v:.1f}%"))
+        ax.set_ylim(0, 4)
+        ax.tick_params(colors=muted, labelsize=10, length=0)
+        ax.yaxis.grid(True, color=grid, linewidth=0.8)
+        ax.set_axisbelow(True)
+        for side in ("top", "right", "left"):
+            ax.spines[side].set_visible(False)
+        ax.spines["bottom"].set_color(grid)
+        ax.legend(frameon=False, fontsize=10.5, loc="lower left", labelcolor=ink)
+    axes[0].set_ylabel("Return per quarter", color=muted, fontsize=11)
+    fig.subplots_adjust(left=0.06, right=0.99, top=0.84, bottom=0.16, wspace=0.08)
+    if save_path:
+        Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(save_path, dpi=200, facecolor=surface)
+    plt.close(fig)
 
 
 SENIOR_LOANS = ["SENIOR_SECURED_1L", "SENIOR_SECURED_2L", "SENIOR_UNSECURED", "SENIOR_SECURED_UNSPEC", "UNITRANCHE"]
 
 
 if __name__ == "__main__":
+    # Draw off-screen: an interactive backend would open a window per chart.
+    import matplotlib
+    matplotlib.use("Agg")
+    import warnings
+    warnings.filterwarnings("ignore", message=".*non-interactive.*")
     from paths import FINAL_DIR, INDEX_PLOTS_DIR, REFERENCE_DIR
 
     CSV_PATH = FINAL_DIR / "FINAL_DATASET.csv"
     CDLI_CSV_PATH = REFERENCE_DIR / "cdli.csv"
     CDLI_S_CSV_PATH = REFERENCE_DIR / "cdli-s.csv"     # CDLI senior-loans benchmark
-    RATES_XLSX = REFERENCE_DIR / "Search.xlsx"         # daily EFFR / SOFR
 
     print("=== index_construction.py: whole-market flow-based pipeline ===")
     df = load_and_prepare_investment_data(str(CSV_PATH))
@@ -1073,46 +657,18 @@ if __name__ == "__main__":
     print(f"lag-1 autocorrelation: {rho:.3f}   de-smoothed vol: {un_vol:.4%} (theta={theta:.3f})")
     print(f"max drawdown: {mdd:.4%}")
 
-    plot_index_vs_cdli_returns(index_df, str(CDLI_CSV_PATH), save_path=INDEX_PLOTS_DIR / "index_vs_cdli_returns.png")
-    plot_quarterly_return_decomposition(
-        decomp.to_pandas(), title="Quarterly Return Decomposition",
-        save_path=INDEX_PLOTS_DIR / "quarterly_return_decomposition.png",
-    )
-
-    # --- the remaining charts from notebooks/index_construction_pipeline.ipynb ---
-    plot_quarterly_return_decomposition(
-        decomp.to_pandas(), title="Market-Level BDC Index – Quarterly Return Decomposition\n",
-        save_path=INDEX_PLOTS_DIR / "market_level_decomposition.png",
-    )
-    plot_index_vs_cdli_returns(index_df, str(CDLI_CSV_PATH), save_path=INDEX_PLOTS_DIR / "index_vs_cdli.png")
-
-    # one sector and the senior-loans group: filter the flowed positions, re-weight within the bucket
-    tech = compute_market_weights(flows.filter(pl.col("sector") == "Technology"), safe_div)
-    plot_quarterly_return_decomposition(
-        aggregate_return_decomposition(tech, safe_div).to_pandas(),
-        title="Market-Level BDC Index – Quarterly Return Decomposition - Technology only\n",
-        save_path=INDEX_PLOTS_DIR / "technology_sector_decomposition.png",
-    )
+    # senior loans: filter the flowed positions, re-weight within the bucket
     loans = compute_market_weights(flows.filter(pl.col("instrument_seniority").is_in(SENIOR_LOANS)), safe_div)
-    plot_quarterly_return_decomposition(
-        aggregate_return_decomposition(loans, safe_div).to_pandas(),
-        title="Market-Level BDC Index – Quarterly Return Decomposition - SENIOR Loans only\n",
-        save_path=INDEX_PLOTS_DIR / "senior_loans_decomposition.png",
-    )
     index_loans = compute_flow_based_market_index(loans)
-    plot_index_vs_cdli_returns(index_loans, str(CDLI_S_CSV_PATH), benchmark_label="CDLI-S Returns",
-                               save_path=INDEX_PLOTS_DIR / "senior_loans_vs_cdli_s.png")
 
-    # index, CDLI and SOFR quarterly averages
-    rates = load_quarterly_rates(str(RATES_XLSX))
-    plot_df = build_quarterly_comparison_df(rates, index_df, str(CDLI_CSV_PATH))
-    plot_index_cdli_sofr(plot_df, save_path=INDEX_PLOTS_DIR / "index_cdli_sofr.png")
-    plot_df_loans = build_quarterly_comparison_df(rates, index_loans, str(CDLI_S_CSV_PATH))
-    corr_l, _, te_a_l = compute_tracking_error(plot_df_loans)
-    print(f"\n--- senior loans vs. CDLI-S --- correlation: {corr_l.iloc[0, 1]:.4f}   tracking error (annualized): {te_a_l:.4%}")
-    plot_index_cdli_sofr(
-        plot_df_loans,
-        title="Senior Loans Index Returns Comparison with CDLI-S and SOFR Quarterly Averages",
-        benchmark_label="CDLI-S Return",
-        save_path=INDEX_PLOTS_DIR / "senior_loans_vs_cdli_s_sofr.png",
-    )
+    # CDLI comparison for the deck: both pairs side by side, the numbers saved next to the chart
+    stats_all = benchmark_stats(index_df, str(CDLI_CSV_PATH), "Our BDC loan index", "CDLI")
+    stats_sen = benchmark_stats(index_loans, str(CDLI_S_CSV_PATH), "Our senior-loan index", "CDLI-S")
+    pd.DataFrame([stats_all, stats_sen]).to_csv(INDEX_PLOTS_DIR / "index_vs_cdli_stats.csv", index=False)
+    plot_benchmark_comparison([
+        dict(title="All BDC loans vs CDLI", index_df=index_df, cdli_csv_path=str(CDLI_CSV_PATH),
+             index_label="Our BDC loan index", benchmark_label="CDLI", stats=stats_all),
+        dict(title="Senior loans vs CDLI-S", index_df=index_loans, cdli_csv_path=str(CDLI_S_CSV_PATH),
+             index_label="Our senior-loan index", benchmark_label="CDLI-S (senior loans)", stats=stats_sen),
+    ], save_path=INDEX_PLOTS_DIR / "index_vs_cdli_panels.png")
+    print(pd.DataFrame([stats_all, stats_sen]).T.to_string())

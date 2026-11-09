@@ -1,0 +1,4 @@
+step,filings,par_usd,share_kept,note
+1. Collect (estimated),2239,5520381309475.072,0.9800805761185051,222 unread filings estimated from the BDC's nearest quarter; 68 filings from 9 BDCs with no readable filing are not estimable
+2. Read,2017,5435897116510.156,0.9953128946740705,2050 dropped rows with par > 10x fair value counted at fair value
+3. Clean and label,1986,5410418494184.156,1.0,FINAL_DATASET

@@ -1,15 +1,15 @@
-# src/ixbrl_parser.py
+"""Parse one filing's iXBRL instance (from SEC EDGAR) into a wide table: one row per schedule-of-
+investments context on the report date, one column per fact. Used by scripts/run_ixbrl_parser.py."""
 from __future__ import annotations
 
-import sys as _sys
-from pathlib import Path as _Path
-_sys.path.insert(0, str(_Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
 
 import re
 import time
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Optional, Tuple
 
 import pandas as pd
@@ -17,39 +17,9 @@ import requests
 from bs4 import BeautifulSoup
 from lxml import etree
 
-from paths import (
-    ensure_dirs,
-    DATA_DIR,
-    IXBRL_DIR,              # 如果你 paths.py 還沒加這個，就把這行刪掉，下面會 fallback
-    IXBRL_RAW_XML_DIR,
-    IXBRL_PER_FILE_DIR,
-    IXBRL_COMBINED_DIR,
-    IXBRL_WIDE_ALL_CSV,
-)
+from paths import ensure_dirs, IXBRL_RAW_XML_DIR, IXBRL_PER_FILE_DIR, IXBRL_WIDE_ALL_CSV
 
 logger = logging.getLogger("ixbrl_parser")
-
-
-# -------------------------
-# Small compatibility fallback
-# -------------------------
-def _fallback_paths():
-    """
-    If your paths.py doesn't yet define IXBRL_DIR / IXBRL_* variables,
-    we can derive them from DATA_DIR here (still rooted under final/).
-    """
-    base = DATA_DIR / "ixbrl"
-    raw = base / "raw_xml"
-    per_file = base / "per_file"
-    combined_dir = base / "combined"
-    wide_all = combined_dir / "wide_all.csv"
-    return base, raw, per_file, combined_dir, wide_all
-
-
-try:
-    _ = IXBRL_RAW_XML_DIR  # noqa
-except Exception:
-    IXBRL_DIR, IXBRL_RAW_XML_DIR, IXBRL_PER_FILE_DIR, IXBRL_COMBINED_DIR, IXBRL_WIDE_ALL_CSV = _fallback_paths()
 
 
 # -------------------------
@@ -90,11 +60,6 @@ def _namespace_from_root(root) -> dict:
     ns.setdefault("xbrli", "http://www.xbrl.org/2003/instance")
     ns.setdefault("xbrldi", "http://xbrl.org/2006/xbrldi")
     return ns
-
-
-def build_namespace(xml_file: Path) -> dict:
-    root = etree.parse(str(xml_file)).getroot()
-    return _namespace_from_root(root)
 
 
 def _context_period_text(ctx, ns):
@@ -251,13 +216,8 @@ def process_one_filing(
     xml_path = IXBRL_RAW_XML_DIR / f"{cik}_{accession}.xml"
 
     if cfg.write_raw_xml and not xml_path.exists():
-        # SEC intermittently drops/resets requests fired back-to-back with no delay
-        # (same failure mode observed in bdc.py / filings.py); the index-page fetch
-        # above and this XML download are two separate requests to sec.gov, so give
-        # them a beat apart. Uses a small fixed delay rather than cfg.sleep_between
-        # (already applied by the caller between whole filings) to avoid doubling
-        # total runtime across ~8,600 filings for a gap that only needs to be
-        # non-zero, not large.
+        # The SEC drops requests fired back-to-back: a short gap between the index-page fetch and
+        # this download (cfg.sleep_between is already applied between filings by the caller).
         time.sleep(min(cfg.sleep_between, 0.3))
         ok = download_xml(xml_url, xml_path, session, cfg)
         if not ok:
@@ -269,9 +229,7 @@ def process_one_filing(
     try:
         root = etree.parse(str(xml_path)).getroot()
     except etree.XMLSyntaxError:
-        # A cached file can be truncated/corrupt (e.g. left over from a disk-full
-        # crash mid-write); xml_path.exists() alone doesn't catch that. Re-download
-        # once before giving up, rather than treating this filing as permanently failed.
+        # A cached file can be truncated (e.g. a disk-full crash mid-write): re-download once.
         xml_path.unlink(missing_ok=True)
         if not download_xml(xml_url, xml_path, session, cfg):
             return None, False, "download_fail"
@@ -316,83 +274,16 @@ def process_one_filing(
     return df_wide, True, "success"
 
 
-# -------------------------
-# Combine
-# -------------------------
-def combine_wide_frames(
-    frames: list[pd.DataFrame],
-    out_csv: Path = IXBRL_WIDE_ALL_CSV,
-    append_if_exists: bool = False,
-) -> pd.DataFrame:
-    """
-    Combine parsed frames into one wide CSV.
-    - append_if_exists=True: will read existing out_csv and append+dedup (useful for incremental runs).
-    """
-    if not frames and not (append_if_exists and out_csv.exists()):
-        raise ValueError("No frames to combine and no existing output to append.")
-
-    if frames:
-        combined = pd.concat(frames, ignore_index=True)
-    else:
-        combined = pd.DataFrame()
-
-    key_cols = ["cik", "accession", "context_id"]
-
-    if append_if_exists and out_csv.exists():
-        # Force key columns to string on reload: cik/accession are digit-only strings
-        # (no leading zeros / no dashes) and pandas silently infers them as int64 on a
-        # plain read_csv. Freshly parsed frames keep them as str, so an unguarded reload
-        # here breaks drop_duplicates() below (e.g. cik "1287750" != int 1287750) and lets
-        # duplicate rows accumulate across every incremental append run.
-        dtype_override = {c: str for c in key_cols}
-        prev = pd.read_csv(out_csv, low_memory=False, dtype=dtype_override)
-        combined = pd.concat([prev, combined], ignore_index=True)
-
-    # conservative dedup key
-    dedup_key = [c for c in key_cols if c in combined.columns]
-    if dedup_key:
-        for c in dedup_key:
-            combined[c] = combined[c].astype(str)
-        combined = combined.drop_duplicates(subset=dedup_key).reset_index(drop=True)
-
-    out_csv.parent.mkdir(parents=True, exist_ok=True)
-    combined.to_csv(out_csv, index=False)
-    return combined
-
-
 def append_wide_frames_bounded(
     frames: list[pd.DataFrame],
     out_csv: Path = IXBRL_WIDE_ALL_CSV,
     overwrite: bool = False,
     chunksize: int = 10_000,
 ) -> None:
-    """
-    Memory-bounded incremental writer for the combined wide table, used by the
-    parser's periodic flush loop instead of combine_wide_frames().
-
-    combine_wide_frames() reads the *entire* existing out_csv into memory on every
-    call, which does not scale: filings come from hundreds of different BDC filers,
-    each with its own XBRL extension-taxonomy columns (a common schema only exists
-    after preprocessor.py's prefix-merge step), so the accumulated wide table grows
-    wide as well as long. On a machine with a few GB of RAM, a full reload+concat+
-    drop_duplicates eventually OOMs regardless of how small the new batch is -
-    confirmed here: it crashed allocating well under 1 GB once the accumulated
-    table reached ~340k rows / ~300 columns.
-
-    This function never loads the full accumulated file at once:
-    - If the new batch's columns are already a subset of the on-disk header, rows
-      are appended directly (only the small new batch touches memory).
-    - If the batch introduces new columns, the existing file is rewritten in
-      chunks (bounded by `chunksize` rows at a time) to add them, then the new
-      batch is appended. Chunk rows are read back as `str` so re-serializing them
-      is a no-op (values are already CSV text); downstream code re-parses types.
-
-    Cross-batch/cross-run duplicate rows are NOT re-checked here (that would
-    require the same full-file load this function exists to avoid). Correctness
-    instead relies on the caller's resume_parsed_only logic to guarantee the
-    filings behind `frames` are not already present in out_csv. Only within-batch
-    duplicates are removed.
-    """
+    """Append parsed frames to the combined wide table without loading the whole file. New columns
+    (each filer has its own XBRL extension columns) are added by rewriting the file in chunks of
+    `chunksize` rows, read as text so values are unchanged. Only within-batch duplicates are
+    removed; the caller's resume logic keeps already-parsed filings out of `frames`."""
     if not frames:
         return
 
@@ -439,7 +330,4 @@ def init_session(user_agent: str) -> requests.Session:
 
 
 def init_ixbrl_dirs() -> None:
-    ensure_dirs()
-    IXBRL_RAW_XML_DIR.mkdir(parents=True, exist_ok=True)
-    IXBRL_PER_FILE_DIR.mkdir(parents=True, exist_ok=True)
-    IXBRL_COMBINED_DIR.mkdir(parents=True, exist_ok=True)
+    ensure_dirs()   # includes the raw_xml, per_file and combined folders

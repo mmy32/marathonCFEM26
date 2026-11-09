@@ -9,14 +9,20 @@ how that changed from 2023Q1 to 2026Q2, and which managers hold it. Scripts are 
 | Step | Command | Writes |
 |---|---|---|
 | 1. Tag borrowers | `python src/6_data_center/classify_data_center_borrowers.py` | `data/data_center/data_center_borrowers.csv`, `data_center_loan_rows.csv` |
-| 2. Trends and BDC exposure | `python src/6_data_center/data_center_analysis.py` | `outputs/data_center_plots/` |
-| 3. Time series by scope and manager | `python src/6_data_center/plot_data_center_timeseries.py` | `outputs/data_center_plots/` |
-| 4. Largest borrowers and their lenders | `python src/6_data_center/plot_data_center_lenders.py` | `outputs/data_center_plots/` |
+| 2. Time series by scope (midterm slide 17) | `python src/6_data_center/plot_data_center_timeseries.py` | `outputs/data_center_plots/dc_loans_total.png`, `dc_loans_timeseries.csv` |
+| 3. Sector mix (midterm slide 18) | `python src/6_data_center/plot_data_center_sectors.py` | `outputs/data_center_plots/dc_sector_mix.png`, `dc_sector_mix.csv`, `dc_sector_fills.csv` |
 | Check: LLM screen of every borrower | `python src/6_data_center/screen_via_chat.py export` / `merge` (or `screen_data_center_borrowers.py` with an API key) | `data/data_center/data_center_screen.csv` |
 
 All steps read `data/final_dataset/FINAL_DATASET.csv`. Steps 2 and 3 also read
-`data/universe/BDC_filings_2001_present.csv` for BDC names. Amounts are quarter-end fair values,
-i.e. holdings, not new lending.
+`data/universe/BDC_filings_2001_present.csv` for BDC names, through `data_center_analysis.load()`.
+Amounts are quarter-end fair values, i.e. holdings, not new lending.
+
+The screen's decisions are already written into `classify_data_center_borrowers.py`, so steps 1-3
+do not need it. The exposure tables and charts by BDC and by manager, the by-function and
+%-of-portfolio charts, and the largest-borrowers chart (`plot_data_center_lenders.py`) are not in
+the midterm deck. They were moved out of the repo on 2026-11-08 (to `ORIE 5220/miscellaneous/`)
+and are no longer written; `data_center_analysis.py` is kept as the shared loader and style
+module.
 
 ---
 
@@ -55,29 +61,21 @@ The current list tags 122 borrower-name variants:
 | 2 AI compute | 24 | — | — |
 | 4 DC services / supply chain | — | 21 | 32 |
 
-## 2-4. Analysis and charts
+## 2-3. Analysis and charts
 
-- **`data_center_analysis.py`:**
-  - `trend_by_function.csv`: quarterly fair value, cost and net new cost by function.
-  - `bdc_exposure.csv`: each BDC's latest-quarter exposure in dollars and as a % of its
-    portfolio.
-  - `bdc_exposure_by_manager.csv`: the same, with each manager's BDCs combined.
-  - `bdc_exposure_panel.csv`: BDC by quarter.
-  - Four charts.
-  - **Base:** these tables count every tagged borrower, i.e. the upper-bound set. BDCs are
-    grouped by asset manager with `manager()`: a list of name patterns plus `CIK_MANAGERS`. A BDC
-    that matches none is its own manager.
-- **`plot_data_center_timeseries.py`:**
-  - **Totals:** splits loans into the three scopes and the nested estimates
-    (`dc_loans_timeseries.csv`, `dc_loans_total.png`). A loan is a tagged row that is not equity
-    and that carries a principal, a rate or a spread.
-  - **By manager:** charts exposure by manager in dollars and as a % of portfolio, for the 5
-    largest managers plus all others (`dc_loans_by_bdc.png`, `dc_exposure_share.png`). These
-    charts count every tagged investment, of any scope or instrument, like the other manager
-    charts.
-- **`plot_data_center_lenders.py`:** the 15 largest data-center borrowers at the latest quarter,
-  each bar split by lending manager (`dc_top_borrowers.png`, `dc_borrowers.csv`,
-  `dc_borrower_lenders.csv`).
+- **`data_center_analysis.py`** (imported, not run): `load()` reads the tagged rows, each BDC's
+  total fair value and BDC names; `manager()` (imported from `manager_family.py`) groups BDCs by asset manager with
+  `src/1_data_processing/manager_family.py` (shared with crowding and dispersion; see
+  `11_tranche_matching.md`): a list of name patterns plus `CIK_FAMILIES`. A BDC that matches none
+  is its own manager.
+- **`plot_data_center_timeseries.py`:** splits loans into the three scopes and the nested
+  estimates (`dc_loans_timeseries.csv`, `dc_loans_total.png`). A loan is a tagged row that is not
+  equity and that carries a principal, a rate or a spread. It also prints the largest holders by
+  BDC and by manager at the latest quarter (the manager table below); these count every tagged
+  investment, of any scope or instrument.
+- **`plot_data_center_sectors.py`:** the 2026Q2 upper-bound set (core + support + grey) by
+  sector, with borrower counts (`dc_sector_mix.png`, `dc_sector_mix.csv`); `dc_sector_fills.csv`
+  lists the borrowers whose sector was filled in.
 
 ## Results on the current data
 
@@ -135,4 +133,5 @@ regenerated on 2026-10-22 with the current alias list.
 - **The scope of a supplier is a judgment call.** The headline estimate leaves out the grey area
   on purpose, and the upper bound includes it.
 - **Amounts are fair values of holdings.** A rise can come from new loans, from BDCs entering the
-  panel, or from marks. `trend_by_function.csv` reports net new cost to help separate these.
+  panel, or from marks. The removed `trend_by_function()` reported net new cost to help separate
+  these (in `ORIE 5220/miscellaneous/code_before_simplify_2026-11-08/`).

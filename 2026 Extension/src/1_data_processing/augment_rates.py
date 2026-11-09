@@ -1,39 +1,6 @@
-"""
-Augment SOFR.csv with EUR, GBP, CAD, AUD, SEK, JPY, CHF, NOK, KRW, DKK, CNY, NZD and SGD base
-rates by calendar quarter.
-
-Every series is pulled from the official publisher (or a US-government mirror of it)
-and aggregated the same way as the SOFR column: the simple average of daily
-observations within each calendar quarter.
-
-  EURIBOR 3M : ECB Data Portal, FM.Q.U2.EUR.RT.MM.EURIBOR3MD_.HSTA
-               (same dataflow/method as the SOFR series; already a quarterly average)
-  SONIA      : FRED (St. Louis Fed) IUDSOIA, source Bank of England;
-               falls back to the Bank of England IADB if FRED fails
-  CORRA      : Bank of Canada Valet API, series AVG.INTWO
-  BBSW 3M    : Reserve Bank of Australia table F1, series FIRMMBAB90D
-  STIBOR 3M  : OECD Main Economic Indicators via FRED, IR3TIB01SEM156N (monthly averages)
-  TONA       : Bank of Japan Time-Series API, FM01 STRDCLUCON (uncollateralized O/N call rate)
-  SARON      : Swiss National Bank data portal, cube zirepo item H0 (close of trading)
-  NIBOR 3M   : OECD Main Economic Indicators via FRED, IR3TIB01NOM156N (monthly averages)
-  CD 91-day  : Bank of Korea ECOS, table 721Y001 item 2010000 (already a quarterly average)
-  CIBOR 3M   : OECD Main Economic Indicators via FRED, IR3TIB01DKM156N (monthly averages)
-  SHIBOR 3M  : National Interbank Funding Center (shibor.org / chinamoney.com.cn), PBoC-authorised
-  BKBM 3M    : OECD Main Economic Indicators via FRED, IR3TIB01NZM156N (monthly averages)
-  SORA 3M    : MAS via SingStat Table Builder, M700071 series 23 (compounded 3-month SORA,
-               end of month); the quarter-end value compounds the quarter's overnight SORA
-
-The benchmarks follow what the BDC filings tag (STIBOR, NIBOR, CIBOR, SARON, TONA and the Korean
-short-term rate). STIBOR / NIBOR / CIBOR are licensed by their administrators (SFBF, NoRe, DFBF) and
-no central bank republishes them, so the OECD monthly averages of the daily fixings are used; the
-quarterly value is the mean of the three monthly averages (BKBM likewise). No filing tags a CNY benchmark; SHIBOR
-3M is used as the interbank term rate analogous to EURIBOR 3M. ECOS is queried with its public
-"sample" key (10 rows per call) unless ECOS_API_KEY is set.
-
-Usage:
-    pip install pandas requests
-    python augment_rates.py SOFR.csv SOFR_augmented.csv
-"""
+"""Step 5: add non-USD base rates (EURIBOR, SONIA, CORRA, BBSW, STIBOR, TONA, SARON, NIBOR, KRW CD,
+CIBOR, SHIBOR, BKBM, SORA) to SOFR.csv as quarterly averages -> SOFR_augmented.csv. Calls the central
+banks; sources in docs/2_ixbrl_cleaning.md. Usage: python augment_rates.py SOFR.csv SOFR_augmented.csv"""
 import csv
 import io
 import os
@@ -43,9 +10,8 @@ import time
 import pandas as pd
 import requests
 
-import sys as _sys
-from pathlib import Path as _Path
-_sys.path.insert(0, str(_Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
 from paths import REFERENCE_DIR
 
 START = "2023-01-01"                    # panel starts 2023Q1 (preprocessor quarter_from)
