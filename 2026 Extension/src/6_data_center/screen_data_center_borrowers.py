@@ -1,26 +1,9 @@
-"""Screen every borrower in FINAL_DATASET.csv for data-center exposure with Claude.
-
-Usage:
-    python screen_data_center_borrowers.py [--limit N] [--dry-run] [--workers K]
-
-The curated alias list in classify_data_center_borrowers.py only finds borrowers someone
-already knew about. This screen asks Claude about each distinct borrower_canonical, given
-its name, the BDCs' investment descriptions and reported industries, and returns a tier
-(the same four as the alias list, plus "none" and "unknown"), a confidence and a reason.
-The output is a review list, not a label: confirm a candidate before adding it to RULES.
-
-    --limit N    screen only the N largest borrowers by peak fair value (a pilot)
-    --dry-run    build the prompts and print the first one; no API calls
-    --workers K  concurrent requests (default 8)
-
-Needs ANTHROPIC_API_KEY (and ANTHROPIC_WORKSPACE_ID if your key requires one). Resumes from
-data/data_center/_data_center_screen_checkpoint.csv, so an interrupted run only pays for the
-borrowers it has not finished. Writes data/data_center/data_center_screen.csv: one row per
-screened borrower with the screen result, the alias-list match and fair value context.
-"""
-import sys as _sys
-from pathlib import Path as _Path
-_sys.path.insert(0, str(_Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
+"""Screen every borrower for data-center exposure with Claude through the API: a review list (tier,
+confidence, reason) for the alias list, not a label -> data/data_center/data_center_screen.csv. Needs
+ANTHROPIC_API_KEY; resumes from a checkpoint. Usage: [--limit N] [--dry-run] [--workers K]"""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
 
 import argparse
 import csv

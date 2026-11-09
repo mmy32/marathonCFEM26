@@ -1,3 +1,4 @@
+"""Calendar-quarter helpers for the preprocessor: period dates -> quarter-end dates and labels."""
 import pandas as pd
 
 def standardize_periods_to_calendar_quarter(periods, return_type="date"):

@@ -1,9 +1,11 @@
+"""Step 6: clean rates, currencies and values in data/parsed/ixbrl_clean.csv ->
+data/cleaned/ixbrl_cleaned_out.csv (rules in src/1_data_processing/ixbrl_utils.py)."""
 import warnings
 import pandas as pd
 
-import sys as _sys
-from pathlib import Path as _Path
-_sys.path.insert(0, str(_Path(__file__).resolve().parents[1] / "src" / "1_data_processing"))  # for paths.py
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "1_data_processing"))  # for paths.py
 from paths import CLEANED_DIR, PARSED_DIR, REFERENCE_DIR, add_code_dirs_to_path
 add_code_dirs_to_path()  # ixbrl_utils lives in src/1_data_processing/
 

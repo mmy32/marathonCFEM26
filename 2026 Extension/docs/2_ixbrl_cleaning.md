@@ -571,3 +571,29 @@ A full run on the current dataset takes about 3–4 minutes.
 ## Goal
 
 The goal of this pipeline is to produce **clean, consistent, and auditable interest rate data** suitable for downstream financial analysis and research of private credit markets.
+
+## Base-rate sources (`augment_rates.py`)
+
+`SOFR_augmented.csv` adds non-USD base rates to `SOFR.csv`, each the simple average of daily
+observations in the calendar quarter (as for SOFR), pulled from the official publisher or a US
+government mirror:
+
+| Rate | Source |
+|---|---|
+| EURIBOR 3M | ECB Data Portal, FM.Q.U2.EUR.RT.MM.EURIBOR3MD_.HSTA (already a quarterly average) |
+| SONIA | FRED IUDSOIA (Bank of England); falls back to the Bank of England IADB |
+| CORRA | Bank of Canada Valet API, AVG.INTWO |
+| BBSW 3M | Reserve Bank of Australia table F1, FIRMMBAB90D |
+| STIBOR 3M | OECD via FRED, IR3TIB01SEM156N (monthly averages) |
+| TONA | Bank of Japan Time-Series API, FM01 STRDCLUCON |
+| SARON | Swiss National Bank data portal, cube zirepo item H0 |
+| NIBOR 3M | OECD via FRED, IR3TIB01NOM156N (monthly averages) |
+| CD 91-day (KRW) | Bank of Korea ECOS, table 721Y001 item 2010000 (already quarterly); public "sample" key unless `ECOS_API_KEY` is set |
+| CIBOR 3M | OECD via FRED, IR3TIB01DKM156N (monthly averages) |
+| SHIBOR 3M | National Interbank Funding Center (no filing tags a CNY benchmark; used as the term rate) |
+| BKBM 3M | OECD via FRED, IR3TIB01NZM156N (monthly averages) |
+| SORA 3M | MAS via SingStat, M700071 series 23 (compounded 3-month SORA, end of month) |
+
+STIBOR, NIBOR and CIBOR are licensed by their administrators and no central bank republishes them,
+so the OECD monthly averages of the daily fixings are used; the quarter is the mean of the three
+months (BKBM likewise). Run: `python src/1_data_processing/augment_rates.py SOFR.csv SOFR_augmented.csv`.

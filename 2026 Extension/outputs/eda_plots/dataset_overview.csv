@@ -1,0 +1,24 @@
+item,value
+rows (position-quarters),502299
+"rows with a principal amount (loans), all quarters",0.865
+quarters,14
+first quarter,2023Q1
+last quarter,2026Q2
+filings (10-K / 10-Q),1986
+"BDCs, any quarter",196
+"manager families, any quarter",96
+"borrowers, any quarter",15419
+"BDCs, 2026Q2",171
+"borrowers, 2026Q2",9662
+"fair value $bn, 2026Q2",527.9
+"debt share of fair value, 2026Q2",0.952
+"first-lien share of fair value, 2026Q2",0.557
+rows with a borrower,0.999
+rows with a sector,0.916
+"fair value with known non-accrual status, 2026Q2",0.912
+"listed BDCs, 2026Q2",48
+"listed fair value $bn, 2026Q2",153.0
+"non-traded BDCs, 2026Q2",24
+"non-traded fair value $bn, 2026Q2",232.6
+"private BDCs, 2026Q2",99
+"private fair value $bn, 2026Q2",142.4

@@ -1,5 +1,7 @@
 # Flow-Based Market Investment Return Index and Decomposition Toolkit
 
+> **Code note (2026-11-08):** the script now writes only index_vs_cdli_panels.png and index_vs_cdli_stats.csv. The return-decomposition, SOFR-comparison and single-pair CDLI charts and their helpers were removed from the repo as unused by the midterm deck; the full versions are in `ORIE 5220/miscellaneous/code_before_simplify_2026-11-08/`. Mentions of them below describe that earlier code.
+
 ## Overview
 
 This codebase provides a complete end-to-end pipeline for analyzing investment-level quarterly data and constructing a flow-based market return index. The framework is designed to support return attribution, benchmark comparison, and interest rate contextual analysis.
@@ -413,6 +415,13 @@ identical identifier text in one quarter, since each key-quarter is now one row.
 | Senior loans vs. CDLI-S: correlation / tracking error | — | 94.72% / 0.37% |
 
 All figures cover 2023Q2-2026Q2 (13 quarters).
+
+The pipeline also saves these benchmark numbers and a presentation chart (added 2026-10-26):
+`benchmark_stats()` writes `index_construction_plots/index_vs_cdli_stats.csv` (correlation,
+quarterly and annualized tracking error, and each calendar year's compounded return for the index
+and the benchmark, for both pairs), and `plot_benchmark_comparison()` draws
+`index_vs_cdli_panels.png` (all loans vs CDLI, senior loans vs CDLI-S, one panel each). 2025:
+index 9.6% vs CDLI 9.3%, senior 9.7% vs CDLI-S 9.2%. 2026Q1-Q2: 2.7% vs 3.0%, senior 3.0% vs 2.9%.
 
 **2023Q1** is the panel's first quarter, so no position has a prior quarter.
 `compute_flow_based_market_index()` and `aggregate_return_decomposition()` still return a 2023Q1
