@@ -1,0 +1,9 @@
+step,borrower_quarters,borrowers,new_nonaccruals
+"named borrower-quarters, funded debt",94343,13954,519
+not a CLO / structured vehicle,89858,13077,519
+"price at t (priceable par, FV/PAR <= 1.5)",88808,12946,509
+priced share >= 50% of funded par,88209,12921,504
+debt fair value >= $1m,82817,12161,481
+"held the quarter before (drawdown, PIK switch defined)",69773,10780,441
+non-accrual status known at t and accruing (risk set),57872,9337,441
+status known at t + 1 (labelled),54222,8802,441

@@ -1,5 +1,6 @@
 item,value
 rows (position-quarters),502299
+"rows with a principal amount (loans), all quarters",0.865
 quarters,14
 first quarter,2023Q1
 last quarter,2026Q2
