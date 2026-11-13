@@ -207,3 +207,75 @@ From `AUDIT_SUMMARY.md`:
 
 `index_construction.load_and_prepare_investment_data()` reads this file into the short names
 the analyses use: `FV`, `COST`, `PAR`, `rate_cash`, `interest_rate` and `rate_pik`.
+
+## Rules in detail
+
+These rules were in the module docstrings until 2026-11-08; the docstrings are now short.
+
+### BDC type (`bdc_type.py`)
+
+Evidence is each BDC's full EDGAR filing history (data.sec.gov submissions JSON, cached under
+`cache/sec_submissions/`). The Financing the Economy 2026 report splits BDCs three ways (Figs 25, 27,
+39), and the CFEM guideline treats type as a confounder (listed BDCs report non-accruals of 4.2%
+against 1.1% for private ones; non-traded BDCs face redemption flows).
+
+- **listed:** from the earliest Form 8-A12B (registration of a class on an exchange), when the BDC
+  has an exchange ticker today, or has filed a Form 25 / 25-NSE (delisting; a merged-away BDC keeps
+  no ticker). Until a 25-NSE after the listing, if any.
+- Before listing, or never listed:
+  - **non-traded:** a public continuous offering, from the first prospectus (424B, or 497 as HMS
+    Income Fund used) filed after an N-2, when there are at least `MIN_PROSPECTUSES` of them (BCRED,
+    HLEND, MSIF before its 2025 listing; First Eagle Private Credit from 2025).
+  - **private:** otherwise: private placements registered on Form 10, or an N-2 that never led to an
+    offering (KKR FS Income Trust Select). Fewer 424Bs are usually a notes exchange offer (Blue Owl
+    Technology Finance filed 2 before listing).
+- Cases the rules cannot settle are set by hand in `OVERRIDES`, with the reason.
+
+### Non-accrual flags (`nonaccrual_scan.py`, `nonaccrual_flags.py`)
+
+BDCs mark non-accrual loans with a footnote in the schedule of investments. In the XBRL instance
+the footnote is a `link:footnote`, attached to facts by `link:footnoteArc` (fact -> loc ->
+footnote). Each fact names its context, and FINAL_DATASET keeps every row's `context_id`, so a row
+is on non-accrual when one of its facts links to a non-accrual footnote. The scan writes, per
+filing, to `data/parsed/nonaccrual/`: `footnote_texts.csv` (every footnote mentioning non-accrual),
+`footnote_contexts.csv` (the contexts linked to them), `filing_totals.csv` (undimensioned
+non-accrual facts and net assets, `StockholdersEquity` / `AssetsNet`) and `scan_log.csv`.
+
+A footnote counts as a flag when its wording says the marked investment is on non-accrual
+(`POSITIVE`) and nothing in it says the opposite or makes it a general note (`NEGATIVE`: "excluding
+those on non-accrual", "there were no investments on non-accrual", "all debt investments are income
+producing except ..."). A footnote linked to more than half of a filing's rows, or a long one (>
+`LONG_TEXT` characters) linked to more than a quarter, is a general note and is dropped. Row value:
+1 if the row's context is linked to a flag footnote; 0 if not, in a filing whose status is known;
+blank if the filing has no non-accrual footnote in its XBRL (unknown, not zero).
+
+### Maturity from the HTML schedule (`maturity_html.py`)
+
+Each schedule row holds tagged facts whose `contextRef` is the panel row's `context_id`, so the
+row's maturity cell joins to the panel exactly, without matching text. `download` fetches the
+primary document of every filing with a blank maturity into `cache/html_gz/{cik}/{accession}.htm.gz`;
+`extract` writes `maturity_from_html.csv` (accession, context_id, maturity_html, maturity_cell).
+
+- Header rows (no tagged facts, a cell naming cost, principal or par) set the date columns of the
+  schedule that follows. A header without a maturity column clears them; a summary table
+  ("Maturity Year | Fair Value") is not a header.
+- A data row is a `<tr>` with `ix:nonFraction` facts; its context is the most common `contextRef`.
+- When the row has as many dates as the header has date columns, the maturity is the one in the
+  maturity column's position. With fewer, the latest date counts only if it is after the report
+  date. With more (a date also in the description), it is the latest date.
+- In tables without a maturity header, only a date right after "due" / "maturity" counts.
+- Month-only dates ("05/2033", "May 2033") are set to the 15th, within 16 days of the true date;
+  tranche matching allows 31 days.
+
+### Report-aligned sector (`report_sector.py`)
+
+Houlihan Lokey's BDC Monitor weights (Financing the Economy 2026, Fig 18) are business services 25%,
+software 21% and industrials 17%; the validated taxonomy has one Technology bucket and puts business
+services in Industrials. Keyword rules on each identifier's reported industry text
+(`sector_evidence`) split them: Technology -> "Software" (software, SaaS, application, ERP, ...) or
+"Technology (ex-software)"; Industrials -> "Business Services" (professional / commercial / business
+services, consulting, staffing, HR, research, testing, unless a goods or transport industry is named)
+or "Industrials (ex-business services)". Then one value per borrower: each identifier votes with its
+row count and the plurality wins (ties: alphabetical). Other sectors are unchanged, so
+`sector_report` rolls back up to `sector`. IT services stay in Technology (ex-software); moving them
+changes the Business Services share by about 1.5 points.

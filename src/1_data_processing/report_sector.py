@@ -1,32 +1,6 @@
-"""Report-aligned sector (`sector_report`): the validated sector with Software split out of
-Technology and Business Services split out of Industrials.
-
-Why: Houlihan Lokey's BDC Monitor weights in Financing the Economy 2026 (Fig 18, p.27) are
-business services 25%, software 21% and industrials 17%. The validated 12-sector taxonomy has a
-single Technology bucket and puts business services inside Industrials, so Fig 18 cannot be
-compared without this split.
-
-How: no new labelling. Each validated identifier already carries the industry text its BDC
-reports (or other BDCs report) next to the borrower, in `sector_evidence`. Keyword rules on that
-text split the two sectors:
-
-    Technology  -> "Software" if the text names software (software, SaaS, application, ERP, ...),
-                   else "Technology (ex-software)" (IT services, hardware, internet, generic
-                   "high tech")
-    Industrials -> "Business Services" if the text names professional / commercial / business
-                   services, consulting, staffing, HR, research, testing and similar, unless it
-                   names a goods or transport industry; else "Industrials (ex-business services)"
-    other sectors are unchanged
-
-Then one value per borrower, as for `sector`: each identifier of the borrower votes with its row
-count and the plurality wins (ties: alphabetical), so a borrower one BDC files as "software" and
-another as "high tech industries" gets a single label. Identifiers with no borrower keep their
-own label. Rows whose sector is not Technology or Industrials are never changed, so
-`sector_report` rolls back up to `sector` exactly.
-
-IT services stay in Technology (ex-software). The report does not say where its taxonomy puts
-them; moving them to Business Services changes that share by about 1.5 points.
-"""
+"""sector_report: the validated sector with Software split out of Technology and Business Services split
+out of Industrials (Financing the Economy 2026, Fig 18), by keyword rules on each identifier's reported
+industry text, one value per borrower. Rules in docs/6_final_dataset.md."""
 from __future__ import annotations
 
 import csv

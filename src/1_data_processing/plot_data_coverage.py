@@ -1,20 +1,9 @@
-"""Data-coverage charts for the SEC download and iXBRL parsing steps.
-
-Usage:
-    python src/1_data_processing/plot_data_coverage.py
-
-Reads:
-    cache/all_metadata.csv               every 10-K / 10-Q the downloader found (step 2)
-    data/ixbrl/combined/wide_all.csv     parsed filings (step 3); only the accession column is read
-
-Writes to outputs/index_construction_plots/:
-    filings_by_type.png    10-K / 10-Q filings per filing year: non-XBRL, XBRL (non-inline), inline XBRL
-    parsing_coverage.png   per quarter (by report date), 2023Q1-2026Q2: inline-XBRL filings attempted,
-                           filings successfully parsed, and the success rate
-"""
-import sys as _sys
-from pathlib import Path as _Path
-_sys.path.insert(0, str(_Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
+"""Data coverage (slide 6): filings by type, parsing success by quarter, and how much principal survives
+each step (collect, read, clean). Reads cache/all_metadata.csv, wide_all.csv, ixbrl_clean.csv and
+FINAL_DATASET.csv; writes filings_by_type.png, parsing_coverage.png and par_retention.csv."""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick

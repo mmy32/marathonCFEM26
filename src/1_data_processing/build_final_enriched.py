@@ -1,27 +1,10 @@
-"""Build data_private_credit_FINAL_enriched_final.csv from three inputs
-(ixbrl_cleaned_out.csv in data/cleaned, the other two in data/enriched); written to data/enriched:
-
-- ixbrl_cleaned_out.csv: the cleaned panel. Every column is read and written back as text, so
-  values are exactly what run_ixbrl_pipeline.py produced; DROP_COLUMNS are left out.
-- borrower_name_cleaned.csv: teammate's borrower lookup (investment_identifier -> borrower_canonical).
-  Despite its name it is an .xlsx workbook. Exact join; identifiers it does not cover stay blank.
-  Names are put through normalize_borrower_name() (upper case, no punctuation, no legal-form
-  words such as LLC or Inc) so spelling variants of one borrower share one name.
-- _seniority_sector_llm_checkpoint.csv: the cached LLM sector answers from get_seniority_debttype.py.
-
-instrument_seniority and sector follow get_seniority_debttype.py exactly. Its rules are nested in
-one function and cannot be imported, so they are copied verbatim below:
-  - instrument_seniority: keyword rules on investment_identifier.
-  - sector: keyword rules; if those give "Other / Unknown", the cached LLM answer when its
-    confidence is >= 0.70; otherwise "Other / Unknown / Unresolved".
-The LLM is never called: unresolved identifiers missing from the checkpoint get
-"Other / Unknown / Unresolved".
-
-The output is written to a .partial file, checked against the panel, and only then renamed.
-"""
-import sys as _sys
-from pathlib import Path as _Path
-_sys.path.insert(0, str(_Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
+"""Step 7: the cleaned panel plus borrower names (teammates' lookup, normalized by
+normalize_borrower_name), instrument_seniority and sector (rules copied from get_seniority_debttype.py,
+with its cached LLM answers; the LLM is never called) -> data/enriched/
+data_private_credit_FINAL_enriched_final.csv, checked against the panel before it is renamed into place."""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
 
 import re
 import unicodedata

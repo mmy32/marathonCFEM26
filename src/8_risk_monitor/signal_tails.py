@@ -1,68 +1,6 @@
-"""Signal layer: warning signs measured per borrower, then each BDC's exposure to the flagged
-borrowers.
-
-Borrowers default; BDCs are hurt when a borrower they hold defaults. So every warning sign is
-measured on the borrower, and BDC risk comes second, as exposure: how much of the BDC's
-portfolio sits in flagged borrowers, and how big its largest flagged borrower is. That is where
-concentration enters: a flagged borrower worth 5% of one BDC's portfolio hurts that BDC far
-more than the same borrower spread thinly across thirty BDCs.
-
-Warning signs (borrower-quarter, from distress_event_study.borrower_quarter_panel):
-
-    sign            column               flagged when
-    crowding        C1_families          it is in the top TOP_SHARE (10%) of its size group that
-                                         quarter: fewer than 1 in 10 borrowers of similar size
-                                         (same fifth of BDC-held par) have as many manager families
-    disagreement    V1_range             it is in the top TOP_SHARE (10%) of the quarter: fewer than
-                                         1 in 10 borrowers held by 2+ manager families have a gap as
-                                         wide (par-weighted range of lenders' marks over its shared
-                                         loans; only those borrowers count)
-    pik_half        pik_share            more than half of its interest is paid in kind (par-weighted
-                                         PIK share of the coupon over its loans; e.g. 6% or more of
-                                         a 12% coupon)
-    pik_switch_q    toggle_par_share     one of its loans switched to PIK this quarter: PIK starts,
-                                         or its share of the coupon rises, on a loan that paid cash
-                                         the quarter before (the P2 toggle in pik_metrics)
-    pik_switched    toggle_par_share     a switch in this quarter or the three before (past year)
-
-Distributions, not fixed cutoffs. Flags are ranks within the quarter's distribution (crowding
-within size groups, because crowding mostly tracks borrower size). A rank always flags about 10%,
-so it says who is in the tail, not whether the tail is growing; the charts show that from the
-distribution itself, by number of borrowers and by dollars of BDC-held debt:
-
-    crowding_distribution        share of borrowers and of BDC-held par by manager count
-                                 (1, 2, 3, 4-5, 6+), each quarter
-    disagreement_percentiles     median, 90th and 95th percentile of the gap each quarter,
-                                 across borrowers and across dollars (par-weighted)
-
-PIK switches need a quarter before them. The panel starts in 2023Q1, so pik_switch_q starts in
-2023Q2 and pik_switched (a past-year window) in FULL_HISTORY_FROM (2024Q1), the first quarter
-whose window lies wholly inside the data. A stock of "PIK now, cash at origination" loans
-(acquired_par_share) is not used: it builds up from zero as the panel ages (5.3% of borrowers in
-2024Q1 to about 7% by 2025, while new switches stay near 2.2% a quarter), so its rise is
-mechanical.
-
-Distress signs, for exposure: disagreement or pik_switched. Crowding is not one: it says how many
-BDCs a default would reach, not how likely the default is. Nor is pik_half: some loans pay most
-of their interest in kind by design (venture and recurring-revenue loans).
-
-BDC exposure (BDC-quarter; FINAL_DATASET rows, all instruments, fair value > 0; BDCs with at
-least MIN_POSITIONS borrowers):
-
-    exposure_<sign>      share of the BDC's portfolio fair value in borrowers flagged on <sign>
-    exposure_distress    ... in borrowers with a distress sign
-    top_flagged_weight   the largest single distress-flagged borrower's share of the portfolio
-    top_flagged          that borrower
-    concentration        HHI of the BDC's book across borrowers (cost weights); effective_n = 1/HHI
-
-Plus pairwise portfolio overlap between manager families (C5) and the borrower-size split of
-crowding (confounder).
-
-Changed 2026-10-26: crowding and disagreement used to be flagged above a fixed line (the 90th
-percentile of 2023-24: more than 3 managers; a gap above 3.9 points of par), and the charts
-counted borrowers above it. Manager counts are whole numbers, so that line fell on a large tie
-(5.6% of borrowers above it, not 10%).
-"""
+"""Warning signs per borrower-quarter, ranked within the quarter (crowding within size groups,
+disagreement on value, PIK half / switch), their distributions (slides 12-14), and each BDC's exposure
+to borrowers with a distress sign (slide 15). Definitions in docs/12_risk_monitor.md."""
 from __future__ import annotations
 
 import matplotlib
@@ -74,7 +12,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
-from charts import SURFACE, INK, MUTED, GRID, BLUE, ORANGE, AQUA, _style
+from charts import SURFACE, INK, MUTED, GRID, BLUE, ORANGE
 from paths import REFERENCE_DIR
 
 FULL_HISTORY_FROM = "2024Q1"   # first quarter whose past-year switch window is wholly inside the data
@@ -84,10 +22,8 @@ SIZE_GROUPS = 5                # crowding is ranked within fifths of BDC-held pa
 MANAGER_BUCKETS = [(1, 1, "1"), (2, 2, "2"), (3, 3, "3"), (4, 5, "4–5"), (6, 10 ** 6, "6+")]
 PIK_HALF = 0.5
 MIN_POSITIONS = 20
-MIN_FAMILY_BORROWERS = 20
 EXPOSURE_LINE = 0.20      # "more than 20% of the portfolio in flagged borrowers"
 SINGLE_NAME_LINE = 0.05   # "one flagged borrower worth more than 5% of the portfolio"
-TYPE_COLORS = {"listed": BLUE, "non-traded": ORANGE, "private": AQUA}
 BUCKET_COLORS = ["#c9ddf5", "#86b4ea", "#3987e5", "#0d366b"]   # 2, 3, 4-5, 6+ managers (light to dark)
 
 SIGNS = {
@@ -241,11 +177,7 @@ def plot_crowding_distribution(dist: pd.DataFrame, path):
         ax.set_xticks(x, quarters, rotation=45)
     handles, labs = axes[0].get_legend_handles_labels()
     axes[0].legend(handles[::-1], labs[::-1], frameon=False, fontsize=10.5, loc="upper left", labelcolor=INK)
-    one = 100 * dist[(dist["cal_q"] == quarters[-1]) & (dist["bucket"] == "1")][["share_borrowers", "share_par"]].iloc[0]
-    fig.text(0.01, 0.015, f"Borrowers with one manager are the rest: {one['share_borrowers']:.0f}% of borrowers and "
-             f"{one['share_par']:.0f}% of BDC-held debt in {quarters[-1]}. Manager = the firm that runs one or more BDCs; "
-             "one firm's BDCs count once.", fontsize=9.5, color=MUTED, ha="left", va="bottom")
-    fig.subplots_adjust(left=0.06, right=0.99, top=0.83, bottom=0.2, wspace=0.16)
+    fig.subplots_adjust(left=0.06, right=0.99, top=0.83, bottom=0.15, wspace=0.16)
     fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)
 
@@ -278,8 +210,8 @@ def plot_disagreement_percentiles(t: pd.DataFrame, path):
     t = t.sort_values("cal_q").reset_index(drop=True)
     x = np.arange(len(t))
     fig, ax = plt.subplots(figsize=(10, 5.4), facecolor=SURFACE)
-    lines = [("p90_dollars", ORANGE, 2.8, "90th pct, dollars"),
-             ("p90_borrowers", BLUE, 2.8, "90th pct, borrowers"),
+    lines = [("p90_dollars", ORANGE, 2.8, "90th percentile, dollars"),
+             ("p90_borrowers", BLUE, 2.8, "90th percentile, borrowers"),
              ("p50_dollars", ORANGE, 1.4, "Median, dollars"),
              ("p50_borrowers", BLUE, 1.4, "Median, borrowers")]
     ends = []
@@ -301,13 +233,10 @@ def plot_disagreement_percentiles(t: pd.DataFrame, path):
     for (yv, text, color, bold), yl in zip(ends, pos):
         ax.text(len(x) - 1 + 0.35, yl, text, va="center", fontsize=10.5, color=INK, weight="bold" if bold else "normal")
         ax.plot([len(x) - 1 + 0.08, len(x) - 1 + 0.28], [yv, yl], color=color, linewidth=1.2)
-    ax.set_xlim(-0.4, len(x) + 4.4)
+    ax.set_xlim(-0.4, len(x) + 6.0)
     ax.set_xticks(x, t["cal_q"], rotation=45)
     ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0f}¢")
-    fig.text(0.01, 0.015, "90th percentile by borrowers: 1 in 10 of these borrowers has a wider gap. By dollars: 1 in 10 "
-             "dollars of their BDC-held debt sits with a wider gap.\nBlue: each borrower counts once. Orange: each "
-             "borrower counts by its BDC-held debt.", fontsize=9.5, color=MUTED, ha="left", va="bottom", linespacing=1.5)
-    fig.subplots_adjust(left=0.08, right=0.98, top=0.84, bottom=0.25)
+    fig.subplots_adjust(left=0.08, right=0.98, top=0.84, bottom=0.16)
     fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)
 
@@ -337,11 +266,7 @@ def plot_pik_tail(tail: pd.DataFrame, path) -> pd.DataFrame:
     ax.set_xlim(-0.5, len(quarters) - 0.2)
     ax.set_xticks(range(len(quarters)), quarters, rotation=45)
     ax.legend(frameon=False, fontsize=10.5, loc="lower right", labelcolor=INK)
-    fig.text(0.01, 0.015, "More than half its interest: e.g. 6% or more of a 12% coupon paid with more debt.\n"
-             "Switch: PIK starts, or its share of the interest rises, on a loan that paid cash the quarter before.\n"
-             f"{quarters[0]} is the first quarter of data, with nothing before it to compare, so that line starts a quarter later.",
-             fontsize=9.5, color=MUTED, ha="left", va="bottom", linespacing=1.5)
-    fig.subplots_adjust(left=0.08, right=0.95, top=0.84, bottom=0.27)
+    fig.subplots_adjust(left=0.08, right=0.95, top=0.84, bottom=0.16)
     fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)
     return pd.concat(rows, ignore_index=True)
@@ -406,8 +331,8 @@ def plot_exposure(e: pd.DataFrame, path) -> pd.DataFrame:
     s = s[s["cal_q"] >= FULL_HISTORY_FROM].reset_index(drop=True)
     x = np.arange(len(s))
     fig, axes = plt.subplots(1, 2, figsize=(14, 5.4), facecolor=SURFACE)
-    panels = [(100 * s["share_over_line"], "share", f"BDCs with over {EXPOSURE_LINE:.0%} of portfolio flagged",
-               "% of BDCs", lambda v: f"{v:.0f}%"),
+    panels = [(s["over_line"], "count", f"BDCs with over {EXPOSURE_LINE:.0%} of portfolio flagged",
+               "BDCs", lambda v: f"{v:.0f}"),
               (s["single_name_over"], "count", f"BDCs with one flagged borrower over {SINGLE_NAME_LINE:.0%}",
                "BDCs", lambda v: f"{v:.0f}")]
     for ax, (y, kind, title, ylabel, fmt) in zip(axes, panels):
@@ -422,164 +347,7 @@ def plot_exposure(e: pd.DataFrame, path) -> pd.DataFrame:
             ax.yaxis.set_major_locator(MaxNLocator(nbins=6, integer=True))
         ax.set_ylim(0, y.max() * 1.2)
         ax.set_xticks(x, s["cal_q"], rotation=45)
-    fig.text(0.01, 0.015, "Flagged = a distress sign at the borrower: its lenders disagree more than for 9 in 10 shared "
-             "borrowers that quarter, or one of its loans switched to PIK in the past year. Portfolio = all investments at fair value.",
-             fontsize=9.5, color=MUTED, ha="left", va="bottom")
-    fig.subplots_adjust(left=0.06, right=0.99, top=0.83, bottom=0.2, wspace=0.18)
+    fig.subplots_adjust(left=0.06, right=0.99, top=0.83, bottom=0.15, wspace=0.18)
     fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)
     return s
-
-
-def plot_exposure_by_type(e: pd.DataFrame, path, quarter: str | None = None) -> pd.DataFrame:
-    """Latest quarter: share of each BDC type's BDCs above EXPOSURE_LINE and above
-    SINGLE_NAME_LINE, side by side."""
-    quarter = quarter or e["cal_q"].max()
-    d = e[e["cal_q"] == quarter]
-    t = d.groupby("bdc_type").agg(bdcs=("cik", "size"),
-                                  median_exposure=("exposure_distress", "median"),
-                                  share_over_line=("exposure_distress", lambda s: (s > EXPOSURE_LINE).mean()),
-                                  share_single_name_over=("top_flagged_weight", lambda s: (s > SINGLE_NAME_LINE).mean())
-                                  ).reindex([k for k in TYPE_COLORS if k in set(d["bdc_type"])]).reset_index()
-    fig, ax = plt.subplots(figsize=(10, 5.2), facecolor=SURFACE)
-    x = np.arange(len(t))
-    h = 0.36
-    for k, (col, color, label) in enumerate([("share_over_line", BLUE, f"More than {EXPOSURE_LINE:.0%} of the portfolio in flagged borrowers"),
-                                             ("share_single_name_over", ORANGE, f"One flagged borrower above {SINGLE_NAME_LINE:.0%}")]):
-        xs = x + (k - 0.5) * (h + 0.02)
-        ax.bar(xs, 100 * t[col], width=h, color=color, label=label, edgecolor=SURFACE, linewidth=1.5)
-        for xi, v in zip(xs, t[col]):
-            ax.text(xi, 100 * v, f"{v:.0%}", ha="center", va="bottom", fontsize=11, color=INK)
-    _big_axes(ax, "Exposure to flagged borrowers by BDC type", f"% of each type's BDCs, {quarter}", "% of BDCs")
-    _pct_axis(ax)
-    ax.set_xticks(x, [f"{k}\n({n} BDCs)" for k, n in zip(t["bdc_type"], t["bdcs"])], fontsize=11.5, color=INK)
-    ax.set_ylim(0, 100 * max(t["share_over_line"].max(), t["share_single_name_over"].max()) * 1.3)
-    ax.legend(frameon=False, fontsize=10.5, loc="upper right", labelcolor=INK)
-    fig.subplots_adjust(left=0.08, right=0.98, top=0.84, bottom=0.14)
-    fig.savefig(path, dpi=200, facecolor=SURFACE)
-    plt.close(fig)
-    return t.assign(cal_q=quarter)
-
-
-# ------------------------------------------------------------------ crowding by borrower size
-
-def borrower_signals(panel: pd.DataFrame) -> pd.DataFrame:
-    """One row per borrower-quarter: lender families (C1), BDC-held par and its size quintile."""
-    p = panel[~panel["borrower_key"].str.startswith("ID: ") & (panel["PAR"] > 0)]
-    b = p.groupby([_borrower(p["borrower_key"]).rename("borrower"), "cal_q"]).agg(
-        crowding=("C1_families", "first"), par=("PAR", "sum")).reset_index()
-    b["size_quintile"] = b.groupby("cal_q")["par"].transform(
-        lambda s: pd.qcut(s.rank(method="first"), 5, labels=False) + 1)
-    return b
-
-
-def size_split(bs: pd.DataFrame, path) -> pd.DataFrame:
-    """Are crowded borrowers just big borrowers? By size quintile (BDC-held par within the
-    quarter), pooled over quarters: mean lender families and the distribution of borrowers by
-    manager count (2, 3, 4-5, 6+), plus the within-quarter Spearman correlation of size and lender
-    families. This is why the crowding flag ranks borrowers within their size group."""
-    d = bs[bs["crowding"].notna()].assign(bucket=lambda x: _bucket(x["crowding"]))
-    t = d.groupby("size_quintile").agg(borrowers=("crowding", "size"), mean_families=("crowding", "mean"),
-                                       p90_families=("crowding", lambda s: s.quantile(0.9)),
-                                       median_par_musd=("par", lambda s: s.median() / 1e6)).reset_index()
-    shares = pd.crosstab(d["size_quintile"], d["bucket"], normalize="index")
-    for _, _, lab in MANAGER_BUCKETS:
-        t[f"share_{lab}"] = t["size_quintile"].map(shares[lab]) if lab in shares else 0.0
-    rho = d.groupby("cal_q").apply(lambda g: g["crowding"].corr(g["par"], method="spearman"))
-    t["spearman_size_vs_families_median_q"] = float(rho.median())
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4.6), facecolor=SURFACE)
-    lab = [f"Q{int(k)}\n${v:,.0f}M" for k, v in zip(t["size_quintile"], t["median_par_musd"])]
-    x = np.arange(len(t))
-    axes[0].bar(x, t["mean_families"], color=BLUE, width=0.6)
-    for i, v in enumerate(t["mean_families"]):
-        axes[0].text(i, v, f"{v:.2f}", ha="center", va="bottom", fontsize=8, color=MUTED)
-    _style(axes[0], "Mean managers lending, by borrower size fifth", "managers")
-    bottom = np.zeros(len(t))
-    for (_, _, b_lab), color in zip(MANAGER_BUCKETS[1:], BUCKET_COLORS):
-        y = 100 * t[f"share_{b_lab}"].to_numpy()
-        axes[1].bar(x, y, bottom=bottom, width=0.6, color=color, edgecolor=SURFACE, linewidth=1, label=f"{b_lab} managers")
-        bottom += y
-    for i, v in enumerate(bottom):
-        axes[1].text(i, v, f"{v:.0f}%", ha="center", va="bottom", fontsize=8, color=MUTED)
-    _style(axes[1], "Borrowers with 2+ managers, by number of managers", "% of borrowers")
-    h, l = axes[1].get_legend_handles_labels()
-    axes[1].legend(h[::-1], l[::-1], frameon=False, fontsize=8, loc="upper left")
-    for ax in axes:
-        ax.set_xticks(x, lab)
-    fig.suptitle(f"Crowding vs size: Spearman correlation of BDC-held par and managers, median quarter: "
-                 f"{rho.median():.2f}. Labels show median BDC-held par.",
-                 x=0.01, ha="left", fontsize=10, color=INK)
-    fig.tight_layout(rect=(0, 0, 1, 0.94))
-    fig.savefig(path, dpi=150, facecolor=SURFACE)
-    plt.close(fig)
-    return t
-
-
-# ------------------------------------------------------------------ pairwise overlap (C5)
-
-def family_books(rows: pl.DataFrame) -> pd.DataFrame:
-    r = rows.select(["family", "cal_q", "borrower_canonical", "COST"]).to_pandas()
-    r = r[(r["COST"] > 0) & r["borrower_canonical"].notna() & r["family"].notna()]
-    w = r.assign(b=_borrower(r["borrower_canonical"])).groupby(["cal_q", "family", "b"])["COST"].sum().reset_index()
-    w["w"] = w["COST"] / w.groupby(["cal_q", "family"])["COST"].transform("sum")
-    w["n_b"] = w.groupby(["cal_q", "family"])["b"].transform("size")
-    return w[w["n_b"] >= MIN_FAMILY_BORROWERS]
-
-
-def pairwise_overlap(rows: pl.DataFrame) -> pd.DataFrame:
-    """Every family pair per quarter with at least one shared borrower: dollar-weighted
-    overlap (sum over shared borrowers of the smaller cost share) and Jaccard. Pairs with no
-    shared borrower have overlap 0 and are not listed; n_pairs_total gives the denominator."""
-    books = family_books(rows)
-    out = []
-    for q, g in books.groupby("cal_q"):
-        sizes = g.groupby("family")["b"].size()
-        m = g.merge(g, on=["cal_q", "b"], suffixes=("_a", "_b"))
-        m = m[m["family_a"] < m["family_b"]]
-        m = m.assign(w_min=np.minimum(m["w_a"], m["w_b"]))
-        pr = m.groupby(["family_a", "family_b"]).agg(shared=("b", "size"), overlap=("w_min", "sum")).reset_index()
-        pr["jaccard"] = pr["shared"] / (pr["family_a"].map(sizes) + pr["family_b"].map(sizes) - pr["shared"])
-        pr["cal_q"] = q
-        pr["n_pairs_total"] = len(sizes) * (len(sizes) - 1) // 2
-        out.append(pr)
-    return pd.concat(out, ignore_index=True)
-
-
-def plot_overlap(pairs: pd.DataFrame, rows: pl.DataFrame, path, quarter: str = "2026Q2", top: int = 15):
-    """Heatmap of dollar-weighted overlap among the largest manager families at `quarter`; also
-    returns, per quarter, the pairs whose books overlap by more than 10% and 20%."""
-    from matplotlib.colors import LinearSegmentedColormap
-    books = family_books(rows)
-    size = books[books["cal_q"] == quarter].groupby("family")["COST"].sum().sort_values(ascending=False)
-    fams = list(size.index[:top])
-    p = pairs[(pairs["cal_q"] == quarter) & pairs["family_a"].isin(fams) & pairs["family_b"].isin(fams)]
-    mat = pd.DataFrame(0.0, index=fams, columns=fams)
-    for r in p.itertuples():
-        mat.loc[r.family_a, r.family_b] = mat.loc[r.family_b, r.family_a] = r.overlap
-    np.fill_diagonal(mat.values, np.nan)
-    cmap = LinearSegmentedColormap.from_list("seq", ["#f4f8fe", "#9ec5f4", "#3987e5", "#1c5cab", "#0d366b"])
-    fig, ax = plt.subplots(figsize=(9, 7.6), facecolor=SURFACE)
-    im = ax.imshow(mat.values, cmap=cmap, vmin=0, vmax=max(0.3, np.nanmax(mat.values)))
-    short = [f[:22] for f in fams]
-    ax.set_xticks(range(len(fams)), short, rotation=60, ha="right", fontsize=9, color=MUTED)
-    ax.set_yticks(range(len(fams)), short, fontsize=9, color=MUTED)
-    for i in range(len(fams)):
-        for j in range(len(fams)):
-            v = mat.values[i, j]
-            if not np.isnan(v) and v >= 0.05:
-                ax.text(j, i, f"{v:.0%}", ha="center", va="center", fontsize=8,
-                        color="white" if v > 0.18 else INK)
-    ax.set_title(f"Portfolio overlap between the {top} largest managers, {quarter}", loc="left", fontsize=12, color=INK)
-    for s in ax.spines.values():
-        s.set_visible(False)
-    cb = fig.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
-    cb.ax.tick_params(labelsize=8, colors=MUTED)
-    cb.outline.set_visible(False)
-    fig.tight_layout()
-    fig.savefig(path, dpi=150, facecolor=SURFACE)
-    plt.close(fig)
-    s = pairs.groupby("cal_q").agg(n_total=("n_pairs_total", "first"),
-                                   over10=("overlap", lambda v: (v > 0.10).sum()),
-                                   over20=("overlap", lambda v: (v > 0.20).sum()),
-                                   any_shared=("overlap", "size")).reset_index()
-    return mat, s

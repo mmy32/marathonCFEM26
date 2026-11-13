@@ -1,6 +1,8 @@
+"""Step 3: parse the iXBRL instance of every filing in cache/all_metadata.csv ->
+data/ixbrl/combined/wide_all.csv. Resumes where it stopped. mode in main(): "full", "test" (one
+company, 2024) or "retry_failed". Calls the SEC (hours for "full")."""
 from __future__ import annotations
 
-import os
 import sys
 import time
 import logging
@@ -182,16 +184,9 @@ def run_ixbrl_parse(
     failures = []
     stats = RunResult()
 
-    # Filings come from hundreds of different BDC filers, each with its own XBRL
-    # extension-taxonomy column names (prefix-merging into a common schema only
-    # happens later, in preprocessor.py). Holding every parsed filing's frame in
-    # memory for the whole run and concatenating once at the end does not scale:
-    # a ~2,300-filing run OOM'd on the final concat after successfully parsing
-    # everything. Flushing to disk periodically helped but still isn't enough on
-    # this machine (~8GB RAM total) - a later flush OOM'd too, because
-    # combine_wide_frames() reloads the *entire* accumulated file every call.
-    # append_wide_frames_bounded() never loads the full file, so peak memory
-    # stays bounded regardless of how large the combined table gets.
+    # Each filer has its own XBRL column names, so holding every parsed frame and concatenating at
+    # the end ran out of memory (~2,300 filings, 8GB RAM). Frames are flushed every `flush_every`
+    # filings with append_wide_frames_bounded(), which never reloads the whole output file.
     wrote_any = False
 
     def _flush():

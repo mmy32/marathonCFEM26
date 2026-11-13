@@ -1,23 +1,6 @@
-"""Scan the XBRL instances for non-accrual flags on schedule-of-investments facts.
-
-BDCs mark non-accrual loans with a footnote in the schedule of investments. In the XBRL
-instance the footnote is a link:footnote, attached to facts by link:footnoteArc (fact -> loc
--> footnote). Each fact names its context, and FINAL_DATASET keeps every row's context_id, so
-a row is on non-accrual when one of its facts links to a non-accrual footnote.
-
-For every filing in FINAL_DATASET this writes (data/parsed/nonaccrual/):
-
-    footnote_texts.csv   cik, accession, footnote label, text, n linked facts, for every footnote
-                         whose text mentions non-accrual (to classify the wording)
-    footnote_contexts.csv cik, accession, context_id, footnote label: contexts linked to those
-                         footnotes
-    filing_totals.csv    undimensioned facts whose concept name mentions non-accrual, plus net
-                         assets (us-gaap:StockholdersEquity / AssetsNet), per filing: the BDC's
-                         own totals, for the reconciliation and the NAV-based benchmark
-    scan_log.csv         per filing: facts, footnotes, arcs, non-accrual footnotes, seconds
-
-    python src/1_data_processing/nonaccrual_scan.py
-"""
+"""Scan every filing's XBRL instance for non-accrual footnotes and the contexts they are linked to, plus
+the filing's own non-accrual and net-asset totals -> data/parsed/nonaccrual/. Needs the raw instances in
+data/ixbrl/raw_xml/. Run: python src/1_data_processing/nonaccrual_scan.py"""
 from __future__ import annotations
 
 import csv

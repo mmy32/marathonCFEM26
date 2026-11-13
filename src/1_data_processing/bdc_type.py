@@ -1,35 +1,11 @@
-"""BDC type by quarter: listed, non-traded or private.
-
-The Financing the Economy 2026 report splits BDCs three ways (Figs 25, 27, 39), and the CFEM
-guideline treats BDC type as a confounder: listed BDCs report non-accruals of 4.2% against
-1.1% for private ones, and non-traded BDCs face redemption flows.
-
-Evidence comes from each BDC's full EDGAR filing history (data.sec.gov submissions JSON,
-cached under cache/sec_submissions/):
-
-    listed       from the earliest Form 8-A12B (registration of a class on an exchange),
-                 when the BDC has an exchange ticker today, or has filed a Form 25 / 25-NSE
-                 (delisting; a merged-away BDC keeps no ticker). Until a 25-NSE after the
-                 listing, if any.
-    before listing (or never listed):
-        non-traded   a public continuous offering: from the first prospectus (424B, or 497 as
-                     HMS Income Fund used) filed after an N-2, when there are at least
-                     MIN_PROSPECTUSES of them (BCRED, HLEND,
-                     MSIF before its 2025 listing; First Eagle Private Credit from 2025)
-        private      otherwise: private placements registered on Form 10, or an N-2 that never
-                     led to an offering (KKR FS Income Trust Select). Fewer 424Bs are usually a
-                     notes exchange offer (Blue Owl Technology Finance filed 2 before listing).
-
-Cases the rules cannot settle are set by hand in OVERRIDES, with the reason.
-
-    python src/1_data_processing/bdc_type.py     # fetch (cached) and write data/reference/bdc_type.csv
-"""
+"""BDC type by quarter (listed, non-traded or private) from each BDC's EDGAR filing history (cached in
+cache/sec_submissions/) -> data/reference/bdc_type.csv. Rules in docs/6_final_dataset.md; cases the
+rules cannot settle are in OVERRIDES. Run: python src/1_data_processing/bdc_type.py"""
 from __future__ import annotations
 
 import json
 import sys
 import time
-from pathlib import Path
 
 import pandas as pd
 import requests
@@ -129,16 +105,6 @@ def build(ciks) -> pd.DataFrame:
         if (i + 1) % 25 == 0:
             print(f"  {i + 1}/{len(ciks)}")
     return pd.DataFrame(out)
-
-
-def add_type_column(df: pd.DataFrame, table: pd.DataFrame, quarter_col: str = "cal_q") -> pd.Series:
-    """bdc_type for each row of a frame with cik and cal_q."""
-    t = table.set_index("cik")
-    keys = df[["cik", quarter_col]].drop_duplicates()
-    qe = pd.PeriodIndex(keys[quarter_col], freq="Q").end_time.normalize()
-    keys = keys.assign(bdc_type=[type_in_quarter(t.loc[c], e) if c in t.index else "unknown"
-                                 for c, e in zip(keys["cik"], qe)])
-    return df[["cik", quarter_col]].merge(keys, on=["cik", quarter_col], how="left")["bdc_type"]
 
 
 if __name__ == "__main__":

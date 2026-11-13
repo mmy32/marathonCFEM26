@@ -1,38 +1,7 @@
-"""Recover loan maturity dates from the HTML schedule of investments.
-
-76 of the ~190 BDCs show a maturity column in their schedule of investments but never tag it
-in XBRL (InvestmentMaturityDate), so the parsed panel has no maturity for them. Each schedule
-row also holds tagged facts (fair value, principal, cost), and their contextRef is the same
-context_id the panel row has. So the row's maturity cell can be joined to the panel row
-exactly, without matching on any text.
-
-Usage:
-    SEC_USER_AGENT="Name email@domain" python src/1_data_processing/maturity_html.py download
-    python src/1_data_processing/maturity_html.py extract
-
-download  fetches the primary document of every filing with a blank maturity in the enriched
-          panel into cache/html_gz/{cik}/{accession}.htm.gz (gzipped: the raw HTML is ~10x larger).
-extract   writes data/parsed/maturity_html/maturity_from_html.csv:
-          accession, context_id, maturity_html (YYYY-MM-DD), maturity_cell (the cell text).
-          build_final_dataset.py fills blank InvestmentMaturityDate values from it.
-
-How a row's maturity is read:
-- Header rows (no tagged facts, a cell naming cost, principal or par) set the date columns
-  of the schedule that follows: every header cell naming a date ("Acquisition Date",
-  "Maturity Date"). A header without a maturity column clears them, and a summary table
-  ("Maturity Year | Fair Value") is not a header.
-- A data row is a <tr> with ix:nonFraction facts; its context is the most common contextRef.
-- The row's dates are every date found in its cells. When the row has as many dates as the
-  header has date columns, the maturity is the one in the maturity column's position. With
-  fewer (an equity row showing only its acquisition date, or a loan with no acquisition
-  date), the latest date counts only if it is after the filing's report date. With more
-  (a date also in the description), it is the latest date: an acquisition date is never
-  after maturity.
-- In tables without a maturity header, only a date right after "due" / "maturity" counts
-  ("Term Debt (S + 10.0%, Due 11/2026)").
-- Month-only dates ("05/2033", "May 2033") are set to the 15th, within 16 days of the true
-  date; tranches.py matches maturities within 31 days.
-"""
+"""Maturity dates for the 76 BDCs that show them in the HTML schedule of investments but do not tag them in
+XBRL, joined to panel rows on context_id. `download` caches the documents in cache/html_gz/; `extract`
+writes data/parsed/maturity_html/maturity_from_html.csv. Rules in docs/6_final_dataset.md.
+Usage: SEC_USER_AGENT="Name email" python src/1_data_processing/maturity_html.py download|extract"""
 from __future__ import annotations
 
 import collections

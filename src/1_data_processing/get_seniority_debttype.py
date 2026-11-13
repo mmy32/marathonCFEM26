@@ -1,18 +1,9 @@
-"""
-
-This script takes a raw loan-level CSV (must include `investment_identifier`),
-adds:
-  - `instrument_seniority` (rules-based seniority classifier)
-  - `sector` (rules-based sector, then LLM for unresolved names above confidence threshold)
-
-
-It exports a single final dataset for downstream index construction.
-
-
-"""
+"""LLM-assisted labels: instrument_seniority (keyword rules on investment_identifier) and sector (keyword
+rules, then Claude for unresolved names above a confidence threshold). Its answers are cached in
+data/enriched/_seniority_sector_llm_checkpoint.csv, which build_final_enriched.py reuses. Needs
+ANTHROPIC_API_KEY."""
 
 import os
-import json
 import math
 import csv
 from typing import Optional, List, Dict, Any

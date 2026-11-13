@@ -1,45 +1,12 @@
-"""Build data/final_dataset/FINAL_DATASET.csv from the enriched panel and the validated labels.
-
-Usage:
-    python src/1_data_processing/build_final_dataset.py [output.csv]
-
-Inputs:
-- data/enriched/data_private_credit_FINAL_enriched_final.csv, written by build_final_enriched.py.
-- data/final_dataset/labels_by_identifier.csv: one validated decision per distinct
-  investment_identifier, made with final_validation_prompt.md (see AUDIT_SUMMARY.md).
-- data/cleaned/rate_swap_fixes_2026-10-19.csv: log of the 2026-10-19 rate fix. Reported rates
-  that were only the cash part of a cash + PIK coupon get the full rate.
-
-- data/reference/bdc_type.csv, written by bdc_type.py from EDGAR filing histories.
-- data/parsed/nonaccrual/footnote_texts.csv and footnote_contexts.csv, written by
-  nonaccrual_scan.py from the XBRL instances; classified by nonaccrual_flags.py.
-- data/parsed/maturity_html/maturity_from_html.csv, written by maturity_html.py from the
-  filings' HTML schedule of investments.
-
-For every row this script:
-1. Replaces borrower_canonical, instrument_seniority and sector with the validated values. The
-   old values go to *_prev columns.
-2. Appends validation_id and the confidence, evidence, action and reason columns.
-3. Applies the logged rate fix to the rows it lists.
-4. Appends bdc_type (listed / non-traded / private) for the row's BDC in that quarter.
-5. Appends non_accrual: 1 if the row's XBRL facts carry a non-accrual footnote, 0 if not and
-   the filing's non-accrual status is known, blank if the filing has no non-accrual footnote
-   in its XBRL (unknown).
-6. Fills a blank InvestmentMaturityDate with the date in the row's HTML schedule line (76
-   BDCs show maturity there but never tag it) and appends maturity_source: "xbrl" (tagged),
-   "html" (filled here) or blank (no maturity found).
-7. Appends sector_report: the validated sector with Software split out of Technology and
-   Business Services split out of Industrials, from the reported industry text in
-   sector_evidence (report_sector.py; matches Financing the Economy 2026, Fig 18).
-
-Values are copied as text, so every untouched field is exactly what the inputs hold.
-"""
+"""Step 8: FINAL_DATASET.csv from the step 7 panel: validated borrower / seniority / sector labels, the
+logged rate fixes, and the bdc_type, non_accrual, HTML maturity and sector_report columns (see
+docs/6_final_dataset.md). Values are copied as text, so untouched fields are exactly the inputs.
+Usage: python src/1_data_processing/build_final_dataset.py [output.csv]"""
 
 import csv
 import sys
-import sys as _sys
-from pathlib import Path as _Path
-_sys.path.insert(0, str(_Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
 
 from paths import CLEANED_DIR, ENRICHED_DIR, FINAL_DIR
 
@@ -115,7 +82,7 @@ def build(output_csv=OUTPUT_CSV):
         labels[row["investment_identifier"]] = row
     fixes = {(row["accession"], row["context_id"]): row for row in _read_rows(RATE_FIXES_CSV)}
 
-    tmp = _Path(str(output_csv) + ".tmp")
+    tmp = Path(str(output_csv) + ".tmp")
     n = fixed = filled = 0
     with open(ENRICHED_CSV, encoding="utf-8", newline="") as fi, open(tmp, "w", encoding="utf-8", newline="") as fo:
         reader, writer = csv.reader(fi), csv.writer(fo, lineterminator="\n")

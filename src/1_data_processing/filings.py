@@ -1,12 +1,13 @@
+"""SEC EDGAR download (step 2): a BDC's filing list from data.sec.gov submissions -> cache/all_metadata.csv,
+and each 10-K / 10-Q primary document -> cache/{cik}/. Failures go to cache/download_failures.csv."""
 from __future__ import annotations
 
-import sys as _sys
-from pathlib import Path as _Path
-_sys.path.insert(0, str(_Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
 
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import Iterable, Optional, Union, List, Dict, Tuple
 
 import pandas as pd

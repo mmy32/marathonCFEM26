@@ -1,7 +1,7 @@
-import os
+"""Step 2: download the 10-K/10-Q filings of every BDC in BDC_intervals.csv to cache/.
+mode in main(): "full", "test" (one company, 2024) or "retry_failed". Calls the SEC (hours for "full")."""
 import sys
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 
@@ -103,7 +103,6 @@ def run_download(
         print(f"\n[FULL] {len(cik_failures)} CIK-level failures written to {fail_path}")
 
     print("\n[FULL] done.")
-    return None
 
 
 def main():

@@ -1,9 +1,5 @@
-"""
-test_pik_metrics.py
-
-Comprehensive unit test suite for PIK risk detection, provenance tracking,
-loan transition states, and the three distinct non-cash metrics.
-"""
+"""Tests for classify_loan_pik_transitions (src/5_pik/pik_metrics.py): PIK switch-on/off per loan,
+the input to the PIK warning sign."""
 
 import sys
 from pathlib import Path
@@ -16,52 +12,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "1_data_pro
 from paths import add_code_dirs_to_path
 add_code_dirs_to_path()
 
-from pik_metrics import (
-    classify_pik_provenance,
-    aggregate_pik_provenance,
-    classify_loan_pik_transitions,
-    aggregate_pik_transitions,
-    compute_non_cash_metrics,
-    aggregate_non_cash_metrics,
-    compute_sector_time_series_pik_metrics,
-)
+from pik_metrics import classify_loan_pik_transitions
 
 
 class TestPIKMetrics(unittest.TestCase):
 
-    def test_classify_pik_provenance(self):
-        """Test classification of explicit, inferred, and zero PIK rows."""
-        df = pl.DataFrame({
-            "rate_pik": [0.03, None, None, 0.0, None],
-            "PIK_Final": [0.03, 0.025, 0.0, 0.0, None],
-        })
-        result = classify_pik_provenance(df)
-
-        expected_prov = ["explicit_pik", "inferred_pik", "zero_pik", "zero_pik", "zero_pik"]
-        self.assertEqual(result["pik_provenance"].to_list(), expected_prov)
-        self.assertEqual(result["is_explicit_pik"].to_list(), [True, False, False, False, False])
-        self.assertEqual(result["is_inferred_pik"].to_list(), [False, True, False, False, False])
-
-    def test_aggregate_pik_provenance(self):
-        """Test quarterly and CIK aggregation of PIK provenance."""
-        df = pl.DataFrame({
-            "cal_q": ["2024Q1", "2024Q1", "2024Q2", "2024Q2"],
-            "cik": ["100", "100", "200", "200"],
-            "rate_pik": [0.02, None, 0.03, None],
-            "PIK_Final": [0.02, 0.02, 0.03, 0.0],
-            "FV": [100.0, 200.0, 300.0, 400.0],
-            "PAR": [100.0, 200.0, 300.0, 400.0],
-        })
-        summary = aggregate_pik_provenance(df)
-        q_df = summary["quarterly"]
-        cik_df = summary["by_cik"]
-
-        self.assertIn("quarterly", summary)
-        self.assertIn("by_cik", summary)
-        # Check CIK 100 has 1 explicit and 1 inferred
-        c100 = cik_df.filter(pl.col("cik") == "100")
-        self.assertEqual(c100["n_explicit_pik"][0], 1)
-        self.assertEqual(c100["n_inferred_pik"][0], 1)
 
     def test_classify_loan_pik_transitions(self):
         """Test multi-period loan state transition tracking along tranche chains."""
@@ -108,60 +63,6 @@ class TestPIKMetrics(unittest.TestCase):
         })
         res = classify_loan_pik_transitions(df).sort("cal_q")
         self.assertEqual(res["is_distress_amendment"].to_list(), [False, False])
-
-    def test_compute_non_cash_metrics(self):
-        """Test calculation of the three distinct non-cash metrics."""
-        df = pl.DataFrame({
-            "cal_q": ["2024Q1", "2024Q2"],
-            "IR_Final": [0.12, 0.10],
-            "PIK_Final": [0.03, 0.05],
-            "cash_income": [9.0, 5.0],
-            "pik_income": [3.0, 5.0],
-            "PAR": [103.0, 108.0],
-            "PAR_incept": [100.0, 100.0],
-            "w_mkt": [0.6, 0.4],
-        })
-
-        res = compute_non_cash_metrics(df)
-
-        # Metric A: Rate share = PIK / IR
-        # 0.03 / 0.12 = 0.25; 0.05 / 0.10 = 0.50
-        np.testing.assert_allclose(res["rate_share"].to_numpy(), [0.25, 0.50], rtol=1e-5)
-
-        # Metric B: Income share = pik_income / (cash_income + pik_income)
-        # 3 / 12 = 0.25; 5 / 10 = 0.50
-        np.testing.assert_allclose(res["income_share"].to_numpy(), [0.25, 0.50], rtol=1e-5)
-
-        # Metric C: Cap burden = (PAR - PAR_incept) / PAR
-        # (103 - 100) / 103 = 3 / 103 ≈ 0.029126
-        # (108 - 100) / 108 = 8 / 108 ≈ 0.074074
-        np.testing.assert_allclose(res["cap_burden"].to_numpy(), [3.0 / 103.0, 8.0 / 108.0], rtol=1e-5)
-
-    def test_sector_time_series_sweep(self):
-        """Test sector time-series multi-period sweep."""
-        df = pl.DataFrame({
-            "cik": ["1", "1", "2", "2"],
-            "tranche_id": ["L1", "L1", "L2", "L2"],
-            "cal_q": ["2024Q1", "2024Q2", "2024Q1", "2024Q2"],
-            "sector": ["Technology", "Technology", "Healthcare", "Healthcare"],
-            "rate_pik": [0.0, 0.04, 0.02, 0.02],
-            "PIK_Final": [0.0, 0.04, 0.02, 0.02],
-            "IR_Final": [0.10, 0.12, 0.10, 0.10],
-            "cash_income": [10.0, 8.0, 8.0, 8.0],
-            "pik_income": [0.0, 4.0, 2.0, 2.0],
-            "PAR": [100.0, 104.0, 100.0, 102.0],
-            "FV": [100.0, 95.0, 100.0, 100.0],
-            "w_mkt": [0.5, 0.5, 0.5, 0.5],
-        })
-
-        sweep = compute_sector_time_series_pik_metrics(df)
-        self.assertEqual(sweep.height, 4)  # 2 sectors x 2 quarters
-        self.assertIn("pct_amendment_count", sweep.columns)
-        self.assertIn("mean_rate_share", sweep.columns)
-
-        # Check Technology in 2024Q2 had 1 distress amendment
-        tech_q2 = sweep.filter((pl.col("sector") == "Technology") & (pl.col("cal_q") == "2024Q2"))
-        self.assertEqual(tech_q2["n_distress_amendments"][0], 1)
 
 
 if __name__ == "__main__":

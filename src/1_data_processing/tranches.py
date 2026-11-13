@@ -1,50 +1,6 @@
-"""Tranche matching within a borrower on lien, spread and maturity -- never on identifier text.
-
-A borrower can have several loans (term loan, revolver, delayed-draw, second lien). The Risk
-Dimensions doc wants signals per tranche: a PIK toggle must happen "without a change of
-tranche", and dispersion compares holders' prices on the same loan. investment_identifier is
-free text that BDCs reword, so tranches are told apart by their terms instead:
-
-    lien       instrument_seniority, grouped (LIEN_GROUPS): 1L (incl. unitranche), 2L, SUB,
-               UNSEC, CLO, and ANY for SENIOR_SECURED_UNSPEC / OTHER_UNKNOWN
-    maturity   InvestmentMaturityDate (99% of debt rows: tagged, or read from the HTML schedule
-               by maturity_html.py for the 76 BDCs that do not tag it; see maturity_source)
-    spread     InvestmentBasisSpreadVariableRate (92% of debt rows)
-
-Two known lien groups never match. ANY matches any group, but only when maturity or spread
-confirms it: one BDC often labels a loan SENIOR_SECURED_1L while another leaves it OTHER_UNKNOWN.
-
-Steps (build_tranche_panel runs them all):
-
-1. standardize_debt_rows: debt rows (par > 0) with borrower_key, lien, lien_group, maturity,
-   spread, manager family, a DIP flag, and two flags:
-     funded     FV > 0, cost > 0, cost >= 5% of par. Undrawn commitments are left out.
-     price_ok   funded and cost >= 80% of par. Below that, par is not what was lent (a partly
-                drawn revolver / delayed-draw line reports the whole commitment as par; a cost
-                write-down or deep-discount purchase also qualifies), so FV / par is not a
-                price. About 4% of funded rows; they stay in the chains but not in prices.
-2. collapse_tranches: one row per BDC x quarter x borrower x lien x maturity x spread. A
-   BDC's pieces of one loan with identical terms (e.g. a term loan and its funded
-   delayed-draw piece) become one tranche.
-3. link_tranche_chains: links each tranche to a lien-compatible tranche of the same BDC and
-   borrower in its previous observed quarter (gap <= 2 quarters) -> chain_id. Rules, in order:
-       1  maturity within 31 days and spread within 25 bp (or spread missing)
-       2  maturity within 31 days, spread changed (repricing)
-       3  maturity missing, spread within 25 bp; or neither side reports either term
-       4  what is left: the only remaining pair, or pairs by closest par (within 2x)
-          -- an amendment that moved both terms; the weakest link
-4. match_tranches_across_bdcs: groups the same quarter's tranches of one borrower across
-   BDCs -> xb_id, with a confidence tier per tranche:
-       1  maturity within 31 days (spread within 25 bp when both report it)
-       2  maturity missing, joined on spread within 25 bp
-       3  maturity and spread missing; joined because the borrower x lien has one loan
-   A cluster never holds two tranches of the same BDC through tiers 2-3. Rows with no
-   validated borrower ("ID: ..." keys) are never matched across BDCs.
-5. add_pik_origination: P3, whether the loan had PIK when it first appeared in any BDC.
-
-DIP loans are matched only to DIP loans (flagged from identifier text, which is classifying
-text, not matching on it).
-"""
+"""Tranche matching within a borrower on lien, maturity and spread, never on identifier text: one row per
+funded tranche, chains over time (chain_id), matches across BDCs (xb_id, with a confidence tier) and PIK
+at origination. Steps and rules in docs/11_tranche_matching.md."""
 from __future__ import annotations
 
 import numpy as np
@@ -62,10 +18,6 @@ MAX_CHAIN_GAP = 2            # quarters a chain may skip (missed filings)
 MAX_PAR_RATIO = 2.0          # rule-4 links between several leftovers need par within 2x
 FUNDED_MIN_COST_SHARE = 0.05
 PRICE_MIN_COST_SHARE = 0.8   # rows priced only when cost >= 80% of par (see standardize_debt_rows)
-import sys as _sys
-from pathlib import Path as _Path
-_sys.path.insert(0, str(_Path(__file__).resolve().parents[1] / "4_val_dispersion"))
-from val_dispersion import MAX_PRICE  # noqa: E402  family prices above 120% of par are data errors
 MIN_PIK_RATE = 0.0025        # a PIK rate under 25 bp is rounding noise from total - cash
 DIP_PATTERN = r"\bDIP\b|debtor[\s-]+in[\s-]+possession"
 RATE_COLS = ["PIC_Final", "PIK_Final", "IR_Final", "rate_cash", "interest_rate", "rate_pik", "spread"]
@@ -424,8 +376,3 @@ def build_tranche_panel(df, with_origination: bool = True) -> pd.DataFrame:
     if with_origination and "PIK_Final" in tr.columns:
         tr = add_pik_origination(tr)
     return tr
-
-
-# Valuation dispersion (family prices, V1 / V2 / V4) lives in src/4_val_dispersion/val_dispersion.py
-# since 2026-10-24; re-exported here so existing `tranches.tranche_dispersion` callers keep working.
-from val_dispersion import family_tranche_prices, tranche_dispersion  # noqa: E402,F401

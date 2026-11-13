@@ -1,18 +1,6 @@
-"""Turn the scanned XBRL footnotes (nonaccrual_scan.py) into a row-level non-accrual flag.
-
-A footnote counts as a non-accrual flag when its wording says the marked investment is on
-non-accrual (POSITIVE) and nothing in it says the opposite or makes it a general note
-(NEGATIVE): "excluding those on non-accrual", "there were no investments on non-accrual",
-"all debt investments are income producing except ...". A footnote linked to more than half of
-a filing's rows, or a long one (> LONG_TEXT characters) linked to more than a quarter, is a
-general note, not a flag, and is dropped.
-
-Row value (`non_accrual` in FINAL_DATASET):
-    1     the row's context is linked to a flag footnote
-    0     not linked, in a filing whose non-accrual status is known (see load_flags)
-    blank the filing carries no non-accrual footnote in its XBRL: the BDC marks non-accrual in
-          the HTML only, or says nothing; unknown, not zero
-"""
+"""Row-level non-accrual flag from the scanned XBRL footnotes: 1 if the row's context links to a footnote
+saying the investment is on non-accrual, 0 if not (status known), blank if the filing has no non-accrual
+footnote in its XBRL. Rules in docs/6_final_dataset.md."""
 from __future__ import annotations
 
 import re

@@ -1,32 +1,6 @@
-"""
-IXBRL cleaning utilities: currency, dollar-scale and interest-rate cleaning.
-
-The rate logic rests on two identities:
-
-    (I1)  IR = PIC + PIK                      coupon identity (all loans)
-    (I2)  IR ~= Base_q + Spread, with floors  floating-rate identity, Base_q = the loan
-                                              currency's rate from SOFR_augmented.csv
-
-Every repair is one of two things:
-    1. a *role repair*  - a field holds a value that belongs in another field, detected
-                          because moving it makes I1 or I2 hold;
-    2. a *fill*         - one term of I1 / I2 is missing and the others are present.
-A row that contradicts I1 / I2 with no move that fixes it is left as reported.
-
-Rules live in one ordered table (RATE_RULES). Each rule is (tag, condition, assignment);
-`apply_rules` handles masking, tagging and bookkeeping in one place, so a rule is ~5 lines.
-Every rule is kept only because removing it breaks I1, I2 or a sign on a measurable share of
-rows (see docs/2_ixbrl_cleaning.md, "Why each rule is kept").
-
-Output columns:
-    rate_config   which of spread/rate/pik/pic were present on input   (also written as check_2)
-    rate_source   reported | derived | estimated | zero | none
-    check_1       'resolved' iff the row ends with a usable non-zero IR
-    estimate      base + spread (with floors) for floating/untyped rows with a spread
-    change_tracker  pipe-joined tags of every rule that fired
-    RateType      base-rate member from the XBRL enumeration (e.g. 'FixedRateMember')
-    is_fixed      True / False from RateType, <NA> when the filer did not tag it
-"""
+"""Cleaning rules for step 6: currency, dollar scale, value signs, outlier filings and interest rates.
+Rates rest on two identities, IR = PIC + PIK and IR ~ base rate + spread; each rule in RATE_RULES either
+moves a value to the field that makes them hold or fills a missing term (docs/2_ixbrl_cleaning.md)."""
 
 from __future__ import annotations
 

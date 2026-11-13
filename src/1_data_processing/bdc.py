@@ -1,3 +1,5 @@
+"""BDC universe from EDGAR full-index master.idx: N-54A / N-54C filings (election / withdrawal of BDC
+status) -> BDC_filings_2001_present.csv, then each BDC's status intervals -> BDC_intervals.csv."""
 from __future__ import annotations
 
 import re

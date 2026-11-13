@@ -1,4 +1,5 @@
-import os
+"""Step 1: the BDC universe from EDGAR master.idx -> data/universe/BDC_filings_2001_present.csv and
+BDC_intervals.csv. Calls the SEC: set a real name and email in main()."""
 import sys
 from datetime import date
 from pathlib import Path

@@ -1,40 +1,8 @@
 #!/usr/bin/env python3
-"""
-run_distress_event_study.py
-
-Crowding, concentration, valuation dispersion and PIK around a persistent quarterly
-markdown in the bottom 1% of that quarter's borrowers (src/8_risk_monitor/distress_event_study.py; docs/13_distress_event_study.md).
-
-Usage:
-    python scripts/run_distress_event_study.py
-
-Reads data/final_dataset/FINAL_DATASET.csv only. Writes to outputs/risk_monitor/distress/:
-    borrower_quarter_panel.csv   one row per borrower x quarter with every signal
-    drop_cutoffs.csv             per quarter: eligible borrowers, bottom-1% drops, the cutoff
-                                 return, and what a fixed -20% rule would have flagged
-    distress_events.csv          first bottom-1% drop per borrower: quarter, drop, status
-                                 (persistent / recovered / exited / too_recent)
-    distressed_borrowers_register.csv  the record of distressed borrowers: event, what followed
-                                 (price, non-accrual, PIK), lenders at the event, BDC exposure,
-                                 data center tag, and the outside check where one was done
-                                 (data/reference/distress_event_validation.csv)
-    signal_watchlist.csv         borrowers with crowding, concentration, dispersion and a rising
-                                 PIK trend all in the top 30% in the same quarter: one row per
-                                 borrower (flagged quarters, latest signals, any distress event)
-    signal_watchlist_quarters.csv every flagged borrower-quarter with its four percentiles
-    case_studies/                for each borrower in data/reference/case_studies.csv:
-                                 <name>_quarterly.csv (signal path by quarter) and
-                                 <name>_lenders.csv (each BDC: family, type, par, mark, weight
-                                 in its book, PIK rate, non-accrual), <name>_marks.png (each
-                                 lender family's mark by quarter), plus all cases combined
-                                 (case_studies_quarterly.csv, case_studies_lenders.csv)
-    event_profiles.csv           event-time means (k = -4..+2) for persistent, recovered,
-                                 persistent excl. 2026Q1, persistent with 2+ lender families;
-                                 matched-control means and n per k
-    pre_event_contrast.csv       persistent vs recovered before the event (k = -2..-1)
-    distress_profiles.png        the profiles, one small multiple per signal
-About 5 minutes.
-"""
+"""Case studies (slides 10, 13, 24): the quarterly signal path and lender detail for each borrower
+in data/reference/case_studies.csv. Reads FINAL_DATASET.csv; writes case_studies/ to
+outputs/risk_monitor/distress/. About 3 minutes. (The stress events, drop cutoffs and
+distressed-borrower register were removed on 2026-11-12 with val_ret.)"""
 from __future__ import annotations
 
 import sys
@@ -43,8 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "1_data_processing"))
-from paths import (FINAL_DIR, RISK_MONITOR_DIR, REFERENCE_DIR, DATA_CENTER_DIR, UNIVERSE_DIR,  # noqa: E402
-                   add_code_dirs_to_path)
+from paths import FINAL_DIR, RISK_MONITOR_DIR, REFERENCE_DIR, UNIVERSE_DIR, add_code_dirs_to_path  # noqa: E402
 add_code_dirs_to_path()
 
 from monitor_panel import build_monitor_panel  # noqa: E402
@@ -79,27 +46,7 @@ def main():
     print("Building the loan panel and the borrower-quarter panel ...")
     panel, rows = build_monitor_panel(FINAL_DIR / "FINAL_DATASET.csv")
     b = D.borrower_quarter_panel(panel, rows)
-    b.to_csv(out / "borrower_quarter_panel.csv", index=False)
-    ev = D.find_events(b)
-    ev.to_csv(out / "distress_events.csv", index=False)
-    cut = D.drop_cutoffs(b)
-    cut.to_csv(out / "drop_cutoffs.csv", index=False)
-    print(cut.round(3).to_string(index=False))
-    print(f"  {len(b):,} borrower-quarters; {len(ev)} borrowers with a bottom-1% drop: {ev['status'].value_counts().to_dict()}")
-    reg = D.distressed_register(b, ev, panel,
-                                validation_csv=REFERENCE_DIR / "distress_event_validation.csv",
-                                data_center_csv=DATA_CENTER_DIR / "data_center_borrowers.csv")
-    reg.to_csv(out / "distressed_borrowers_register.csv", index=False)
-    print(f"  register: {len(reg)} borrowers -> {out / 'distressed_borrowers_register.csv'}")
-    wq, wl = D.signal_watchlist(b, reg)
-    wq.to_csv(out / "signal_watchlist_quarters.csv", index=False)
-    wl.to_csv(out / "signal_watchlist.csv", index=False)
-    print(f"  watchlist: {len(wl)} borrowers with all four signals high in some quarter -> {out / 'signal_watchlist.csv'}")
     write_case_studies(b, rows, out / "case_studies")
-    prof = D.profiles_by_group(b, ev)
-    prof.to_csv(out / "event_profiles.csv", index=False)
-    D.pre_event_contrast(b, ev).to_csv(out / "pre_event_contrast.csv", index=False)
-    charts.distress_profiles(prof, out / "distress_profiles.png")
     print(f"Done: {out}")
 
 

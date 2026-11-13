@@ -1,31 +1,13 @@
-"""Run the data-center borrower screen through a Claude chat (claude.ai) instead of the API.
-
-Usage:
-    python screen_via_chat.py export [--chunk-size N] [--force]
-    python screen_via_chat.py merge
-
-export writes data/data_center/data_center_screen_chat/:
-    PROMPT.md, PROMPT_VERIFY.md   paste into a new chat
-    chunks/chunk_NN.txt           attach one per chat; chunk_01 holds the largest borrowers by peak fair value
-    manifest.csv                  borrower id -> chunk, name and the context columns
-    results/                      save each reply here under its chunk's name (results/chunk_01.txt)
-
-The prompt asks Claude to reply only with flagged borrowers (tiers 1-4, plus "unknown" for
-unidentified project or asset vehicles), one JSON object per line. merge reads the replies,
-counts every other borrower in a replied chunk as "none", and writes the same
-data/data_center/data_center_screen.csv as screen_data_center_borrowers.py. It also writes
-chunks/verify.txt (unknowns and flags below VERIFY_BELOW confidence) for a second chat with web
-search on, using PROMPT_VERIFY.md; save that reply as results/verify.txt and merge again. Verify
-results override the first pass, and a verify borrower left out of the reply becomes "none".
-"""
-import sys as _sys
-from pathlib import Path as _Path
-_sys.path.insert(0, str(_Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
+"""The same data-center screen through claude.ai chats instead of the API: `export` writes prompts and
+borrower chunks to data/data_center/data_center_screen_chat/; `merge` reads the saved replies and writes
+data_center_screen.csv, plus chunks/verify.txt for a second, web-search pass."""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
 
 import argparse
 import json
 import re
-import sys
 
 import pandas as pd
 

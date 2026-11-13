@@ -1,13 +1,14 @@
+"""Step 4: wide_all.csv (one column per XBRL fact, per filer) -> one row per position with a common set of
+columns: merges filer-prefixed columns, keeps schedule-of-investments contexts, normalizes rate units."""
 from __future__ import annotations
 
-import sys as _sys
-from pathlib import Path as _Path
-_sys.path.insert(0, str(_Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
 
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Optional, Tuple
 
 import numpy as np
@@ -370,14 +371,3 @@ def run_preprocess(
         "returning an empty DataFrame; read the CSV directly (e.g. in chunks) if you need the data."
     )
     return pd.DataFrame()
-
-
-def preprocess_combined_wide(
-    combined_csv: str | Path,
-    out_csv: Optional[str | Path] = None,
-    cfg: Optional[PreprocessConfig] = None,
-) -> pd.DataFrame:
-
-    if out_csv is None:
-        out_csv = PARSED_DIR / "ixbrl_clean.csv"
-    return run_preprocess(in_csv=combined_csv, out_csv=out_csv, cfg=cfg)

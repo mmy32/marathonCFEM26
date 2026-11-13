@@ -1,19 +1,8 @@
-"""Overview of the cleaned final dataset: what is in FINAL_DATASET.csv, in a few numbers and one
-chart.
-
-Usage:
-    python src/1_data_processing/dataset_overview.py
-
-Writes to outputs/eda_plots/:
-    dataset_overview.csv           one row per number: rows, filings, BDCs, managers, borrowers,
-                                   quarters, fair value, debt and first-lien shares, label
-                                   coverage, and the latest quarter by BDC type
-    dataset_overview_sectors.csv   latest quarter, fair value by sector (report taxonomy)
-    dataset_overview.png           the sector mix chart
-"""
-import sys as _sys
-from pathlib import Path as _Path
-_sys.path.insert(0, str(_Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
+"""The cleaned dataset in a few numbers and its sector mix (slide 7). Reads FINAL_DATASET.csv; writes
+dataset_overview.csv, dataset_overview_sectors.csv and dataset_overview.png to outputs/eda_plots/."""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
 
 import matplotlib
 
@@ -26,7 +15,7 @@ from manager_family import add_family
 
 FV = "InvestmentOwnedAtFairValue_normalized"
 PAR = "InvestmentOwnedBalancePrincipalAmount_normalized"
-COLS = ["cik", "accession", "cal_q", "borrower_canonical", FV, PAR, "instrument_seniority", "sector_report",
+COLS = ["cik", "accession", "cal_q", "borrower_canonical", FV, PAR, "instrument_seniority", "sector",
         "bdc_type", "non_accrual"]
 UNKNOWN = {"Other / Unknown / Unresolved", "Other / Unknown", "Other / Unclassified"}
 BLUE, GREY = "#2a78d6", "#c3bfb5"
@@ -45,6 +34,7 @@ def overview(d: pd.DataFrame) -> pd.DataFrame:
     debt = L[PAR].fillna(0) > 0
     rows = [
         ("rows (position-quarters)", len(d)),
+        ("rows with a principal amount (loans), all quarters", round((d[PAR].fillna(0) > 0).mean(), 3)),
         ("quarters", d["cal_q"].nunique()),
         ("first quarter", d["cal_q"].min()),
         ("last quarter", last),
@@ -59,7 +49,7 @@ def overview(d: pd.DataFrame) -> pd.DataFrame:
         (f"first-lien share of fair value, {last}",
          round(fv[L["instrument_seniority"] == "SENIOR_SECURED_1L"].sum() / fv.sum(), 3)),
         ("rows with a borrower", round(d["borrower_canonical"].notna().mean(), 3)),
-        ("rows with a sector", round((~d["sector_report"].isin(UNKNOWN) & d["sector_report"].notna()).mean(), 3)),
+        ("rows with a sector", round((~d["sector"].isin(UNKNOWN) & d["sector"].notna()).mean(), 3)),
         (f"fair value with known non-accrual status, {last}", round(fv[L["non_accrual"].notna()].sum() / fv.sum(), 3)),
     ]
     for t, g in L.groupby("bdc_type"):
@@ -71,7 +61,7 @@ def overview(d: pd.DataFrame) -> pd.DataFrame:
 def sectors(d: pd.DataFrame) -> pd.DataFrame:
     last = d["cal_q"].max()
     L = d[d["cal_q"] == last].assign(fv=lambda x: x[FV].clip(lower=0))
-    s = L.assign(sector=L["sector_report"].where(~L["sector_report"].isin(UNKNOWN) & L["sector_report"].notna(),
+    s = L.assign(sector=L["sector"].where(~L["sector"].isin(UNKNOWN) & L["sector"].notna(),
                                                  "Unclassified"))
     t = s.groupby("sector")["fv"].sum().rename("fv").reset_index()
     t["share"] = t["fv"] / t["fv"].sum()
@@ -96,9 +86,7 @@ def plot(t: pd.DataFrame, path):
     ax.tick_params(axis="y", length=0)
     fig.text(0.01, 0.955, f"What BDCs hold, by sector ({t['cal_q'].iat[0]}, share of fair value)",
              fontsize=14, color=INK, weight="bold", va="top")
-    fig.text(0.01, 0.015, "Software and business services split out of technology and industrials, as in the "
-             "industry's own reports. Grey: no sector found.", fontsize=9, color=MUTED)
-    fig.subplots_adjust(left=0.33, right=0.98, top=0.9, bottom=0.07)
+    fig.subplots_adjust(left=0.33, right=0.98, top=0.9, bottom=0.03)
     fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)
 

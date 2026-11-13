@@ -1,14 +1,6 @@
-"""BDC -> manager family.
-
-Funds run by the same asset manager share one valuation process, so for crowding and
-valuation dispersion they count as one holder (Risk Dimensions doc, section 0.1).
-
-    family_map()           {cik: family} for every BDC in BDC_filings_2001_present.csv
-    add_family(df)         adds a `family` column (pandas or polars)
-    manager(cik, name)     family of one BDC from its name
-
-A BDC that matches no rule is its own family (its latest filing name).
-"""
+"""BDC -> manager family: funds run by one manager share a valuation process, so they count as one holder
+for crowding and dispersion. family_map() gives {cik: family}, add_family(df) adds a `family` column,
+manager(cik, name) maps one BDC; a BDC that matches no rule is its own family."""
 import re
 
 import pandas as pd
@@ -66,7 +58,7 @@ FAMILY_RULES = [
     (r"comvest", "Comvest"),
 ]
 # BDCs whose filing names don't show the manager. The 2026-10-24 entries were found through
-# pairwise portfolio overlap (signal_tails.py) or by reading the adviser named in the BDC's own
+# pairwise portfolio overlap (a since-removed signal_tails.py step) or by reading the adviser named in the BDC's own
 # 10-K/10-Q; each one's adviser, and valuation designee, is the family's.
 CIK_FAMILIES = {
     1414932: "Oaktree",     # "Fifth Street Finance Corp" -> Oaktree Specialty Lending (OCSL)

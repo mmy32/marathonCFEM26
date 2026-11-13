@@ -1,36 +1,12 @@
-"""Tag data-center-related borrowers in the BDC iXBRL schedule-of-investments file.
-
-Usage:
-    python classify_data_center_borrowers.py [input.csv] [out_dir]
-
-Defaults: input data/final_dataset/FINAL_DATASET.csv, out_dir data/data_center. Writes:
-    data_center_borrowers.csv   one row per borrower-name variant (entity, tier, confidence, note)
-    data_center_loan_rows.csv   every matched investment row, all original columns + tags
-
-Matching is a curated alias list (regex on the borrower name: `borrower_canonical`, or
-`borrower` in older files) plus an exclusion list of known homonyms. Tiers:
-    1 Operator / developer              owns or develops data center real estate / capacity
-    2 AI compute / GPU cloud / miners   GPU clouds, GPU-lease SPVs, AI labs with own clusters, miners
-    (tier 3, managed hosting, was removed on 2026-10-20: see REVIEWED_NOT_DC)
-    4 DC services / supply chain        maintenance, power, cooling, electrical equipment
-
-Each match also gets a scope, which nests into three estimates:
-    core      tiers 1-2
-    support   tier 4 where data centers are the firm's main market
-    grey      GREY_AREA (any tier): suppliers for which data centers are one of several
-              markets, and operators whose data center business is a sideline
-core + support is the headline (conservative) estimate; adding grey gives the upper bound.
-
-Inclusion test (user, 2026-10-20): would the borrower's absence, with no substitute, significantly
-impair the physical operation of data centers (power, cooling, mechanical, facilities)? Hosting,
-cloud and IT services delivered from data centers, and IT hardware makers, fail it.
-"""
-import sys as _sys
-from pathlib import Path as _Path
-_sys.path.insert(0, str(_Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
+"""Tag data-center-related borrowers by a curated alias list (tiers: operator / developer, AI compute,
+DC services / supply chain; scopes core, support, grey) -> data/data_center/data_center_borrowers.csv
+and data_center_loan_rows.csv. Rules and the inclusion test are in docs/10_data_center.md.
+Usage: python classify_data_center_borrowers.py [input.csv] [out_dir]"""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "1_data_processing"))  # for paths.py
 
 import os
-import sys
 
 import pandas as pd
 

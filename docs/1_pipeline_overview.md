@@ -184,17 +184,9 @@ data/ixbrl/
 - Adds `investment_identifier` from typed members
 - Returns `(df_wide, ok, status)`
 
-#### `combine_wide_frames(...)`
-- Concatenates successful frames
-- Optional `append_if_exists=True` appends to existing `wide_all.csv`
-- Deduplicates on `(cik, accession, context_id)`
-- Writes `data/ixbrl/combined/wide_all.csv`
-- Forces `cik`/`accession`/`context_id` to `str` on every reload and before dedup. `cik` and `accession` are digit-only strings with no leading zeros or dashes, so a plain `pd.read_csv` on the existing `wide_all.csv` silently infers them as `int64`, while freshly parsed frames keep them as `str` — the mismatch makes `drop_duplicates` treat every previously-parsed filing as "new" again. Confirmed by reproduction: appending an already-parsed filing doubled its row count (35 → 70) before this fix. This matters most for the intended `full`-mode workflow (`append_if_exists=True` + `resume_parsed_only=True`), which appends on every incremental run.
-- `process_one_filing(...)` now re-downloads once and retries if the cached raw XML fails to parse (`etree.XMLSyntaxError`), instead of treating a truncated/corrupt cached file (e.g. left over from a disk-full crash) as permanently done. It also parses the XML tree once and reuses it for context extraction and fact extraction (previously 4 full `etree.parse` calls per filing), and adds a short delay between the index-page fetch and the XML download inside a single filing — the same request-burst issue seen in `bdc.py`/`filings.py` applies here too, just at a smaller scale (2 requests per filing instead of ~100 in one loop).
-
 #### `append_wide_frames_bounded(...)`
-- Memory-bounded replacement for `combine_wide_frames(...)` used by `run_ixbrl_parser.py`'s periodic flush loop (`combine_wide_frames` itself is unchanged, for smaller/ad hoc use).
-- The full combined table is wide *and* long: hundreds of BDC filers each contribute their own XBRL extension-taxonomy columns (no common schema until `preprocessor.py`'s prefix-merge step), observed at ~745k rows x 1,746 cols, ~1.5GB on disk. `combine_wide_frames` reloads the *entire* existing file on every call — on a machine with only a few GB of RAM, that reliably OOM'd, first on the final combine of a ~2,300-filing run, then again on a periodic flush after the accumulated table reached ~340k rows.
+- Appends parsed filings to `data/ixbrl/combined/wide_all.csv` in `run_ixbrl_parser.py`'s periodic flush loop. Duplicates within a batch are dropped on `(cik, accession, context_id)`, compared as strings.
+- The full combined table is wide *and* long: hundreds of BDC filers each contribute their own XBRL extension-taxonomy columns (no common schema until `preprocessor.py`'s prefix-merge step), observed at ~745k rows x 1,746 cols, ~1.5GB on disk. Reloading the *entire* existing file on every call (the earlier approach) — on a machine with only a few GB of RAM, that reliably OOM'd, first on the final combine of a ~2,300-filing run, then again on a periodic flush after the accumulated table reached ~340k rows.
 - Never loads the full accumulated file: if a new batch's columns are already a subset of the on-disk header, rows are appended directly (only the small new batch touches memory); if the batch introduces new columns, the existing file is rewritten in bounded-size chunks (`chunksize`, read back as `str`) to add them, then the batch is appended.
 - Does **not** re-check duplicates against the full existing file (that would require the same full-file load this function exists to avoid) — only within-batch duplicates are removed. Correctness relies on the caller's `resume_parsed_only` guaranteeing the filings behind a batch aren't already in `out_csv`. See `load_parsed_keys_from_wide` below — this guarantee silently broke once before and caused ~53k duplicate rows, which had to be cleaned up with a one-off chunked dedup pass.
 
@@ -243,7 +235,6 @@ Optional diagnostics:
 
 ### Main APIs
 - `run_preprocess(...)`: reads input in row chunks (default C engine — `engine="pyarrow"` doesn't support `chunksize`), runs transforms per chunk, appends each cleaned chunk directly to the output CSV. Previously read the whole input via `pd.read_csv(..., engine="pyarrow")` in one shot, which OOM'd trying to load the full ~1.5GB/1,746-column combined table. Every transform in the pipeline (calendar-quarter tagging, prefix-merge, column selection, the quarter/share/context-type filters, rate normalization) is row-local, so chunking is exact, not an approximation — verified by comparing chunked vs. single-chunk output on a sample (identical). The one aggregate step (non-null diagnostics) is summed incrementally across chunks instead of computed on the whole frame. The returned DataFrame is read back from the written output only if it's under `reload_max_bytes` (default 500MB) — for a large output, reloading it would recreate the same OOM risk, so an empty DataFrame is returned instead with a logged warning; read the CSV directly (in chunks, if needed) in that case.
-- `preprocess_combined_wide(...)`: wrapper for explicit combined-wide input
 
 ---
 
