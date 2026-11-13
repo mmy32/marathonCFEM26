@@ -20,13 +20,15 @@ CLEANED_DIR     = DATA_DIR / "cleaned"
 ENRICHED_DIR    = DATA_DIR / "enriched"
 FINAL_DIR       = DATA_DIR / "final_dataset"
 DATA_CENTER_DIR = DATA_DIR / "data_center"
+MODEL_DATA_DIR  = DATA_DIR / "model"          # borrower-quarter model panel (scripts/run_model.py)
 
 # Outputs behind the midterm deck
 FIGURES_DIR = ROOT / "outputs"
 INDEX_PLOTS_DIR       = FIGURES_DIR / "index_construction_plots"
 EDA_PLOTS_DIR         = FIGURES_DIR / "eda_plots"
 DATA_CENTER_PLOTS_DIR = FIGURES_DIR / "data_center_plots"
-RISK_MONITOR_DIR      = FIGURES_DIR / "risk_monitor"       # warning signs, exposure, stress events
+RISK_MONITOR_DIR      = FIGURES_DIR / "risk_monitor"       # warning signs, BDC exposure, case studies
+MODEL_DIR             = FIGURES_DIR / "model"              # early-warning models (src/9_model)
 
 # Code folders (one per pipeline stage / analysis)
 SRC_DIR = ROOT / "src"
@@ -39,6 +41,7 @@ CODE_DIRS = [
     SRC_DIR / "5_pik",
     SRC_DIR / "6_data_center",
     SRC_DIR / "8_risk_monitor",
+    SRC_DIR / "9_model",
     SCRIPTS_DIR,
 ]
 
@@ -66,6 +69,6 @@ IXBRL_WIDE_ALL_CSV = IXBRL_COMBINED_DIR / "wide_all.csv"
 def ensure_dirs() -> None:
     """Create the standard project directories (safe to call repeatedly)."""
     for p in [DATA_DIR, REFERENCE_DIR, UNIVERSE_DIR, PARSED_DIR, CLEANED_DIR, ENRICHED_DIR, FINAL_DIR,
-              DATA_CENTER_DIR, FIGURES_DIR, INDEX_PLOTS_DIR, EDA_PLOTS_DIR, DATA_CENTER_PLOTS_DIR,
-              RISK_MONITOR_DIR, CACHE_DIR, IXBRL_RAW_XML_DIR, IXBRL_PER_FILE_DIR, IXBRL_COMBINED_DIR]:
+              DATA_CENTER_DIR, MODEL_DATA_DIR, FIGURES_DIR, INDEX_PLOTS_DIR, EDA_PLOTS_DIR, DATA_CENTER_PLOTS_DIR,
+              RISK_MONITOR_DIR, MODEL_DIR, CACHE_DIR, IXBRL_RAW_XML_DIR, IXBRL_PER_FILE_DIR, IXBRL_COMBINED_DIR]:
         p.mkdir(parents=True, exist_ok=True)

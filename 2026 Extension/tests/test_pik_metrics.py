@@ -1,5 +1,5 @@
 """Tests for classify_loan_pik_transitions (src/5_pik/pik_metrics.py): PIK switch-on/off per loan,
-the input to the PIK warning sign (slide 14)."""
+the input to the PIK warning sign."""
 
 import sys
 from pathlib import Path

@@ -1,6 +1,6 @@
-"""Loan-quarter panel on tranche chains (tranches.build_tranche_panel): valuation return, PIK
-transitions, dispersion (2+ families) and borrower crowding. The input to the warning signs, the
-stress events and the case studies."""
+"""Loan-quarter panel on tranche chains (tranches.build_tranche_panel): PIK transitions,
+dispersion (2+ families) and borrower crowding. The input to the warning signs, the
+borrower-quarter panel and the case studies."""
 from __future__ import annotations
 
 import sys
@@ -38,18 +38,6 @@ def load_rows(final_csv) -> pl.DataFrame:
     return add_family(compute_final_interest_rates(df))
 
 
-def _add_returns(tr: pd.DataFrame) -> pd.DataFrame:
-    """val_ret: (FV - FV_prev - (COST - COST_prev)) / (FV_prev + new money), when the chain's previous
-    quarter is the one before. Draws, paydowns and PIK move FV and cost together and cancel."""
-    tr = tr.sort_values(["chain_id", "qsort"]).reset_index(drop=True)
-    g = tr.groupby("chain_id")
-    prev = {c: g[c].shift(1) for c in ["FV", "COST", "qsort"]}
-    ok = (tr["qsort"] - prev["qsort"] == 1) & (prev["FV"] > 0)
-    new_money = (tr["COST"] - prev["COST"]).clip(lower=0)
-    tr["val_ret"] = ((tr["FV"] - prev["FV"] - (tr["COST"] - prev["COST"])) / (prev["FV"] + new_money)).where(ok)
-    return tr
-
-
 def _add_pik(tr: pd.DataFrame) -> pd.DataFrame:
     p = classify_loan_pik_transitions(pl.from_pandas(
         tr[["cik", "chain_id", "cal_q", "PIK_Final", "IR_Final", "PAR", "pik_at_origination"]]
@@ -78,10 +66,9 @@ def _add_crowding(tr: pd.DataFrame, rows: pl.DataFrame) -> pd.DataFrame:
 
 
 def build_monitor_panel(final_csv) -> tuple[pd.DataFrame, pl.DataFrame]:
-    """Returns (tranche-quarter panel with returns and signals, the row-level frame)."""
+    """Returns (tranche-quarter panel with signals, the row-level frame)."""
     rows = load_rows(final_csv)
-    tr = T.build_tranche_panel(rows)
-    tr = _add_returns(tr)
+    tr = T.build_tranche_panel(rows).sort_values(["chain_id", "qsort"]).reset_index(drop=True)
     tr = _add_pik(tr)
     tr = _add_dispersion(tr)
     tr = _add_crowding(tr, rows)

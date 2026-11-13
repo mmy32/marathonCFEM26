@@ -18,11 +18,7 @@ All steps read `data/final_dataset/FINAL_DATASET.csv`. Steps 2 and 3 also read
 Amounts are quarter-end fair values, i.e. holdings, not new lending.
 
 The screen's decisions are already written into `classify_data_center_borrowers.py`, so steps 1-3
-do not need it. The exposure tables and charts by BDC and by manager, the by-function and
-%-of-portfolio charts, and the largest-borrowers chart (`plot_data_center_lenders.py`) are not in
-the midterm deck. They were moved out of the repo on 2026-11-08 (to `ORIE 5220/miscellaneous/`)
-and are no longer written; `data_center_analysis.py` is kept as the shared loader and style
-module.
+do not need it. `data_center_analysis.py` is the shared loader and chart style.
 
 ---
 
@@ -133,5 +129,4 @@ regenerated on 2026-10-22 with the current alias list.
 - **The scope of a supplier is a judgment call.** The headline estimate leaves out the grey area
   on purpose, and the upper bound includes it.
 - **Amounts are fair values of holdings.** A rise can come from new loans, from BDCs entering the
-  panel, or from marks. The removed `trend_by_function()` reported net new cost to help separate
-  these (in `ORIE 5220/miscellaneous/code_before_simplify_2026-11-08/`).
+  panel, or from marks.

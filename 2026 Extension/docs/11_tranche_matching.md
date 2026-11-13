@@ -1,7 +1,5 @@
 # Tranche Matching and Manager Families
 
-> **Code note (2026-11-08):** val_dispersion.match_coverage() and bdc_mark_distance() were removed from the repo as unused by the midterm deck; the full versions are in `ORIE 5220/miscellaneous/code_before_simplify_2026-11-08/`. Mentions of them below describe that earlier code.
-
 ## Overview
 
 The risk signals in the Risk Dimensions doc are defined per loan (tranche), not per borrower,
@@ -11,14 +9,14 @@ supply that:
 | Module | Gives |
 |---|---|
 | `manager_family.py` | `family_map()` / `add_family(df)`: CIK -> manager family |
-| `tranches.py` | `build_tranche_panel(df)`: funded debt tranches, chains over time (`chain_id`), matches across BDCs (`xb_id`, `xb_tier`), PIK at origination (P3); `tranche_dispersion(tr)`: V1, V2, V4 |
+| `tranches.py` | `build_tranche_panel(df)`: funded debt tranches, chains over time (`chain_id`), matches across BDCs (`xb_id`, `xb_tier`), PIK at origination (P3) |
+| `src/4_val_dispersion/val_dispersion.py` | `tranche_dispersion(tr)`: V1, V2, V4 on those tranches |
 
-They are used by the warning signs and stress events in the risk monitor
+They are used by the warning signs and the borrower-quarter panel in the risk monitor
 (`12_risk_monitor.md`, `13_distress_event_study.md`: crowding, disagreement on value, PIK) and
-by crowding (`7_concentration_crowding.md`). The return index (`4_index_construction.md`) still
-uses borrower + seniority positions. The standalone PIK and valuation-dispersion write-ups
-(docs 9 and 8) are not in the midterm deck and were moved out of the repo on 2026-11-08, to
-`ORIE 5220/miscellaneous/docs/`.
+by crowding (`7_concentration_crowding.md`) and the early-warning model
+(`14_early_warning_model.md`). The return index (`4_index_construction.md`) uses its own
+borrower + seniority positions.
 
 Tests: `python tests/test_tranches.py`.
 
@@ -132,22 +130,6 @@ Main Street tags no maturity and labels the loans `SENIOR_SECURED_UNSPEC`. In 20
 term loan reprices from SOFR + 8.25% to + 10.25% while a $0.8M rescue loan with no spread is
 held alongside it. The term loan keeps its chain (rule 4), the rescue loan has its own chain
 from 2026Q1 with P3 = True, and the two are never merged across BDCs.
-
----
-
-## Coverage
-
-Share of priced par in tranches held by 2+ manager families (`tranche_match_coverage.csv`, written by
-`scripts/run_dispersion_signals.py`; both moved to `ORIE 5220/miscellaneous/` on 2026-11-08, so
-this table is a record of that run):
-
-| Quarter | Priced par ($bn) | Tier 1 | Tier <= 2 | Tier <= 3 |
-|---|---|---|---|---|
-| 2023Q1 | 229 | 0.4% | 40.5% | 41.1% |
-| 2024Q4 | 382 | 2.7% | 52.4% | 52.6% |
-| 2026Q2 | 510 | 5.4% | 50.8% | 51.1% |
-
-Tier 1 is small because a tranche counts as tier 1 only if every holder tags maturity.
 
 ---
 

@@ -16,6 +16,7 @@ from paths import add_code_dirs_to_path
 add_code_dirs_to_path()
 
 import tranches as T
+import val_dispersion as VD
 from manager_family import manager
 from concentration_crowding import compute_borrower_crowding_metrics
 
@@ -133,7 +134,7 @@ class TestPricesAndDispersion(unittest.TestCase):
             (2, "F1", "2025Q1", "ACME", "SENIOR_SECURED_1L", "2030-06-30", 0.05, 100, 100, 90),
             (3, "F2", "2025Q1", "ACME", "SENIOR_SECURED_1L", "2030-06-30", 0.05, 100, 100, 80),
         ])
-        d = T.tranche_dispersion(tr)
+        d = VD.tranche_dispersion(tr)
         self.assertEqual(d["n_families"].iloc[0], 2)
         self.assertAlmostEqual(d["V4_consensus"].iloc[0], 0.85)
         self.assertAlmostEqual(d["V1_range"].iloc[0], 0.10)
@@ -144,7 +145,7 @@ class TestPricesAndDispersion(unittest.TestCase):
             (1, "F1", "2025Q1", "ACME", "SENIOR_SECURED_1L", "2030-06-30", 0.05, 100, 100, 90),
             (2, "F1", "2025Q1", "ACME", "SENIOR_SECURED_1L", "2030-06-30", 0.05, 100, 100, 70),
         ])
-        self.assertTrue(T.tranche_dispersion(tr).empty)
+        self.assertTrue(VD.tranche_dispersion(tr).empty)
 
 
 class TestOrigination(unittest.TestCase):
@@ -187,45 +188,6 @@ class TestFamiliesAndCrowding(unittest.TestCase):
         np.testing.assert_allclose(m["lender_hhi"].to_numpy(), [0.625, 0.625])   # 0.75^2 + 0.25^2
         np.testing.assert_allclose(m["top_share"].to_numpy(), [0.75, 0.75])
         self.assertEqual(m["d_families_4q"].to_list(), [None, 0])        # C4: null before the panel has 4 quarters
-
-
-class TestDistressEvents(unittest.TestCase):
-
-    def test_persistent_recovered_exited(self):
-        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "8_risk_monitor"))
-        import distress_event_study as D
-        rows = []
-        # A: -40% then -10%: persistent. B: -30% then +50%: recovered. C: -25% then gone: exited.
-        for b, rets in [("A", [0.0, -0.4, -0.1, 0.0]), ("B", [0.0, -0.3, 0.5, 0.0]), ("C", [0.0, -0.25])]:
-            for i, r in enumerate(rets):
-                rows.append(dict(borrower=b, cal_q=f"2024Q{i + 1}", qsort=2024 * 4 + i + 1, val_ret=r if i else np.nan,
-                                 fv_prev=5e6, price=0.9, sector="X", C1_families=1, multi_family=False,
-                                 log_borrower_par=16.0))
-        rows.append(dict(borrower="Z", cal_q="2024Q4", qsort=2024 * 4 + 4, val_ret=0.0, fv_prev=5e6, price=1.0,
-                         sector="X", C1_families=1, multi_family=False, log_borrower_par=16.0))
-        # pct = 1: every negative return is an event, so this tests the classification only
-        ev = D.find_events(D.flag_drops(pd.DataFrame(rows), pct=1.0)).set_index("borrower")
-        self.assertEqual(ev.loc["A", "status"], "persistent")
-        self.assertEqual(ev.loc["B", "status"], "recovered")
-        self.assertEqual(ev.loc["C", "status"], "exited")
-        self.assertEqual(ev.loc["A", "cal_q"], "2024Q2")
-
-    def test_pooled_cutoff_is_one_line_for_all_quarters(self):
-        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "8_risk_monitor"))
-        import distress_event_study as D
-        rng = np.random.default_rng(0)
-        r = rng.normal(0, 0.05, 500)
-        calm = pd.DataFrame(dict(cal_q="2025Q4", val_ret=r, fv_prev=5e6))
-        remark = pd.DataFrame(dict(cal_q="2026Q1", val_ret=r - 0.10, fv_prev=5e6))   # whole market marked down
-        small = pd.DataFrame(dict(cal_q="2026Q1", val_ret=[-0.9], fv_prev=[1e5]))    # below MIN_FV_PREV
-        f = D.flag_drops(pd.concat([calm, remark, small], ignore_index=True))
-        cut = D.pooled_cutoff(f)
-        self.assertAlmostEqual(cut, np.quantile(np.r_[r, r - 0.10], 0.01))           # small loan excluded
-        self.assertTrue((f.loc[f["is_drop"], "val_ret"] <= cut).all())
-        self.assertEqual(int(f["is_drop"].sum()), 10)                                 # 1% of 1,000 eligible
-        by_q = f.groupby("cal_q")["is_drop"].sum()
-        self.assertGreater(by_q["2026Q1"], by_q["2025Q4"])                            # the re-mark quarter gets more
-        self.assertFalse(f["is_drop"].iloc[-1])
 
 
 if __name__ == "__main__":

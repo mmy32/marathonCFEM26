@@ -7,5 +7,4 @@ claude_api_key.txt
 # local only
 _archive/
 .claude/
-# large intermediate panel, rebuilt by run_distress_event_study.py (30MB)
-outputs/risk_monitor/distress/borrower_quarter_panel.csv
+.vscode/

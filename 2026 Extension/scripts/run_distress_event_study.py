@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Stress events (a borrower's value falling 19% or more in a quarter, the pooled bottom 1%) and the
-case studies (slides 9, 10, 13, 19, 24). Reads FINAL_DATASET.csv; writes drop_cutoffs.csv,
-distress_events.csv, distressed_borrowers_register.csv and case_studies/ (one set per borrower in
-data/reference/case_studies.csv) to outputs/risk_monitor/distress/. About 5 minutes."""
+"""Case studies (slides 10, 13, 24): the quarterly signal path and lender detail for each borrower
+in data/reference/case_studies.csv. Reads FINAL_DATASET.csv; writes case_studies/ to
+outputs/risk_monitor/distress/. About 3 minutes. (The stress events, drop cutoffs and
+distressed-borrower register were removed on 2026-11-12 with val_ret.)"""
 from __future__ import annotations
 
 import sys
@@ -11,8 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "1_data_processing"))
-from paths import (FINAL_DIR, RISK_MONITOR_DIR, REFERENCE_DIR, DATA_CENTER_DIR, UNIVERSE_DIR,  # noqa: E402
-                   add_code_dirs_to_path)
+from paths import FINAL_DIR, RISK_MONITOR_DIR, REFERENCE_DIR, UNIVERSE_DIR, add_code_dirs_to_path  # noqa: E402
 add_code_dirs_to_path()
 
 from monitor_panel import build_monitor_panel  # noqa: E402
@@ -47,17 +46,6 @@ def main():
     print("Building the loan panel and the borrower-quarter panel ...")
     panel, rows = build_monitor_panel(FINAL_DIR / "FINAL_DATASET.csv")
     b = D.borrower_quarter_panel(panel, rows)
-    ev = D.find_events(b)
-    ev.to_csv(out / "distress_events.csv", index=False)
-    cut = D.drop_cutoffs(b)
-    cut.to_csv(out / "drop_cutoffs.csv", index=False)
-    print(cut.round(3).to_string(index=False))
-    print(f"  {len(b):,} borrower-quarters; {len(ev)} borrowers with a stress drop (pooled cutoff {D.pooled_cutoff(b):.1%}): {ev['status'].value_counts().to_dict()}")
-    reg = D.distressed_register(b, ev, panel,
-                                validation_csv=REFERENCE_DIR / "distress_event_validation.csv",
-                                data_center_csv=DATA_CENTER_DIR / "data_center_borrowers.csv")
-    reg.to_csv(out / "distressed_borrowers_register.csv", index=False)
-    print(f"  register: {len(reg)} borrowers -> {out / 'distressed_borrowers_register.csv'}")
     write_case_studies(b, rows, out / "case_studies")
     print(f"Done: {out}")
 

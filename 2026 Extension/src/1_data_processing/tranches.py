@@ -18,9 +18,6 @@ MAX_CHAIN_GAP = 2            # quarters a chain may skip (missed filings)
 MAX_PAR_RATIO = 2.0          # rule-4 links between several leftovers need par within 2x
 FUNDED_MIN_COST_SHARE = 0.05
 PRICE_MIN_COST_SHARE = 0.8   # rows priced only when cost >= 80% of par (see standardize_debt_rows)
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "4_val_dispersion"))
 MIN_PIK_RATE = 0.0025        # a PIK rate under 25 bp is rounding noise from total - cash
 DIP_PATTERN = r"\bDIP\b|debtor[\s-]+in[\s-]+possession"
 RATE_COLS = ["PIC_Final", "PIK_Final", "IR_Final", "rate_cash", "interest_rate", "rate_pik", "spread"]
@@ -379,8 +376,3 @@ def build_tranche_panel(df, with_origination: bool = True) -> pd.DataFrame:
     if with_origination and "PIK_Final" in tr.columns:
         tr = add_pik_origination(tr)
     return tr
-
-
-# Valuation dispersion (family prices, V1 / V2 / V4) lives in src/4_val_dispersion/val_dispersion.py
-# since 2026-10-24; re-exported here so existing `tranches.tranche_dispersion` callers keep working.
-from val_dispersion import family_tranche_prices, tranche_dispersion  # noqa: E402,F401

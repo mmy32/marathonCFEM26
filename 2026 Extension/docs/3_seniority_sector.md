@@ -70,21 +70,6 @@ build_final_dataset_with_seniority_and_sector(
 )
 ```
 
-The same entry point is called from `notebooks/index_construction_pipeline.ipynb` (the "Adding the
-Sector and Seniority using LLM" section):
-
-```python
-build_final_dataset_with_seniority_and_sector(
-    input_csv_path=OUTPUT_PATH,
-    output_csv_path=OUTPUT_PATH_LLM,
-    conf_thresh=0.70,
-    llm_model="claude-haiku-4-5",
-    batch_size=32,
-    anthropic_api_key=API_KEY,  # None => uses env var ANTHROPIC_API_KEY
-    verbose=True,
-)
-```
-
 This step was migrated from OpenAI to Claude. The parameter is `anthropic_api_key`, not
 `openai_api_key`, and there is no OpenAI code path left - a call using the old keyword raises
 `TypeError: unexpected keyword argument`.
