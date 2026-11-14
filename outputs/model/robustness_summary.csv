@@ -1,13 +1,12 @@
-variant,outcome,predictors,n_obs,n_borrowers,n_events,pseudo_r2,auc_in_sample,holdout_events,holdout_roc_auc,holdout_pr_auc,holdout_recall,holdout_precision,r2_in_sample,holdout_r2,holdout_mae,holdout_rmse
-"headline: mark, drawdown, PIK switch",y_na,"price, max_drawdown, pik_switch",54222,8802,441.0,0.22469148568009545,0.8416130067430181,44.0,0.854221175649747,0.09169927109312109,0.8636363636363636,0.01964839710444674,,,,
-+ dispersion (std of family marks; the outline's four),y_na,"price, max_drawdown, pik_switch, dispersion, has_dispersion",54222,8802,441.0,0.22560539574969807,0.8392883442090942,44.0,0.852187495044638,0.09164853556741438,0.8636363636363636,0.021134593993325918,,,,
-+ dispersion as the range of family marks,y_na,"price, max_drawdown, pik_switch, dispersion_range, has_dispersion",54222,8802,441.0,0.22546771954014355,0.8389797103150465,44.0,0.8545383188240331,0.09252991625274765,0.8636363636363636,0.02097130242825607,,,,
-PIK: change in PIK share of coupon (pp),y_na,"price, max_drawdown, d_pik_pp",54039,8792,439.0,0.21841015322207047,0.8361607324992351,44.0,0.8438058213716109,0.08456088340920022,0.8409090909090909,0.018829516539440202,,,,
-market-adjusted mark and drawdown,y_na,"price_rel, max_drawdown_adj, pik_switch",54222,8802,441.0,0.18751326354044096,0.8395007408267534,44.0,0.8535769785769785,0.12486004400915827,0.8636363636363636,0.02116991643454039,,,,
-+ seniority mix (junior share of par),y_na,"price, max_drawdown, pik_switch, junior_share",54222,8802,441.0,0.22483015837374798,0.8416964896815721,44.0,0.8553609089323374,0.0934845196014955,0.8636363636363636,0.019760790431617263,,,,
-+ borrower size (log BDC-held par),y_na,"price, max_drawdown, pik_switch, log_par",54222,8802,441.0,0.2265753230025055,0.8458832644578009,44.0,0.8607860393574679,0.09097817788634761,0.8863636363636364,0.018439716312056736,,,,
-outcome: first-ever non-accrual,y_na_first,"price, max_drawdown, pik_switch",53388,8726,395.0,0.23629841522162587,0.857370892310353,34.0,0.8251342619786859,0.07035763400914728,0.7941176470588235,0.01768172888015717,,,,
-outcome: same-lender entries only,y_na_same_lender,"price, max_drawdown, pik_switch",54209,8802,428.0,0.22903717359413556,0.8481166784573019,44.0,0.8542370328084613,0.09174562868649873,0.8409090909090909,0.023052959501557634,,,,
-"borrowers with 2+ lender families, + dispersion",y_na,"price, max_drawdown, pik_switch, dispersion",17672,2871,118.0,0.2201078760197014,0.8154001309277137,13.0,0.8910747241528252,0.10324131846239658,1.0,0.00672182006204757,,,,
-price_change: primary (same loans),price_change,"price, max_drawdown, pik_switch",62063,10080,,,,,,,,,0.043019190437960875,-0.030475979125287767,0.010260419800982117,0.021610337196265587
-price_change: borrower FV/PAR difference (outline formula),price_change_raw,"price, max_drawdown, pik_switch",64181,10127,,,,,,,,,0.03643334706512036,-0.021522852642451573,0.010551252107340254,0.022067795186262187
+variant,outcome,predictors,n_obs,n_events,auc_in_sample,test_n,test_events,test_roc_auc
+"scorecard: mark, change in mark, PIK switch",y_na,"price, d_price, pik_switch",56843,550,0.8766074903548479,11784,114,0.8883815150558486
+PIK: change in PIK share of coupon (pp),y_na,"price, d_price, d_pik_pp",56843,550,0.8728512345310171,11784,114,0.8857168628512154
+market-adjusted mark and change,y_na,"price_rel, d_price_adj, pik_switch",56843,550,0.8759873099028944,11784,114,0.8887099926336837
++ seniority mix (junior share of par),y_na,"price, d_price, pik_switch, junior_share",56843,550,0.8763538822039879,11784,114,0.8895597498459086
++ borrower size (log BDC-held par),y_na,"price, d_price, pik_switch, log_par",56843,550,0.8779524985344536,11784,114,0.8905868999834634
+valuation gap as the range of family marks,y_na,"price, d_price, pik_switch, dispersion_range, has_dispersion",56843,550,0.8717269707359062,11784,114,0.8827729671221756
+"borrowers with 2+ lender families, + valuation gap",y_na,"price, d_price, pik_switch, dispersion",17978,122,0.8259661077325342,4013,30,0.8576240689597456
+outcome: impaired exits left unlabelled,y_na_impaired_unlabelled,"price, d_price, pik_switch",56732,439,0.8492640017591007,11761,91,0.862335094211701
+outcome: exits left unlabelled,y_na_no_exits,"price, d_price, pik_switch",53987,439,0.8467059464924748,11193,91,0.859746585606791
+outcome: first-ever non-accrual,y_na_first,"price, d_price, pik_switch",55989,502,0.8914821367655336,11528,99,0.8764877756478072
+outcome: same-lender entries only,y_na_same_lender,"price, d_price, pik_switch",56719,426,0.8560687754687933,11761,91,0.8623369775040726

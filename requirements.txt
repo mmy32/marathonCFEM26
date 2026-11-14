@@ -10,5 +10,5 @@ Pillow==9.5.0  # matplotlib writes PNGs with it; other versions compress them di
 polars==1.44.1
 pyarrow==25.0.1  # polars .to_pandas(): tranche panel, risk monitor, models
 scipy==1.10.0  # src/9_model: p-values of the clustered coefficients
-scikit-learn==1.2.1  # src/9_model: logistic, ridge, lasso, boosted trees, MLP and the metrics
+scikit-learn==1.2.1  # src/9_model: the logistic regression and the metrics
 anthropic==0.86.0  # LLM steps: get_seniority_debttype.py, screen_data_center_borrowers.py

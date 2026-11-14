@@ -7,8 +7,9 @@ the dataset for two things:
 - **The midterm deck** (*Examining Early Warning Signals in Private Credit*, 5 Nov 2026): BDC
   growth, a BDC loan index against the CDLI, borrower warning signs (crowding, disagreement on
   value, PIK), each BDC's exposure to flagged borrowers, case studies and data-center lending.
-- **The early-warning model** (after the midterm): which borrowers go on non-accrual within the
-  next year, from three signs (a low mark, a falling mark, a switch to paying interest in kind).
+- **The early-warning scorecard** (after the midterm): ranks borrowers by the chance of a credit
+  event next quarter (non-accrual, or leaving the books marked below 80), from three signs (a low
+  mark, a falling mark, a switch to paying interest in kind).
   Start with [docs/14](docs/14_early_warning_model.md).
 
 All analysis reads one file: `data/final_dataset/FINAL_DATASET.csv`.
@@ -25,7 +26,7 @@ The data is not in the repo; it is shared separately. Put `FINAL_DATASET.csv` (2
 `data/final_dataset/`, then run from the project root:
 
 ```
-python scripts/run_model.py                                 # early-warning model (docs/14), about 8 minutes
+python scripts/run_model.py                                 # early-warning scorecard (docs/14), about 6 minutes
 python scripts/run_risk_monitor.py                          # warning signs and BDC exposure, about 3 minutes
 python scripts/run_distress_event_study.py                  # case studies, about 3 minutes
 python src/2_index_construction/index_construction.py       # loan index vs CDLI
@@ -150,3 +151,7 @@ steps:
 - 2026-10-24: old and duplicate files moved to `../just in case/`.
 - 2026-11-08: everything outside the midterm deck moved out.
 - 2026-11-12: `val_ret` and the stress events removed; the early-warning model added.
+- 2026-11-13: the model reduced to one outcome (a credit event next quarter: non-accrual or an
+  impaired exit) and one logistic
+  scorecard; exits classified; valuation outcomes, longer horizons, ridge, lasso, boosted trees and the
+  neural network removed.

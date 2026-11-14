@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Early-warning models (BDC Credit Risk Capstone outline, 2026-11-12). Builds the borrower-quarter
-panel (warning signs at t: mark level, rolling max drawdown, PIK switch, and valuation dispersion,
-tested but not in the headline model; outcomes: new non-accrual within 1, 2 and 4 quarters, price
-change and fair-value return at t + 1), fits the headline logit (mark, drawdown, PIK switch) and its
-comparisons, and runs the out-of-sample tests: the main rolling evaluation (every quarter scored by
-a model fitted on earlier, fully observed quarters; review-list capture) and the outline's single
-chronological split. Reads FINAL_DATASET.csv; writes
-data/model/model_panel.csv, data/model/rolling_predictions.csv and outputs/model/. About 8
+"""Early-warning scorecard: ranks borrowers by the chance of a credit event next quarter.
+Builds the borrower-quarter panel (signs at t: the mark, its change over the quarter, PIK switch,
+valuation gap, crowding; outcome: non-accrual or an impaired exit at t + 1, with every exit
+classified), chooses the
+signs on the development quarters, tests the scorecard out of sample on entries in the first half
+of 2026, and applies it to the latest quarter. Reads FINAL_DATASET.csv; writes
+data/model/ (the panel and the out-of-sample predictions) and outputs/model/. About 6
 minutes; `--cached` reuses the saved panel (skips the 2-minute panel build). See
 docs/14_early_warning_model.md."""
 from __future__ import annotations
@@ -25,71 +24,16 @@ add_code_dirs_to_path()
 
 import model_analysis as A  # noqa: E402
 import model_charts as C  # noqa: E402
-from model_fit import HEADLINE, NA_HORIZONS, fit_predict, model_frame  # noqa: E402
-from model_panel import build_model_panel, q_label, q_next, q_sort, sample_waterfall  # noqa: E402
+from model_fit import decile_table, performance  # noqa: E402
+from model_panel import build_model_panel, event_counts, q_next, q_sort, sample_waterfall  # noqa: E402
 
 warnings.filterwarnings("ignore")
 
-TRAIN_END = "2026Q1"     # outline section 6: training predictor quarters up to 2026Q1 (outcomes up to 2026Q2)
-TEST_Q = "2026Q2"        # outline test: predictor quarter 2026Q2, outcome 2026Q3
-HOLDOUT_END = "2025Q4"   # the same design one quarter earlier, scored while 2026Q3 is not in the data
-HOLDOUT_Q = "2026Q1"
-CONTEXT = ["price", "max_drawdown", "pik_switch", "dispersion", "d_price", "n_families", "fv_debt", "sector"]
-REVIEW_SHARE = 0.05      # the forecast's review list: the riskiest 5% of accruing borrowers
-
-
-def forecast(m: pd.DataFrame) -> pd.DataFrame:
-    """Scores for the borrowers accruing in the latest quarter, whose outcomes are not filed yet:
-    probability of entering non-accrual within 1, 2 and 4 quarters (the headline model: mark,
-    drawdown and PIK switch, logistic, fitted on every quarter whose outcome window is fully
-    observed), rank by the 4-quarter score, and the top-REVIEW_SHARE review list. The model counts
-    a mark below 70 as 70 and a drawdown above 20 points as 20, so the deepest borrowers can tie;
-    ties are ordered by the lower mark."""
-    q = m["qsort"].max()
-    f = None
-    for h, outcome in NA_HORIZONS.items():
-        d = model_frame(m, outcome, HEADLINE, sample="na_risk_set", labelled=False)
-        train, test = d[d["y"].notna() & (d["qsort"] <= q - h)], d[d["qsort"] == q]
-        pred, _, _ = fit_predict("binary", "logit", {}, train, test, HEADLINE)
-        col = test[["borrower", "cal_q"]].assign(**{f"p_h{h}": pred})
-        f = col if f is None else f.merge(col, on=["borrower", "cal_q"], how="outer")
-    h = max(NA_HORIZONS)
-    f = f.merge(m[["borrower", "cal_q"] + CONTEXT], on=["borrower", "cal_q"], how="left")
-    f = f.sort_values([f"p_h{h}", "price"], ascending=[False, True]).reset_index(drop=True)
-    f.insert(5, f"rank_h{h}", range(1, len(f) + 1))
-    f.insert(6, "review_list", f[f"rank_h{h}"] <= round(REVIEW_SHARE * len(f)))
-    return f
-
-
-def write_rolling(m: pd.DataFrame, out: Path):
-    """Main evaluation: rolling out of sample for non-accrual within 1, 2, 4 quarters and for the
-    valuation outcomes."""
-    p = A.rolling_nonaccrual(m)
-    MODEL_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    p.to_csv(MODEL_DATA_DIR / "rolling_predictions.csv", index=False)
-    T = A.rolling_tables(p, m)
-    common = q_label(T["common_quarters"])
-    T["metrics"].to_csv(out / "rolling_metrics.csv", index=False)
-    T["capture"].to_csv(out / "review_list_capture.csv", index=False)
-    T["calibration"].to_csv(out / "rolling_calibration.csv", index=False)
-    T["rules"].to_csv(out / "rolling_rules_vs_model.csv", index=False)
-    T["earliness"].to_csv(out / "early_warning.csv", index=False)
-    T["cross"].to_csv(out / "horizon_cross_check.csv", index=False)
-    C.horizon_review_lists(p, T["common_quarters"], f"{common[0]}-{common[-1]}", out / "horizon_review_lists.png")
-    C.rolling_auc_by_quarter(p, out / "rolling_auc_by_quarter.png")
-    mt = T["metrics"]
-    print(mt[mt["spec"].isin(["headline", "combined", "price"])][
-        ["h", "spec", "model", "window", "test_quarters", "n", "positives", "distinct_entries", "base_rate", "roc_auc",
-         "roc_auc_lo", "roc_auc_hi", "pr_auc", "pr_lift"]].round(3).to_string(index=False))
-    cap = T["capture"]
-    print(cap[(cap["spec"] == "headline") & (cap["model"] == "logit")][
-        ["h", "window", "share_flagged", "flagged_per_quarter", "capture", "precision", "lift"]].round(3)
-          .to_string(index=False))
-    for k in ("rules", "earliness", "cross"):
-        print(T[k].round(3).to_string(index=False))
-    v = A.rolling_valuation(m)
-    v.to_csv(out / "rolling_valuation.csv", index=False)
-    print(v.round(4).to_string(index=False))
+# Signs from one quarter are scored against entries in the next. Three stages, in time order:
+TRAIN_END = "2025Q3"              # development: signs up to 2025Q3 (entries up to 2025Q4) choose the signs
+TEST_QS = ["2025Q4", "2026Q1"]    # test: one fit on the development quarters, scored on entries in 2026Q1 and 2026Q2
+SCORE_Q = "2026Q2"                # scorecard quarter. Its outcome, 2026Q3, is reserved: nothing is fitted or chosen on it
+CONTEXT = ["price", "d_price", "pik_switch", "dispersion", "crowding", "fv_debt", "sector"]
 
 
 def load_panel(cached: bool) -> pd.DataFrame:
@@ -110,100 +54,84 @@ def load_panel(cached: bool) -> pd.DataFrame:
     return m
 
 
-def review_holdout(preds: pd.DataFrame, m: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Wide holdout predictions (the headline logit, then the four-signal models), and the cases to
-    discuss: every entry the headline model missed at its threshold (false negatives) and the 20
-    highest-scored non-entrants."""
-    p = preds[preds["spec"] == "combined"].assign(flag=lambda x: x["flag"].astype(int))
-    wide = p.pivot_table(index=["borrower", "cal_q", "outcome_q", "y"], columns="model", values=["pred", "flag"],
-                         aggfunc="first")
-    wide.columns = [f"{'p' if a == 'pred' else 'flag'}_all4_{b}" for a, b in wide.columns]
-    head = preds[(preds["spec"] == "headline") & (preds["model"] == "logit")][["borrower", "cal_q", "pred", "flag"]]
-    wide = (head.rename(columns={"pred": "p_headline", "flag": "flag_headline"})
-            .merge(wide.reset_index(), on=["borrower", "cal_q"], how="left")
-            .merge(m[["borrower", "cal_q"] + CONTEXT], on=["borrower", "cal_q"], how="left")
-            .sort_values("p_headline", ascending=False))
-    cols = ["borrower", "cal_q", "outcome_q", "y", "p_headline", "flag_headline"]
-    wide = wide[cols + [c for c in wide.columns if c not in cols]]
-    missed = wide[(wide["y"] == 1) & ~wide["flag_headline"].astype(bool)].assign(case="missed entry (false negative)")
-    fps = wide[wide["y"] == 0].head(20).assign(case="highest-scored non-entrant (false positive)")
-    return wide, pd.concat([missed, fps])
-
-
 def main(cached: bool = False):
     out = MODEL_DIR
     out.mkdir(parents=True, exist_ok=True)
     pd.set_option("display.width", 220)
     pd.set_option("display.max_columns", 30)
     m = load_panel(cached)
-    first_q = m.loc[m["in_sample"], "qsort"].min()
-    train_end, test_q = q_sort(TRAIN_END), q_sort(TEST_Q)
-    hold_end, hold_q = q_sort(HOLDOUT_END), q_sort(HOLDOUT_Q)
-    window = f"{m.loc[m['qsort'] == first_q, 'cal_q'].iloc[0]}-{TRAIN_END}"
-    entries = f"{m.loc[m['qsort'] == first_q, 'outcome_q'].iloc[0]}-{m.loc[m['qsort'] == train_end, 'outcome_q'].iloc[0]}"
+    train_end, test_qs, score_q = q_sort(TRAIN_END), [q_sort(q) for q in TEST_QS], q_sort(SCORE_Q)
+    fit_end = score_q - 1                           # the scorecard is fitted on every quarter before SCORE_Q
+    first = m.loc[m["in_sample"], "cal_q"].min()
+    window = f"{first}-{TEST_QS[-1]}"
+    test_events = f"{q_next(TEST_QS[0])}-{q_next(TEST_QS[-1])}"
 
-    print("Samples ...")
-    wf = sample_waterfall(m)
+    print("Samples, events and exits ...")
+    wf = sample_waterfall(m[m["qsort"] <= score_q])
     wf.to_csv(out / "sample_waterfall.csv", index=False)
     print(wf.to_string(index=False))
-    ss = A.sample_summary(m, {"training (outline)": (first_q, train_end), "holdout: training": (first_q, hold_end),
-                              "holdout: test": (hold_q, hold_q), "test (outline)": (test_q, test_q)})
-    ss.to_csv(out / "sample_summary.csv", index=False)
-    print(ss.to_string(index=False))
+    ec = event_counts(m[m["qsort"] <= score_q])
+    ec.to_csv(out / "event_counts.csv", index=False)
+    print(ec.round(4).to_string(index=False))
 
-    print("Descriptives ...")
-    A.predictor_summary(m, train_end).to_csv(out / "predictor_summary.csv", index=False)
-    er = A.event_rates(m, train_end)
+    print("The signs one by one ...")
+    A.predictor_summary(m, fit_end).to_csv(out / "predictor_summary.csv", index=False)
+    er = A.event_rates(m, fit_end)
     er.to_csv(out / "event_rates_by_bucket.csv", index=False)
     C.event_rate_by_predictor(er, out / "event_rate_by_predictor.png", window)
-    ph = A.pik_hypotheses(m, train_end)
+    ph = A.pik_hypotheses(m, fit_end)
     ph.to_csv(out / "pik_switch_hypotheses.csv", index=False)
     print(ph.round(4).to_string(index=False))
-    ep = A.event_profile(m, train_end)
+    ep = A.event_profile(m, fit_end)
     ep.to_csv(out / "event_profile.csv", index=False)
-    C.event_profile(ep, out / "event_profile.png", entries)
+    C.event_profile(ep, out / "event_profile.png", f"{q_next(first)}-{q_next(TEST_QS[-1])}")
 
     print("In-sample coefficients (clustered by borrower) ...")
-    coefs = A.coefficients(m, train_end)
+    coefs = A.coefficients(m, fit_end)
     coefs.to_csv(out / "coefficients.csv", index=False)
     C.odds_ratios(coefs, out / "odds_ratios_nonaccrual.png", window)
-    show = coefs[coefs["spec"].isin(["headline", "combined"]) & (coefs["sample"] == "all") & (coefs["term"] != "const")]
-    print(show[["outcome", "spec", "term", "per", "coef", "se_cluster", "p_value", "odds_ratio", "n_obs",
-                "n_events"]].round(4).to_string(index=False))
+    print(coefs[coefs["term"] != "const"][["spec", "term", "per", "coef", "se_cluster", "p_value", "odds_ratio",
+                                           "n_obs", "n_events"]].round(4).to_string(index=False))
 
-    print("Main evaluation: rolling out of sample, non-accrual within 1, 2 and 4 quarters ...")
-    write_rolling(m, out)
+    print(f"Sign selection: rolling out of sample, signs up to {TRAIN_END} ...")
+    roll = A.rolling(m, fit_end)
+    MODEL_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    roll.to_csv(MODEL_DATA_DIR / "rolling_predictions.csv", index=False)
+    sel = A.sign_selection(roll, train_end)
+    sel.to_csv(out / "sign_selection.csv", index=False)
+    print(sel.round(4).to_string(index=False))
+    bq = A.by_quarter(roll)
+    bq.to_csv(out / "rolling_by_quarter.csv", index=False)
+    C.rolling_auc_by_quarter(bq, out / "rolling_auc_by_quarter.png", q_next(TEST_QS[0]))
+    print(bq.round(3).to_string(index=False))
 
-    print(f"Outline split (single holdout): train to {HOLDOUT_END}, test {HOLDOUT_Q} -> {q_next(HOLDOUT_Q)} ...")
-    metrics, preds = A.out_of_sample(m, "holdout", hold_end, hold_q)
-    labelled = m.loc[(m["qsort"] == test_q) & m["na_risk_set"], "y_na"].notna().any()
-    if labelled:
-        print(f"Test: train to {TRAIN_END}, test {TEST_Q} -> {q_next(TEST_Q)} ...")
-        mt, pt = A.out_of_sample(m, "test", train_end, test_q)
-        metrics, preds = pd.concat([metrics, mt]), pd.concat([preds, pt])
-    metrics.to_csv(out / "oos_metrics.csv", index=False)
-    cols = ["split", "outcome", "sample", "spec", "model", "n_test", "events", "roc_auc", "roc_auc_lo", "roc_auc_hi",
-            "pr_auc", "recall", "precision", "flag_rate", "r2", "r2_vs_train_mean", "mae", "rmse"]
-    print(metrics[[c for c in cols if c in metrics]].round(4).to_string(index=False))
-    hp = preds[preds["split"] == "holdout"]
-    wide, review = review_holdout(hp, m)
-    wide.to_csv(out / "holdout_predictions.csv", index=False)
-    review.to_csv(out / "holdout_review.csv", index=False)
-    C.holdout_curves(hp, out / "holdout_roc_pr.png", q_next(HOLDOUT_Q))
-    C.holdout_auc(metrics[metrics["split"] == "holdout"], out / "holdout_auc.png", q_next(HOLDOUT_Q))
-
-    f = forecast(m)
-    latest = f["cal_q"].iloc[0]
-    print(f"Forecast: {len(f):,} borrowers accruing in {latest}, {int(f['review_list'].sum())} on the review list ...")
-    f.to_csv(out / f"forecast_{latest}.csv", index=False)
-    print(f.head(15)[["borrower", "p_h1", "p_h2", "p_h4", "price", "max_drawdown", "pik_switch", "dispersion"]].round(3)
-          .to_string(index=False))
+    print(f"Out-of-sample test: fitted on signs up to {TRAIN_END}, entries in {test_events} ...")
+    perf, dec, preds = A.oos_test(m, train_end, test_qs)
+    perf.to_csv(out / "oos_performance.csv", index=False)
+    dec.to_csv(out / "oos_deciles.csv", index=False)
+    preds.to_csv(MODEL_DATA_DIR / "oos_predictions.csv", index=False)
+    C.score_deciles(dec, out / "oos_score_deciles.png", test_events, f"signs up to {TRAIN_END}")
+    print(perf.round(4).to_string(index=False))
+    print(dec.round(4).to_string(index=False))
 
     print("Robustness ...")
-    rs, rc = A.robustness(m, train_end, hold_end, hold_q)
+    rs, rc = A.robustness(m, fit_end, train_end, test_qs)
     rs.to_csv(out / "robustness_summary.csv", index=False)
     rc.to_csv(out / "robustness_coefficients.csv", index=False)
     print(rs.round(4).to_string(index=False))
+
+    card = A.scorecard(m, score_q, CONTEXT)
+    card.to_csv(out / f"scorecard_{SCORE_Q}.csv", index=False)
+    print(f"Scorecard: {len(card):,} borrowers accruing in {SCORE_Q}, {card['probability'].sum():.0f} entries expected "
+          f"in {q_next(SCORE_Q)}")
+    print(card.head(15).drop(columns=["cal_q", "outcome_q", "y"]).round(3).to_string(index=False))
+    if card["y"].notna().any():                     # the reserved quarter is in the data: the final test
+        p = card[card["y"].notna()].rename(columns={"probability": "pred"}).assign(qsort=score_q)
+        print(f"Reserved test: entries in {q_next(SCORE_Q)} ...")
+        res = pd.DataFrame([{"model": "scorecard", **performance(p)}])
+        res.to_csv(out / f"reserved_test_{q_next(SCORE_Q)}.csv", index=False)
+        decile_table(p).to_csv(out / f"reserved_test_{q_next(SCORE_Q)}_deciles.csv", index=False)
+        print(res.round(4).to_string(index=False))
     print(f"Done: {out}")
 
 
