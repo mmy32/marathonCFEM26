@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Early-warning scorecard: ranks borrowers by the chance of a credit event next quarter.
-Builds the borrower-quarter panel (signs at t: the mark, its change over the quarter, PIK switch,
-valuation gap, crowding; outcome: non-accrual or an impaired exit at t + 1, with every exit
-classified), chooses the
-signs on the development quarters, tests the scorecard out of sample on entries in the first half
-of 2026, and applies it to the latest quarter. Reads FINAL_DATASET.csv; writes
+"""Early-warning scorecard: ranks borrowers by the chance of entering non-accrual within the next
+two quarters. Builds the borrower-quarter panel (signs at t: the mark, its change over the quarter,
+PIK switch, valuation gap, crowding; outcome: any BDC flags the borrower non-accrual at t + 1 or
+t + 2; borrowers that leave every BDC's books before then have no label and their exits are counted
+by type, and a mark never enters the outcome), chooses the signs on the development quarters, tests
+the scorecard out of sample on signals from the second half of 2025, and applies it to the latest
+quarter. Reads FINAL_DATASET.csv; writes
 data/model/ (the panel and the out-of-sample predictions) and outputs/model/. About 6
 minutes; `--cached` reuses the saved panel (skips the 2-minute panel build). See
 docs/14_early_warning_model.md."""
@@ -24,16 +25,21 @@ add_code_dirs_to_path()
 
 import model_analysis as A  # noqa: E402
 import model_charts as C  # noqa: E402
-from model_fit import decile_table, performance  # noqa: E402
-from model_panel import build_model_panel, event_counts, q_next, q_sort, sample_waterfall  # noqa: E402
+from model_fit import BASELINE, CANDIDATES, SCORECARD, decile_table, model_frame, performance, \
+    split_predictions  # noqa: E402
+from model_panel import HORIZON, build_model_panel, event_counts, exit_table, q_next, q_sort, sample_waterfall,     window_label  # noqa: E402
 
 warnings.filterwarnings("ignore")
 
-# Signs from one quarter are scored against entries in the next. Three stages, in time order:
-TRAIN_END = "2025Q3"              # development: signs up to 2025Q3 (entries up to 2025Q4) choose the signs
-TEST_QS = ["2025Q4", "2026Q1"]    # test: one fit on the development quarters, scored on entries in 2026Q1 and 2026Q2
-SCORE_Q = "2026Q2"                # scorecard quarter. Its outcome, 2026Q3, is reserved: nothing is fitted or chosen on it
-CONTEXT = ["price", "d_price", "pik_switch", "dispersion", "crowding", "fv_debt", "sector"]
+# Signs at t are scored against entries at t + 1 or t + 2. Three stages, in time order; a stage's
+# training windows all close before the next stage's first signal quarter:
+TRAIN_END = "2025Q1"              # development: signs up to 2025Q1 (windows close by 2025Q3) choose the signs
+TEST_QS = ["2025Q3", "2025Q4"]    # test: one fit on the development quarters, scored on signals from the
+                                  # second half of 2025 (entries in 2025Q4-2026Q2)
+SCORE_Q = "2026Q2"                # scorecard quarter (window 2026Q3-2026Q4)
+RESERVED_Q = "2026Q3"             # reserved: nothing is fitted or chosen on it. Once filed, signals from
+                                  # 2026Q1 (window 2026Q2-2026Q3) are the blind test
+CONTEXT = ["price", "d_price", "pik_switch", "max_drawdown", "dispersion", "crowding", "fv_debt", "sector"]
 
 
 def load_panel(cached: bool) -> pd.DataFrame:
@@ -61,10 +67,10 @@ def main(cached: bool = False):
     pd.set_option("display.max_columns", 30)
     m = load_panel(cached)
     train_end, test_qs, score_q = q_sort(TRAIN_END), [q_sort(q) for q in TEST_QS], q_sort(SCORE_Q)
-    fit_end = score_q - 1                           # the scorecard is fitted on every quarter before SCORE_Q
+    fit_end = score_q - HORIZON                     # the scorecard is fitted on every window closed by SCORE_Q
     first = m.loc[m["in_sample"], "cal_q"].min()
     window = f"{first}-{TEST_QS[-1]}"
-    test_events = f"{q_next(TEST_QS[0])}-{q_next(TEST_QS[-1])}"
+    test_events = f"{q_next(TEST_QS[0])}-{q_next(TEST_QS[-1], HORIZON)}"
 
     print("Samples, events and exits ...")
     wf = sample_waterfall(m[m["qsort"] <= score_q])
@@ -73,6 +79,9 @@ def main(cached: bool = False):
     ec = event_counts(m[m["qsort"] <= score_q])
     ec.to_csv(out / "event_counts.csv", index=False)
     print(ec.round(4).to_string(index=False))
+    xt = exit_table(m[m["qsort"] <= score_q])
+    xt.to_csv(out / "exits.csv", index=False)
+    print(xt.round(3).to_string(index=False))
 
     print("The signs one by one ...")
     A.predictor_summary(m, fit_end).to_csv(out / "predictor_summary.csv", index=False)
@@ -84,7 +93,7 @@ def main(cached: bool = False):
     print(ph.round(4).to_string(index=False))
     ep = A.event_profile(m, fit_end)
     ep.to_csv(out / "event_profile.csv", index=False)
-    C.event_profile(ep, out / "event_profile.png", f"{q_next(first)}-{q_next(TEST_QS[-1])}")
+    C.event_profile(ep, out / "event_profile.png", f"{q_next(first)}-{SCORE_Q}")
 
     print("In-sample coefficients (clustered by borrower) ...")
     coefs = A.coefficients(m, fit_end)
@@ -100,9 +109,12 @@ def main(cached: bool = False):
     sel = A.sign_selection(roll, train_end)
     sel.to_csv(out / "sign_selection.csv", index=False)
     print(sel.round(4).to_string(index=False))
+    kept = [k for k, cols in CANDIDATES.items() if sel.set_index("spec").loc[f"baseline + {A.SIGN_NAMES[k]}", "kept"]]
+    if set(SCORECARD) != set(BASELINE + sum((CANDIDATES[k] for k in kept), [])):
+        raise SystemExit(f"The rule keeps {kept}; model_fit.SCORECARD is {SCORECARD}. Update SCORECARD.")
     bq = A.by_quarter(roll)
     bq.to_csv(out / "rolling_by_quarter.csv", index=False)
-    C.rolling_auc_by_quarter(bq, out / "rolling_auc_by_quarter.png", q_next(TEST_QS[0]))
+    C.rolling_auc_by_quarter(bq, out / "rolling_auc_by_quarter.png", TEST_QS[0])
     print(bq.round(3).to_string(index=False))
 
     print(f"Out-of-sample test: fitted on signs up to {TRAIN_END}, entries in {test_events} ...")
@@ -123,14 +135,16 @@ def main(cached: bool = False):
     card = A.scorecard(m, score_q, CONTEXT)
     card.to_csv(out / f"scorecard_{SCORE_Q}.csv", index=False)
     print(f"Scorecard: {len(card):,} borrowers accruing in {SCORE_Q}, {card['probability'].sum():.0f} entries expected "
-          f"in {q_next(SCORE_Q)}")
+          f"in {window_label([score_q])[0]}")
     print(card.head(15).drop(columns=["cal_q", "outcome_q", "y"]).round(3).to_string(index=False))
-    if card["y"].notna().any():                     # the reserved quarter is in the data: the final test
-        p = card[card["y"].notna()].rename(columns={"probability": "pred"}).assign(qsort=score_q)
-        print(f"Reserved test: entries in {q_next(SCORE_Q)} ...")
+    if m["qsort"].max() >= q_sort(RESERVED_Q):      # the reserved quarter is in the data: the blind test
+        blind_q = q_sort(RESERVED_Q) - HORIZON
+        d = model_frame(m, SCORECARD)
+        p = split_predictions(d, SCORECARD, blind_q - HORIZON, [blind_q])
+        print(f"Reserved test: signals in {q_next(RESERVED_Q, -HORIZON)}, entries in {window_label([blind_q])[0]} ...")
         res = pd.DataFrame([{"model": "scorecard", **performance(p)}])
-        res.to_csv(out / f"reserved_test_{q_next(SCORE_Q)}.csv", index=False)
-        decile_table(p).to_csv(out / f"reserved_test_{q_next(SCORE_Q)}_deciles.csv", index=False)
+        res.to_csv(out / f"reserved_test_{RESERVED_Q}.csv", index=False)
+        decile_table(p).to_csv(out / f"reserved_test_{RESERVED_Q}_deciles.csv", index=False)
         print(res.round(4).to_string(index=False))
     print(f"Done: {out}")
 

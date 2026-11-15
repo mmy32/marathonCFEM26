@@ -7,11 +7,13 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import average_precision_score, roc_auc_score
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-OUTCOME = "y_na"               # the one outcome: an accruing borrower is on non-accrual next quarter
+from model_panel import HORIZON
+
+OUTCOME = "y_na"               # the one outcome: an accruing borrower enters non-accrual at t + 1 or t + 2
 # Fixed caps: a mark below 70 counts as 70, a move of more than 20 points in the quarter (or a fall of
 # more than 20 over the year) as 20, six or more lender families as five. Beyond them risk keeps
 # rising, but far more slowly than the logistic's straight line; uncapped, the deepest marks got
@@ -25,7 +27,10 @@ BASELINE = ["price", "d_price"]
 # elsewhere and comes with its indicator.
 CANDIDATES = {"pik_switch": ["pik_switch"], "dispersion": ["dispersion", "has_dispersion"],
               "crowding": ["crowding"], "max_drawdown": ["max_drawdown"]}
-SCORECARD = BASELINE + ["pik_switch"]      # the baseline and the one sign that improved on it
+# The baseline and the signs the frozen rule kept on the development quarters (2026-11-14, outcome
+# within two quarters): PIK switch, fall over the past year, valuation gap; crowding was dropped.
+# run_model.py stops if sign_selection.csv ever keeps a different set.
+SCORECARD = BASELINE + CANDIDATES["pik_switch"] + CANDIDATES["max_drawdown"] + CANDIDATES["dispersion"]
 RISK_SIGN = {"price": -1, "d_price": -1, "pik_switch": 1, "dispersion": 1, "crowding": 1,
              "max_drawdown": 1}             # equal-weighted ranking: +1 if a higher value means more risk
 STRUCTURAL_ZERO = {"dispersion", "dispersion_range"}       # 0 where has_dispersion == 0
@@ -136,10 +141,13 @@ def _predictions(test: pd.DataFrame, pred: np.ndarray) -> pd.DataFrame:
 
 
 def split_predictions(d: pd.DataFrame, cols: list[str], train_end: int, test_qs: list[int]) -> pd.DataFrame:
-    """One fit on the labelled quarters <= train_end (their outcomes are filed by train_end + 1),
-    scored on the quarters `test_qs`, all later than train_end. `d` may hold unlabelled rows: they
-    are scored, never fitted on. train_auc is the same model's ROC-AUC on the rows it was fitted
-    on: a test ROC-AUC well below it would mean overfitting."""
+    """One fit on the labelled quarters <= train_end, scored on the quarters `test_qs`. A training
+    quarter's window closes HORIZON quarters later, so every test quarter is at least train_end +
+    HORIZON: the outcomes fitted on are all filed when the test quarter is scored. `d` may hold
+    unlabelled rows: they are scored, never fitted on. train_auc is the same model's ROC-AUC on the
+    rows it was fitted on: a test ROC-AUC well below it would mean overfitting."""
+    if min(test_qs) < train_end + HORIZON:
+        raise ValueError("training windows must close by the first test quarter")
     train = d[(d["qsort"] <= train_end) & d["y"].notna()]
     test = d[d["qsort"].isin(test_qs)]
     return _predictions(test, fit_predict(train, test, cols)).assign(
@@ -149,13 +157,14 @@ def split_predictions(d: pd.DataFrame, cols: list[str], train_end: int, test_qs:
 def rolling_predictions(d: pd.DataFrame, cols: list[str],
                         min_train_quarters: int = MIN_TRAIN_QUARTERS) -> pd.DataFrame:
     """Out-of-sample scores for every quarter: quarter q is scored by a logit fitted on the labelled
-    quarters before q (their outcomes, up to quarter q, are filed by the time q is scored).
+    quarters up to q - HORIZON (their windows close by q, so their outcomes are filed when q is
+    scored).
     Quarters with fewer than min_train_quarters training quarters are skipped. train_auc is each
     fit's ROC-AUC on its own training rows."""
     d = d[d["y"].notna()]
     out = []
     for q in sorted(d["qsort"].unique()):
-        train = d[d["qsort"] < q]
+        train = d[d["qsort"] <= q - HORIZON]
         if train["qsort"].nunique() >= min_train_quarters:
             test = d[d["qsort"] == q]
             out.append(_predictions(test, fit_predict(train, test, cols)).assign(
@@ -188,11 +197,33 @@ def _auc(y: np.ndarray, s: np.ndarray, w: np.ndarray) -> float:
     return roc_auc_score(y[k], s[k], sample_weight=w[k]) if 0 < (w * y)[k].sum() < w[k].sum() else np.nan
 
 
+def _ap(y: np.ndarray, s: np.ndarray, w: np.ndarray) -> float:
+    k = w > 0
+    return average_precision_score(y[k], s[k], sample_weight=w[k]) if (w * y)[k].sum() > 0 else np.nan
+
+
 def auc_ci(p: pd.DataFrame) -> tuple[float, float, float]:
     """ROC-AUC of predictions `p` with a borrower-resampled 95% interval."""
     y, s = p["y"].to_numpy(), p["pred"].to_numpy()
     vals = [_auc(y, s, w) for w in _boot_weights(p["borrower"].to_numpy())]
     return (roc_auc_score(y, s), *np.nanpercentile(vals, [2.5, 97.5]))
+
+
+def pr_auc_ci(p: pd.DataFrame) -> tuple[float, float, float]:
+    """PR-AUC (average precision) of predictions `p` with a borrower-resampled 95% interval. It
+    scores only how well the events are found, so a model that ranks at random scores the event
+    rate (about 0.008 here), not 0.5."""
+    y, s = p["y"].to_numpy(), p["pred"].to_numpy()
+    vals = [_ap(y, s, w) for w in _boot_weights(p["borrower"].to_numpy())]
+    return (average_precision_score(y, s), *np.nanpercentile(vals, [2.5, 97.5]))
+
+
+def recall_at(p: pd.DataFrame, share: float) -> tuple[float, float, float]:
+    """Share of the events caught by reviewing the riskiest `share` of each quarter's borrowers
+    (Wilson 95% interval): the miss rate for a fixed review budget is one minus this."""
+    y = p["y"].to_numpy()
+    caught = int(y[(quarter_rank(p) <= share).to_numpy()].sum())
+    return (caught / y.sum(), *wilson(caught, int(y.sum())))
 
 
 def auc_gain(p: pd.DataFrame, base: pd.DataFrame) -> tuple[float, float, float]:
@@ -239,14 +270,19 @@ def decile_table(p: pd.DataFrame, probabilities: bool = True) -> pd.DataFrame:
 
 
 def performance(p: pd.DataFrame, probabilities: bool = True) -> dict:
-    """Out-of-sample summary of predictions `p`: ROC-AUC, the riskiest tenth's event rate and its
-    share of the events, and predicted against realized events, each with a 95% interval."""
+    """Out-of-sample summary of predictions `p`: ROC-AUC, PR-AUC, the share of events caught in the
+    riskiest 10% and 20%, the riskiest tenth's event rate, and predicted against realized events,
+    each with a 95% interval."""
     auc, lo, hi = auc_ci(p)
+    ap, ap_lo, ap_hi = pr_auc_ci(p)
+    r20, r20_lo, r20_hi = recall_at(p, 0.20)
     top = decile_table(p, probabilities).iloc[0]
     n, events = len(p), int(p["y"].sum())
     r_lo, r_hi = wilson(events, n)
     return {"test_quarters": f"{p['cal_q'].min()} to {p['cal_q'].max()}", "n": n, "events": events,
             "roc_auc": auc, "roc_auc_lo": lo, "roc_auc_hi": hi,
+            "pr_auc": ap, "pr_auc_lo": ap_lo, "pr_auc_hi": ap_hi,
+            "recall_top_20pct": r20, "recall_top_20pct_lo": r20_lo, "recall_top_20pct_hi": r20_hi,
             "top_decile_event_rate": top["event_rate"], "top_decile_rate_lo": top["rate_ci_low"],
             "top_decile_rate_hi": top["rate_ci_high"], "top_decile_share_of_events": top["share_of_events"],
             "realized_rate": events / n, "realized_rate_lo": r_lo, "realized_rate_hi": r_hi,

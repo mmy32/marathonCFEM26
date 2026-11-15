@@ -1,7 +1,8 @@
 """
 Tests for the early-warning scorecard (src/9_model): the borrower-quarter panel (same-loan price
-changes, non-accrual entries, exit classification, sample rules) and the estimation helpers
-(clustered standard errors, no look-ahead, equal-weighted ranking, deciles).
+changes, non-accrual entries within two quarters, unlabelled exits typed by maturity, sample rules)
+and the estimation helpers (clustered standard errors, no look-ahead, equal-weighted ranking,
+deciles).
 """
 
 import sys
@@ -88,43 +89,46 @@ class TestPanel(unittest.TestCase):
         self.assertAlmostEqual(dd[6], 0.0)         # quarters 2-6: the fall happened before the window
         self.assertAlmostEqual(dd[7], 0.0)
 
-    def test_nonaccrual_entry(self):
+    def test_nonaccrual_entry_within_two_quarters(self):
         a = self.m.loc["ACME"]
-        self.assertEqual(a.loc["2024Q1", "y_na"], 0)
-        self.assertEqual(a.loc["2024Q3", "y_na"], 1)
-        self.assertEqual(a.loc["2024Q3", "y_na_same_lender"], 1)     # BDC 1 reported it accruing in 2024Q3
+        self.assertEqual(a.loc["2024Q1", "y_na"], 0)                  # accruing in 2024Q2 and 2024Q3
+        self.assertEqual(a.loc["2024Q2", "y_na"], 1)                  # flagged in 2024Q4 = t + 2
+        self.assertEqual(a.loc["2024Q2", "entry_q"], MP.q_sort("2024Q4"))
+        self.assertEqual(a.loc["2024Q2", "outcome_q"], "2024Q3-2024Q4")
+        self.assertEqual(a.loc["2024Q2", "y_na_same_lender"], 1)     # BDC 1 reported it accruing in 2024Q2
+        self.assertTrue(np.isnan(a.loc["2024Q3", "y_na"]))           # window runs past the data
         self.assertEqual(a.loc["2024Q4", "na_status"], 1)
-        self.assertTrue(np.isnan(a.loc["2024Q4", "y_na"]))           # no next quarter in the data
         self.assertFalse(a.loc["2024Q4", "na_risk_set"])             # already on non-accrual
 
-    def test_exits_are_classified(self):
+    def test_exits_have_no_label_and_are_typed_by_maturity_not_mark(self):
+        # The outcome comes from non-accrual flags only: a borrower that leaves before the window
+        # closes gets no label, at par (BETA, DELTA) or deeply marked down (EPSILON at 60). The
+        # exit type comes from the scheduled maturity: DELTA's loan was due in 2024Q3.
         m = self.m
-        self.assertEqual(m.loc[("BETA", "2024Q2"), "exit_type"], "refinanced")      # left at par before maturity
-        self.assertEqual(m.loc[("DELTA", "2024Q2"), "exit_type"], "repaid")         # left at par at maturity
-        self.assertEqual(m.loc[("EPSILON", "2024Q2"), "exit_type"], "impaired")     # left marked at 60
-        self.assertEqual(m.loc[("ZETA", "2024Q2"), "exit_type"], "unclassified")    # left marked at 90
-        self.assertTrue(pd.isna(m.loc[("BETA", "2024Q1"), "exit_type"]))            # still held next quarter
-        self.assertTrue(pd.isna(m.loc[("ACME", "2024Q4"), "exit_type"]))            # last quarter of the data
-
-    def test_exit_outcomes(self):
-        m = self.m
-        self.assertEqual(m.loc[("BETA", "2024Q1"), "y_na"], 0)
-        self.assertEqual(m.loc[("BETA", "2024Q2"), "y_na"], 0)                      # paid off: not an event
-        self.assertEqual(m.loc[("DELTA", "2024Q2"), "y_na"], 0)
-        self.assertEqual(m.loc[("EPSILON", "2024Q2"), "y_na"], 1)                   # impaired: an event ...
-        self.assertTrue(np.isnan(m.loc[("EPSILON", "2024Q2"), "y_na_impaired_unlabelled"]))   # ... no label here
-        self.assertTrue(np.isnan(m.loc[("ZETA", "2024Q2"), "y_na"]))                # unclassified: no label
+        for q in ["2024Q1", "2024Q2"]:                               # gone in 2024Q3, inside both windows
+            for name in ["BETA", "DELTA", "EPSILON", "ZETA"]:
+                self.assertTrue(m.loc[(name, q), "exited"])
+                self.assertTrue(np.isnan(m.loc[(name, q), "y_na"]))
+        self.assertEqual(m.loc[("DELTA", "2024Q2"), "exit_type"], "at scheduled maturity")
+        for name in ["BETA", "EPSILON", "ZETA"]:
+            self.assertEqual(m.loc[(name, "2024Q2"), "exit_type"], "before scheduled maturity")
+        self.assertFalse(m.loc[("ACME", "2024Q3"), "exited"])                       # window runs past the data
 
     def test_event_counts_cover_every_borrower(self):
-        c = MP.event_counts(self.m.reset_index()).set_index("cal_q")
-        parts = ["entered_non_accrual", "still_accruing", "exit_repaid", "exit_refinanced", "exit_impaired", "exit_unclassified",
-                 "status_unknown"]
+        m = self.m.reset_index()
+        c = MP.event_counts(m).set_index("cal_q")
+        parts = ["entered_non_accrual", "still_accruing", "exited", "status_unknown"]
+        exits = ["exit_at_scheduled_maturity", "exit_before_scheduled_maturity", "exit_maturity_not_reported"]
         self.assertTrue((c[parts].sum(axis=1) == c["at_risk"]).all())
+        self.assertTrue((c[exits].sum(axis=1) == c["exited"]).all())
         q2 = c.loc["2024Q2"]
-        self.assertEqual([q2[k] for k in parts], [0, 1, 1, 1, 1, 1, 0])             # ACME accruing, four exits
-        self.assertEqual(q2["labelled"], 4)                                         # ACME, repaid, refinanced, impaired
-        self.assertEqual(q2["events"], 1)                                           # the impaired exit
-        self.assertEqual(c.loc["2024Q3", "events"], 1)
+        self.assertEqual([q2[k] for k in parts], [1, 0, 4, 0])                      # ACME enters, four exits
+        self.assertEqual([q2[k] for k in exits], [1, 3, 0])                         # DELTA at maturity
+        self.assertEqual((q2["labelled"], q2["events"]), (1, 1))                    # a low-marked exit is not an event
+        self.assertNotIn("2024Q3", c.index)                                         # window incomplete
+        x = MP.exit_table(m).set_index("exit_type")
+        self.assertEqual(x.loc["all", "exits"], 4)
+        self.assertEqual(x.loc["before scheduled maturity", "mark at t below 80"], 1)   # EPSILON: context only
 
     def test_mark_uses_cost_where_par_is_missing(self):
         rows = pl.DataFrame({"cal_q": ["2024Q1"] * 3, "borrower_canonical": ["ACME"] * 3,
@@ -182,7 +186,7 @@ class TestFit(unittest.TestCase):
 
     def test_fixed_caps(self):
         d = pd.DataFrame({"price": [0.30, 0.85, 1.02], "d_price": [-0.45, -0.10, 0.30], "pik_switch": [1, 0, 0]})
-        X = F.design(d, F.SCORECARD)
+        X = F.design(d, ["price", "d_price", "pik_switch"])
         np.testing.assert_allclose(X[:, 0], [0.70, 0.85, 1.02])      # a mark below 70 counts as 70
         np.testing.assert_allclose(X[:, 1], [-0.20, -0.10, 0.20])    # a move of more than 20 points counts as 20
 
@@ -205,11 +209,16 @@ class TestFit(unittest.TestCase):
         # Test-quarter outcomes must not change the fitted model: hide them and the scores are identical.
         d = self._frame(4)
         d.loc[d["qsort"] >= 9, "y"] = 1.0                       # outcomes the model must not see
-        seen = F.split_predictions(d, ["x"], 8, [9, 10])
-        hidden = d.assign(y=d["y"].where(d["qsort"] < 9))
-        unseen = F.split_predictions(hidden, ["x"], 8, [9, 10])
+        seen = F.split_predictions(d, ["x"], 7, [9, 10])
+        hidden = d.assign(y=d["y"].where(d["qsort"] <= 7))      # quarter 8's window is still open at 9
+        unseen = F.split_predictions(hidden, ["x"], 7, [9, 10])
         np.testing.assert_allclose(seen["pred"].to_numpy(), unseen["pred"].to_numpy())
         self.assertEqual(set(seen["qsort"]), {9, 10})
+
+    def test_training_windows_must_close_before_the_test(self):
+        # Quarter 8's two-quarter window ends at 10: fitting on it to score 9 would look ahead.
+        with self.assertRaises(ValueError):
+            F.split_predictions(self._frame(4), ["x"], 8, [9, 10])
 
     def test_fit_is_deterministic(self):
         d = self._frame(6)
@@ -218,14 +227,14 @@ class TestFit(unittest.TestCase):
 
     def test_rolling_folds_use_only_earlier_quarters(self):
         p = F.rolling_predictions(self._frame(5), ["x"])
-        self.assertTrue((p["train_last_q"] < p["qsort"]).all())
-        self.assertEqual(p["qsort"].min(), 1 + F.MIN_TRAIN_QUARTERS)
+        self.assertTrue((p["train_last_q"] <= p["qsort"] - MP.HORIZON).all())     # windows closed by q
+        self.assertEqual(p["qsort"].min(), MP.HORIZON + F.MIN_TRAIN_QUARTERS)
 
     def test_equal_weight_score(self):
         # Lower mark, larger fall and a PIK switch each raise the rank; ranks are taken within the quarter.
         d = pd.DataFrame({"qsort": [1, 1, 1, 2, 2], "price": [0.6, 0.9, 1.0, 0.99, 1.0],
                           "d_price": [-0.10, -0.02, 0.0, 0.0, -0.01], "pik_switch": [1, 0, 0, 0, 0]})
-        s = F.equal_weight_score(d, F.SCORECARD)
+        s = F.equal_weight_score(d, ["price", "d_price", "pik_switch"])
         self.assertAlmostEqual(s[0], 1.0)                          # riskiest on all three signs
         self.assertGreater(s[1], s[2])
         self.assertAlmostEqual(s[3], s[4])                         # one sign each, PIK tied
@@ -246,10 +255,21 @@ class TestFit(unittest.TestCase):
 
     def test_auc_gain_of_a_model_over_itself_is_zero(self):
         d = self._frame(7)
-        p = F.split_predictions(d, ["x"], 8, [9, 10])
+        p = F.split_predictions(d, ["x"], 7, [9, 10])
         self.assertEqual(F.auc_gain(p, p), (0.0, 0.0, 0.0))
         auc, lo, hi = F.auc_ci(p)
         self.assertTrue(lo < auc < hi)
+
+    def test_pr_auc_and_recall_at_budget(self):
+        # Same toy as the decile table: 4 events, 3 of them in the top 10% (2 of 20 per quarter)
+        # and all 4 in the top 20% (4 of 20 per quarter).
+        p = pd.DataFrame({"qsort": [1] * 20 + [2] * 20, "borrower": [str(i) for i in range(40)],
+                          "pred": list(np.linspace(0.5, 0.01, 20)) * 2, "y": ([1, 1] + [0] * 18) + ([1, 0, 1] + [0] * 17)})
+        self.assertAlmostEqual(F.recall_at(p, 0.10)[0], 0.75)
+        self.assertAlmostEqual(F.recall_at(p, 0.20)[0], 1.0)
+        ap, lo, hi = F.pr_auc_ci(p)
+        self.assertTrue(p["y"].mean() < ap <= 1.0)              # better than the event rate (random)
+        self.assertTrue(lo <= ap <= hi)
 
 
 if __name__ == "__main__":

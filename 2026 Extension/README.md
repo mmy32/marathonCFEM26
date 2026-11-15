@@ -7,9 +7,10 @@ the dataset for two things:
 - **The midterm deck** (*Examining Early Warning Signals in Private Credit*, 5 Nov 2026): BDC
   growth, a BDC loan index against the CDLI, borrower warning signs (crowding, disagreement on
   value, PIK), each BDC's exposure to flagged borrowers, case studies and data-center lending.
-- **The early-warning scorecard** (after the midterm): ranks borrowers by the chance of a credit
-  event next quarter (non-accrual, or leaving the books marked below 80), from three signs (a low
-  mark, a falling mark, a switch to paying interest in kind).
+- **The early-warning scorecard** (after the midterm): ranks borrowers by the chance of entering
+  non-accrual within the next two quarters, from five signs (a low mark, a fall this quarter and
+  over the past year, a switch to paying interest in kind, lenders disagreeing on value). A
+  markdown is only ever an input, never the outcome.
   Start with [docs/14](docs/14_early_warning_model.md).
 
 All analysis reads one file: `data/final_dataset/FINAL_DATASET.csv`.
@@ -155,3 +156,9 @@ steps:
   impaired exit) and one logistic
   scorecard; exits classified; valuation outcomes, longer horizons, ridge, lasso, boosted trees and the
   neural network removed.
+- 2026-11-14: the outcome is non-accrual only. Impaired exits were defined by a mark below 80,
+  which made a markdown part of the outcome; the filings have no restructuring or realized-loss
+  field to use instead. Exits now get no label, and the exit classification is removed.
+- 2026-11-14: the outcome window is two quarters (t + 1 or t + 2); the test uses signals from the
+  second half of 2025. Exits are typed by scheduled maturity (`exits.csv`). The frozen sign rule
+  now keeps the PIK switch, the fall over the past year and the valuation gap.
