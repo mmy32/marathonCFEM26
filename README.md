@@ -152,13 +152,7 @@ steps:
 - 2026-10-24: old and duplicate files moved to `../just in case/`.
 - 2026-11-08: everything outside the midterm deck moved out.
 - 2026-11-12: `val_ret` and the stress events removed; the early-warning model added.
-- 2026-11-13: the model reduced to one outcome (a credit event next quarter: non-accrual or an
-  impaired exit) and one logistic
-  scorecard; exits classified; valuation outcomes, longer horizons, ridge, lasso, boosted trees and the
-  neural network removed.
-- 2026-11-14: the outcome is non-accrual only. Impaired exits were defined by a mark below 80,
-  which made a markdown part of the outcome; the filings have no restructuring or realized-loss
-  field to use instead. Exits now get no label, and the exit classification is removed.
-- 2026-11-14: the outcome window is two quarters (t + 1 or t + 2); the test uses signals from the
-  second half of 2025. Exits are typed by scheduled maturity (`exits.csv`). The frozen sign rule
-  now keeps the PIK switch, the fall over the past year and the valuation gap.
+- 2026-11-13 to 11-16: the model rebuilt to the sponsor's rules: one outcome (non-accrual within
+  two quarters), one small logistic scorecard tested out of sample, restructurings and exits
+  counted beside the outcome. Earlier versions (other outcomes, ridge, lasso, trees, a neural
+  network) are in the git history.

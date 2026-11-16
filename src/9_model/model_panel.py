@@ -2,17 +2,19 @@
 every BDC's loans to the borrower pooled. The warning signs use only what is filed for quarter t;
 the one outcome is entry into non-accrual within the next two quarters (t + 1 or t + 2), read from
 the filings' non-accrual flags and never from a mark. A borrower that leaves every BDC's books
-before the window closes has no label (the filings do not say whether it was repaid, refinanced or
-sold at a loss); its exit is typed from its scheduled maturity only. Built from the tranche-quarter panel
-(monitor_panel.build_monitor_panel) and the FINAL_DATASET rows. Definitions and sample rules:
-docs/14_early_warning_model.md."""
+before the window closes has no label; its exit is put in one of four buckets (repaid, refinanced,
+impaired, unresolved; credit_events.py), which never enter the outcome. Restructurings (term
+changes on the same loan) are counted beside it and give one robustness outcome. Built from the
+tranche-quarter panel (monitor_panel.build_monitor_panel) and the FINAL_DATASET rows. Definitions
+and sample rules: docs/14_early_warning_model.md."""
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 import polars as pl
 
-MAX_PRICE = 1.5             # FV / PAR above this is par left in local currency (cleaning issue): no price
+import credit_events as CE
+
 MIN_PRIOR_FV = 1_000_000    # sample: the borrower's debt fair value at t is at least $1m
 MIN_PRICED_SHARE = 0.5      # sample: priceable par is at least half of the borrower's funded par at t
 MAX_CLO_SHARE = 0.5         # sample: CLO / structured tranches under half of par (CLO vehicles are not operating borrowers)
@@ -22,10 +24,6 @@ DD_WINDOW = 4               # rolling max drawdown over the preceding four quart
 LOW_MARK = 0.90             # PIK-switch hypotheses: mark below 90% of par ...
 MARKDOWN = 0.05             # ... or marked down at least five points in the quarter
 JUNIOR_LIENS = {"2L", "SUB", "UNSEC"}
-# Debt reported without par is marked at FV / cost (the tranche panel holds only rows with par).
-# OTHER_UNKNOWN rows without par are mostly equity and warrants, and CLO rows are not operating debt.
-NO_PAR_DEBT = {"SENIOR_SECURED_1L", "UNITRANCHE", "SENIOR_SECURED_2L", "SUBORDINATED_MEZZ", "SENIOR_UNSECURED",
-               "SENIOR_SECURED_UNSPEC"}
 
 
 def q_label(qsort) -> list[str]:
@@ -65,10 +63,7 @@ def debt_rows(rows: pl.DataFrame) -> pd.DataFrame:
     counts for non-accrual and for the borrower's fair value."""
     r = rows.select(["cik", "cal_q", "borrower_canonical", "PAR", "FV",
                      pl.col("non_accrual").cast(pl.Float64, strict=False)]).to_pandas()
-    r = r[(r["PAR"] > 0) & r["borrower_canonical"].notna()]
-    r = r.assign(borrower=_norm(r["borrower_canonical"]),
-                 qsort=r["cal_q"].str[:4].astype(int) * 4 + r["cal_q"].str[-1].astype(int))
-    return r[r["borrower"] != ""][["borrower", "qsort", "cik", "FV", "non_accrual"]]
+    return CE.named_rows(r[r["PAR"] > 0])[["borrower", "qsort", "cik", "FV", "non_accrual"]]
 
 
 def lender_status(d: pd.DataFrame) -> pd.DataFrame:
@@ -103,12 +98,10 @@ def same_lender_entries(ls: pd.DataFrame, horizon: int = HORIZON) -> pd.DataFram
 
 def no_par_debt(rows: pl.DataFrame) -> pd.DataFrame:
     """Per borrower x quarter: fair value (fv_nopar) and cost (cost_nopar) of funded debt reported
-    without par, which the mark takes at FV / cost."""
+    without par, which the mark takes at FV / cost (the tranche panel holds only rows with par).
+    Rows of unknown seniority without par are mostly equity and warrants, so they are left out."""
     r = rows.select(["cal_q", "borrower_canonical", "instrument_seniority", "PAR", "FV", "COST"]).to_pandas()
-    r = r[~(r["PAR"] > 0) & (r["FV"] > 0) & (r["COST"] > 0) & r["instrument_seniority"].isin(NO_PAR_DEBT)
-          & r["borrower_canonical"].notna()]
-    r = r.assign(borrower=_norm(r["borrower_canonical"]),
-                 qsort=r["cal_q"].str[:4].astype(int) * 4 + r["cal_q"].str[-1].astype(int))
+    r = CE.named_rows(r[~(r["PAR"] > 0) & (r["FV"] > 0) & (r["COST"] > 0) & r["instrument_seniority"].isin(CE.DEBT)])
     return r.groupby(["borrower", "qsort"]).agg(fv_nopar=("FV", "sum"), cost_nopar=("COST", "sum")).reset_index()
 
 
@@ -121,31 +114,26 @@ def _named(tr: pd.DataFrame) -> pd.DataFrame:
 
 
 def borrower_marks(t: pd.DataFrame) -> pd.DataFrame:
-    """Per borrower x quarter over funded loans: fv, par, price (= sum FV / sum PAR over priceable
-    loans, missing above MAX_PRICE), priced_share, junior_share (2L, subordinated and unsecured
-    share of priced par), CLO share, PIK switch, dispersion, crowding (n_families: manager families
-    lending to it), size and maturity_q (quarter of its latest scheduled maturity)."""
+    """Per borrower x quarter over funded loans: par, fv_px and par_px (FV and par of the priceable
+    loans; build_model_panel turns them into the mark), junior_share (2L, subordinated and
+    unsecured share of priced par), CLO share, PIK switch, dispersion and crowding (n_families:
+    manager families lending to it)."""
     keys = ["borrower", "qsort"]
-    mat = pd.to_datetime(t["maturity"], errors="coerce")
-    t = t.assign(_matq=mat.dt.year * 4 + mat.dt.quarter,
-                 _junior=t["PAR_px"].where(t["lien_group"].isin(JUNIOR_LIENS), 0.0),
+    t = t.assign(_junior=t["PAR_px"].where(t["lien_group"].isin(JUNIOR_LIENS), 0.0),
                  _clo=t["PAR"].where(t["lien_group"] == "CLO", 0.0),
                  _seasoned=t["link_rule"] > 0,
                  _switch=t["is_distress_amendment"].fillna(False).astype(bool))
-    b = t.groupby(keys).agg(fv=("FV", "sum"), par=("PAR", "sum"),
-                            fv_px=("FV_px", "sum"), par_px=("PAR_px", "sum"), junior_par=("_junior", "sum"),
-                            clo_par=("_clo", "sum"), n_bdcs=("cik", "nunique"), n_families=("family", "nunique"),
-                            seasoned=("_seasoned", "max"), pik_switch=("_switch", "max"),
-                            maturity_q=("_matq", "max"))
-    price = (b["fv_px"] / b["par_px"]).where(b["par_px"] > 0)
-    b["price"] = price.where(price <= MAX_PRICE)
-    b["priced_share"] = b["par_px"] / b["par"]
+    b = t.groupby(keys).agg(par=("PAR", "sum"), fv_px=("FV_px", "sum"), par_px=("PAR_px", "sum"),
+                            junior_par=("_junior", "sum"), clo_par=("_clo", "sum"),
+                            n_families=("family", "nunique"), seasoned=("_seasoned", "max"),
+                            pik_switch=("_switch", "max"))
     b["junior_share"] = (b.pop("junior_par") / b["par_px"]).where(b["par_px"] > 0)
     b["clo_share"] = b.pop("clo_par") / b["par"]
     b["log_par"] = np.log(b["par"])
     b["pik_switch"] = b["pik_switch"].astype(float).where(b["seasoned"])   # undefined on a borrower's first quarter
-    b["dispersion"] = _wmean(t, "V1_std", "PAR", keys)          # std of family marks, comparable tranches, 2+ families
-    b["dispersion_range"] = _wmean(t, "V1_range", "PAR", keys)
+    # valuation gap: highest minus lowest family mark on the same loan (comparable tranches, 2+ families)
+    b["dispersion"] = _wmean(t, "V1_range", "PAR", keys)
+    b["dispersion_std"] = _wmean(t, "V1_std", "PAR", keys)
     b["has_dispersion"] = b["dispersion"].notna().astype(int)
     b["sector"] = t.sort_values("PAR", ascending=False).drop_duplicates(keys).set_index(keys)["sector"]
     return b.reset_index()
@@ -153,20 +141,20 @@ def borrower_marks(t: pd.DataFrame) -> pd.DataFrame:
 
 def chain_changes(t: pd.DataFrame) -> pd.DataFrame:
     """Per borrower x quarter t, over the same loans (chains) held at t - 1 and t:
-    d_price = par-weighted change in FV / PAR (weights: priced par at t - 1), link_par_prev =
-    the par those loans carried at t - 1, d_pik_pp = par-weighted change in the PIK share of the
-    coupon (percentage points). Draws, repayments and loans entering or leaving do not move them."""
+    d_price = par-weighted change in FV / PAR (weights: priced par at t - 1), d_pik_pp =
+    par-weighted change in the PIK share of the coupon (percentage points). Draws, repayments and
+    loans entering or leaving do not move them."""
     keys = ["borrower", "qsort"]
     c = t[["chain_id", "qsort", "borrower", "FV_px", "PAR_px", "PAR", "pik_share"]].copy()
     c["cprice"] = (c["FV_px"] / c["PAR_px"]).where(c["PAR_px"] > 0)
-    c["cprice"] = c["cprice"].where(c["cprice"] <= MAX_PRICE)
+    c["cprice"] = c["cprice"].where(c["cprice"] <= CE.MAX_MARK)
     prev = c[["chain_id", "qsort", "cprice", "PAR_px", "PAR", "pik_share"]].assign(qsort=c["qsort"] + 1)
     m = c.merge(prev, on=["chain_id", "qsort"], suffixes=("", "_prev"))     # consecutive quarters only
     px = m[m["cprice"].notna() & m["cprice_prev"].notna()]
     w = px["PAR_px_prev"]
-    out = pd.DataFrame({"d_price": (w * (px["cprice"] - px["cprice_prev"])).groupby([px[k] for k in keys]).sum()
-                        / w.groupby([px[k] for k in keys]).sum(),
-                        "link_par_prev": w.groupby([px[k] for k in keys]).sum()})
+    out = (w * (px["cprice"] - px["cprice_prev"])).groupby([px[k] for k in keys]).sum() \
+        / w.groupby([px[k] for k in keys]).sum()
+    out = out.rename("d_price").to_frame()
     pk = m[m["pik_share"].notna() & m["pik_share_prev"].notna() & (m["PAR_prev"] > 0)]
     wk = pk["PAR_prev"]
     out = out.join((100 * (wk * (pk["pik_share"] - pk["pik_share_prev"])).groupby([pk[k] for k in keys]).sum()
@@ -177,8 +165,8 @@ def chain_changes(t: pd.DataFrame) -> pd.DataFrame:
 def rolling_max_drawdown(d: pd.DataFrame, col: str = "d_price", window: int = DD_WINDOW) -> pd.DataFrame:
     """Largest peak-to-trough fall of a borrower's chain-linked mark over quarters t - window .. t,
     in price points (0.05 = five points of par), 0 if it never fell. The index cumulates the
-    same-loan changes `col`; a quarter without one adds nothing. dd_n_changes counts the observed
-    changes in the window; the drawdown is missing when there are none."""
+    same-loan changes `col`; a quarter without one adds nothing. The drawdown is missing when the
+    window holds no observed change."""
     w = d.pivot(index="borrower", columns="qsort", values=col)
     w = w.reindex(columns=range(w.columns.min(), w.columns.max() + 1))
     seen = w.notna().to_numpy()
@@ -191,32 +179,43 @@ def rolling_max_drawdown(d: pd.DataFrame, col: str = "d_price", window: int = DD
         dd[:, j] = (np.maximum.accumulate(win, axis=1) - win).max(axis=1)
         n[:, j] = seen[:, lo + 1:j + 1].sum(axis=1) if j > lo else 0
     dd[n == 0] = np.nan
-    out = pd.DataFrame({"borrower": np.repeat(w.index.to_numpy(), w.shape[1]),
-                        "qsort": np.tile(w.columns.to_numpy(), w.shape[0]),
-                        "dd": dd.ravel(), "dd_n_changes": n.ravel()})
-    return out
+    return pd.DataFrame({"borrower": np.repeat(w.index.to_numpy(), w.shape[1]),
+                         "qsort": np.tile(w.columns.to_numpy(), w.shape[0]), "dd": dd.ravel()})
 
 
 # ------------------------------------------------------------------ the panel
 
-def build_model_panel(tr: pd.DataFrame, rows: pl.DataFrame) -> pd.DataFrame:
+def build_credit_events(t: pd.DataFrame, rows: pl.DataFrame, d: pd.DataFrame, ls: pd.DataFrame) -> dict:
+    """Loan-level restructurings and exits at both cutoffs: {"changes": {cutoff: frame}, "exits":
+    {cutoff: frame}} (credit_events.py). t: the named tranche panel."""
+    L = CE.loans(t)
+    eq = CE.equity_holdings(rows)
+    return {"changes": {k: CE.term_changes(L, c) for k, c in CE.CUTOFFS.items()},
+            "exits": {k: CE.loan_exits(L, d, ls, eq, c) for k, c in CE.CUTOFFS.items()}}
+
+
+def build_model_panel(tr: pd.DataFrame, rows: pl.DataFrame) -> tuple[pd.DataFrame, dict]:
     """tr: monitor_panel.build_monitor_panel's tranche-quarter panel; rows: its FINAL_DATASET rows.
+    Returns (the borrower-quarter panel, build_credit_events' loan-level frames).
 
     Signs at t: price (mark level), d_price (its change over the quarter, same loans),
-    max_drawdown, pik_switch (alternative d_pik_pp), dispersion (alternative dispersion_range;
-    has_dispersion = 1 when defined), crowding, plus market-adjusted versions (price_rel,
+    max_drawdown, pik_switch (alternative d_pik_pp), dispersion (the valuation gap: highest minus
+    lowest lender family's mark; alternative dispersion_std; has_dispersion = 1 when defined), crowding, plus market-adjusted versions (price_rel,
     d_price_adj) and controls.
     Outcome: y_na = 1 if an accruing borrower is flagged non-accrual by any BDC at t + 1 or
     t + 2, 0 if it is held and known accruing in both quarters, missing otherwise: it left every
-    BDC's books before the window closed without a flag (exited; exit_type from its scheduled
-    maturity), its status is unknown, or the window runs past the data. A mark never enters the
-    outcome. Robustness: y_na_first, y_na_same_lender. Sample flags: in_sample, na_risk_set."""
+    BDC's books before the window closed without a flag (exited; exit_class repaid / refinanced /
+    impaired / unresolved, exit_class_second at the second cutoff), its status is unknown, or the
+    window runs past the data. A mark never enters the outcome. Restructurings at t: restr_pik,
+    restr_spread, restr_maturity, restr_equity, restr_write_down, restructured. Robustness:
+    y_na_first, y_na_same_lender, y_credit (non-accrual or a restructuring in the window). Sample
+    flags: in_sample, na_risk_set."""
     t = _named(tr)
     b = borrower_marks(t)
     # the mark: FV / par on loans with par, FV / cost on debt without par
     b = b.merge(no_par_debt(rows), on=["borrower", "qsort"], how="left").fillna({"fv_nopar": 0.0, "cost_nopar": 0.0})
     price = ((b["fv_px"] + b["fv_nopar"]) / (b["par_px"] + b["cost_nopar"])).where(b["par_px"] + b["cost_nopar"] > 0)
-    b["price"] = price.where(price <= MAX_PRICE)
+    b["price"] = price.where(price <= CE.MAX_MARK)
     b["priced_share"] = (b["par_px"] + b["cost_nopar"]) / (b["par"] + b["cost_nopar"])
     ch = chain_changes(t)
     b = b.merge(ch, on=["borrower", "qsort"], how="left")
@@ -252,11 +251,24 @@ def build_model_panel(tr: pd.DataFrame, rows: pl.DataFrame) -> pd.DataFrame:
     # exits: left every BDC's books before the window closed, with no flag in it
     b["exited"] = b["window_complete"] & ~b["flag_in_window"] & ~held.all(axis=1)
     b["exit_q"] = (b["qsort"] + (~held).argmax(axis=1) + 1).where(b["exited"])
-    b["exit_type"] = np.select(
-        [~b["exited"], b["maturity_q"].isna(), b["maturity_q"] <= b["exit_q"]],
-        ["", "maturity not reported", "at scheduled maturity"], "before scheduled maturity")
-    b["na_status_next"] = b["na_status_1"]
-    b["has_next"] = b["held_1"]
+    ev = build_credit_events(t, rows, d, ls)
+    ex = b[b["exited"]]
+    for k, col in [("primary", "exit_class"), ("second", "exit_class_second")]:
+        b[col] = ""
+        b.loc[ex.index, col] = CE.borrower_exit_class(ev["exits"][k], ex)
+
+    # restructurings at t, and the robustness outcome: non-accrual or a restructuring in the window
+    r = CE.borrower_events(ev["changes"]["primary"], ev["exits"]["primary"])
+    r = r.rename(columns={c: "restr_" + c for c in CE.EVENT_TYPES})
+    b = b.merge(r, on=["borrower", "qsort"], how="left")
+    rcols = ["restr_" + c for c in CE.EVENT_TYPES] + ["restructured"]
+    b[rcols] = b[rcols].fillna(0).astype(int)
+    rk = [r.assign(qsort=r["qsort"] - k)[["borrower", "qsort", "restructured"]] for k in range(1, HORIZON + 1)]
+    rw = pd.concat(rk).groupby(["borrower", "qsort"])["restructured"].max().rename("restr_in_window")
+    b = b.merge(rw.reset_index(), on=["borrower", "qsort"], how="left")
+    b["restr_in_window"] = b["restr_in_window"].fillna(0).astype(bool)
+    yc = pd.Series(np.select([b["flag_in_window"] | b["restr_in_window"], clean], [1.0, 0.0], np.nan), index=b.index)
+    b["y_credit"] = yc.where((b["na_status"] == 0) & b["window_complete"])
 
     b["y_na_first"] = b["y_na"].where(b["na_ever"] == 0)
     same = same_lender_entries(ls).assign(_same=1.0)
@@ -276,10 +288,11 @@ def build_model_panel(tr: pd.DataFrame, rows: pl.DataFrame) -> pd.DataFrame:
     b["cal_q"] = q_label(b["qsort"])
     b["outcome_q"] = window_label(b["qsort"])
     first = ["borrower", "cal_q", "outcome_q", "qsort", "sector", "in_sample", "na_risk_set",
-             "y_na", "exited", "exit_type", "y_na_first", "y_na_same_lender",
+             "y_na", "exited", "exit_class", "exit_class_second", "y_na_first", "y_na_same_lender", "y_credit",
              "price", "d_price", "pik_switch", "dispersion", "has_dispersion", "crowding", "max_drawdown",
-             "d_pik_pp", "dispersion_range", "price_rel", "d_price_adj", "junior_share", "recent_markdown"]
-    return b[first + [c for c in b.columns if c not in first]].sort_values(["qsort", "borrower"]).reset_index(drop=True)
+             "d_pik_pp", "dispersion_std", "price_rel", "d_price_adj", "junior_share", "recent_markdown"]
+    b = b[first + [c for c in b.columns if c not in first]].sort_values(["qsort", "borrower"]).reset_index(drop=True)
+    return b, ev
 
 
 def sample_waterfall(m: pd.DataFrame) -> pd.DataFrame:
@@ -308,21 +321,20 @@ def sample_waterfall(m: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
-EXIT_TYPES = ["at scheduled maturity", "before scheduled maturity", "maturity not reported"]
-
-
 def event_counts(m: pd.DataFrame) -> pd.DataFrame:
     """Per predictor quarter, what happened within t + 1 .. t + 2 to every accruing borrower in the
     sample: entered non-accrual, still accruing through the window, left every BDC's books, and
-    status unknown (these four add up to at_risk). Exits are split by type (the three add up to
-    exited). events = entered non-accrual; labelled = events + still accruing. Exits and unknown
-    status have no label."""
+    status unknown (these four add up to at_risk). Exits are split into the four buckets (they add
+    up to exited); still_accruing_restructured counts the borrowers still accruing that had a
+    restructuring in the window. events = entered non-accrual; labelled = events + still accruing.
+    Exits and unknown status have no label."""
     r = m[m["na_risk_set"].astype(bool) & m["window_complete"].astype(bool)]
     ex = r["exited"].astype(bool)
     cols = {"at_risk": pd.Series(True, index=r.index), "entered_non_accrual": r["y_na"] == 1,
             "still_accruing": r["y_na"] == 0, "exited": ex,
             "status_unknown": r["y_na"].isna() & ~ex,
-            **{"exit_" + k.replace(" ", "_"): ex & (r["exit_type"] == k) for k in EXIT_TYPES},
+            **{"exit_" + k: ex & (r["exit_class"] == k) for k in CE.EXIT_CLASSES},
+            "still_accruing_restructured": (r["y_na"] == 0) & r["restr_in_window"].astype(bool),
             "events": r["y_na"] == 1, "labelled": r["y_na"].notna()}
     t = pd.DataFrame(cols).groupby([r["cal_q"], r["outcome_q"]]).sum().reset_index()
     t["event_rate"] = t["events"] / t["labelled"]
@@ -331,16 +343,26 @@ def event_counts(m: pd.DataFrame) -> pd.DataFrame:
     return pd.concat([t, pd.DataFrame([{"cal_q": "all", "outcome_q": "", **total}])], ignore_index=True)
 
 
-def exit_table(m: pd.DataFrame) -> pd.DataFrame:
-    """Every exit in event_counts by type, with the borrower's mark at t beside it as context
-    only: the mark never types an exit and never labels it. A borrower refinanced by another BDC
-    is still held, so it is never an exit; the filings do not separate early repayment,
-    refinancing outside the BDCs, a sale and a write-off."""
+def unlabelled_exits(m: pd.DataFrame) -> pd.DataFrame:
+    """The exits in event_counts (borrowers that left every BDC's books, no label) by bucket, at
+    both cutoffs. Refinanced is empty by construction: no BDC holds the borrower any more."""
     r = m[m["na_risk_set"].astype(bool) & m["window_complete"].astype(bool) & m["exited"].astype(bool)]
-    band = pd.cut(r["price"], [-np.inf, 0.80, 0.95, np.inf], labels=["below 80", "80-95", "95 and up"], right=False)
-    t = pd.crosstab(r["exit_type"], band).reindex(EXIT_TYPES).fillna(0).astype(int)
-    t.columns = [f"mark at t {c}" for c in t.columns]
-    t.insert(0, "exits", t.sum(axis=1))
-    t.insert(1, "share", t["exits"] / t["exits"].sum())
+    t = pd.DataFrame({"exits_primary": r["exit_class"].value_counts(), "exits_second": r["exit_class_second"].value_counts()})
+    t = t.reindex(CE.EXIT_CLASSES).fillna(0).astype(int)
     t.loc["all"] = t.sum()
-    return t.rename_axis("exit_type").reset_index()
+    for k in ["primary", "second"]:
+        t[f"share_{k}"] = t[f"exits_{k}"] / t.loc["all", f"exits_{k}"]
+    return t[["exits_primary", "share_primary", "exits_second", "share_second"]].rename_axis("exit_class").reset_index()
+
+
+def restructuring_vs_nonaccrual(m: pd.DataFrame) -> pd.DataFrame:
+    """Accruing, labelled borrowers with each restructuring at t, and how many entered non-accrual
+    within the next two quarters, next to those with none."""
+    d = m[m["na_risk_set"].astype(bool) & m["y_na"].notna()]
+    out = []
+    for name, mask in [*((k, d["restr_" + k] == 1) for k in CE.EVENT_TYPES), ("any", d["restructured"] == 1),
+                       ("none", d["restructured"] == 0)]:
+        g = d.loc[mask, "y_na"]
+        out.append({"restructuring_at_t": name, "borrower_quarters": len(g), "entered_non_accrual": int(g.sum()),
+                    "entry_rate": g.mean() if len(g) else np.nan})
+    return pd.DataFrame(out)

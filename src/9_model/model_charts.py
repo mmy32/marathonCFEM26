@@ -17,11 +17,14 @@ SCORECARD_UNITS = {"price": "Mark 10 points lower", "d_price": "Mark fell 5 poin
                    "pik_switch": "Switched to PIK\nthis quarter",
                    "max_drawdown": "Mark fell 5 more points\nover the past year",
                    "dispersion": "Lenders' marks 1 point\nfurther apart"}
-NAMES = {"price": "Mark level (FV / PAR)", "d_price": "Change in the mark this quarter", "pik_switch": "PIK switch",
-         "dispersion": "Valuation gap", "crowding": "Crowding"}
-SHORT = {"single lender": "1 lender", "under 0.5": "< 0.5", "over 5": "> 5"}     # bucket labels that fit under a bar
-XLABELS = {"price": "Mark, cents per dollar of par", "d_price": "Same loans, points of par", "pik_switch": "",
-           "dispersion": "Std of lender families' marks, points", "crowding": "Manager families lending"}
+NAMES = {"price": "Mark level (FV / PAR)", "d_price": "Change in the mark this quarter",
+         "max_drawdown": "Fall in the mark over the past year", "pik_switch": "PIK switch",
+         "dispersion": "Valuation gap", "crowding": "Crowding (tested, not kept)"}
+SHORT = {"single lender": "1 lender", "under 0.5": "< 0.5", "over 5": "> 5", "under 1": "< 1",
+         "over 10": "> 10"}     # bucket labels that fit under a bar
+XLABELS = {"price": "Mark, cents per dollar of par", "d_price": "Same loans, points of par",
+           "max_drawdown": "Largest fall over four quarters, same loans, points", "pik_switch": "",
+           "dispersion": "Highest minus lowest lender family's mark, points", "crowding": "Manager families lending"}
 
 
 def _title(fig, title: str, subtitle: str | None = None):
@@ -41,10 +44,9 @@ def _rate_bars(ax, x, rate, lo, hi, color=BLUE, width=0.62):
 
 
 def event_rate_by_predictor(t: pd.DataFrame, path, window: str):
-    """Event rate within two quarters by bucket of each sign, with Wilson 95% intervals."""
+    """Event rate within two quarters by bucket of each sign, with borrower-resampled 95% intervals."""
     base = t["base_rate"].iloc[0] * 100
     fig, axes = plt.subplots(2, 3, figsize=(14, 7.4), facecolor=SURFACE)
-    axes.ravel()[-1].axis("off")
     for ax, col in zip(axes.ravel(), NAMES):
         d = t[t["predictor"] == col]
         _style(ax, NAMES[col], "Event rate within two quarters (%)")
@@ -63,9 +65,10 @@ def event_rate_by_predictor(t: pd.DataFrame, path, window: str):
     _title(fig, "Borrowers entering non-accrual within two quarters, by warning sign",
            f"Accruing borrowers, all BDCs' loans pooled; signs from {window}. "
            f"Dashed line: average event rate, {base:.2f}%. Whiskers: 95% intervals")
-    _note(fig, "Event: any BDC flags the borrower's debt non-accrual within the next two quarters (exits unlabelled). Under each bar: events / borrower-quarters. The valuation gap needs a loan held by 2+ manager families "
+    _note(fig, "Event: any BDC flags the borrower's debt non-accrual within the next two quarters (exits unlabelled). "
+               "Under each bar: events / borrower-quarters.\nThe valuation gap needs a loan held by 2+ manager families "
                "('single lender' otherwise). Points = cents per dollar of par.")
-    fig.subplots_adjust(left=0.06, right=0.98, top=0.86, bottom=0.11, hspace=0.62, wspace=0.2)
+    fig.subplots_adjust(left=0.06, right=0.98, top=0.86, bottom=0.13, hspace=0.62, wspace=0.2)
     fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)
 
@@ -86,8 +89,9 @@ def odds_ratios(coefs: pd.DataFrame, path, window: str):
     y = np.arange(len(terms))
     ax.hlines(y, d["or_ci_low"], d["or_ci_high"], color=BLUE, linewidth=2, alpha=0.5)
     ax.scatter(d["odds_ratio"], y, s=60, color=BLUE, edgecolor=SURFACE, linewidth=2, zorder=3)
-    for yi, v in zip(y, d["odds_ratio"]):
-        ax.text(v, yi + 0.12, f"{v:.1f}x", ha="center", va="bottom", fontsize=8.5, color=INK)
+    for yi, v in zip(y, d["odds_ratio"]):         # two decimals near 1, so a small effect does not read as none
+        ax.text(v, yi + 0.12, f"{v:.2f}x" if v < 1.1 else f"{v:.1f}x", ha="center", va="bottom", fontsize=8.5,
+                color=INK)
     ax.axvline(1, color=MUTED, linewidth=1, linestyle=(0, (4, 3)))
     ax.set_xscale("log")
     ax.set_xticks([1, 1.5, 2, 3, 4, 5], ["1", "1.5", "2", "3", "4", "5"])
@@ -106,7 +110,7 @@ def odds_ratios(coefs: pd.DataFrame, path, window: str):
 
 
 def score_deciles(dec: pd.DataFrame, path, events: str, fitted: str):
-    """Out of sample: realized event rate by score decile (bars, Wilson 95% intervals) for the
+    """Out of sample: realized event rate by score decile (bars, borrower-resampled 95% intervals) for the
     scorecard, with its predicted rate (dots), next to the equal-weighted ranking of the same signs."""
     models = list(dec["model"].unique())
     fig, axes = plt.subplots(1, 2, figsize=(12, 5.0), facecolor=SURFACE, sharey=True)
@@ -119,8 +123,8 @@ def score_deciles(dec: pd.DataFrame, path, events: str, fitted: str):
             ax.scatter(x, d["predicted_rate"] * 100, s=45, color=SURFACE, edgecolor=INK, linewidth=1.5, zorder=5,
                        label="predicted by the scorecard")
             ax.legend(frameon=False, fontsize=8.5, loc="upper left", labelcolor=INK)
-        for xi, r, hi in zip(x, d["event_rate"], d["rate_ci_high"]):
-            ax.text(xi, hi * 100 + 0.15, f"{r * 100:.1f}", ha="center", va="bottom", fontsize=8, color=INK)
+        for xi, r, top in zip(x, d["event_rate"], np.fmax(d["rate_ci_high"], d["predicted_rate"].fillna(0))):
+            ax.text(xi, top * 100 + 0.25, f"{r * 100:.1f}", ha="center", va="bottom", fontsize=8, color=INK)
         ax.set_xticks(x, [f"{v}\n{int(e)}" for v, e in zip(x, d["events"])])
         ax.tick_params(axis="x", length=0)
         ax.set_xlabel("Score decile within the quarter (10 = riskiest tenth)", color=MUTED, fontsize=9)
@@ -135,52 +139,56 @@ def score_deciles(dec: pd.DataFrame, path, events: str, fitted: str):
 
 
 def event_profile(p: pd.DataFrame, path, window: str):
-    """Median mark and share with a PIK switch in the four quarters before a non-accrual entry,
-    against borrowers that stayed accruing."""
-    fig, (a1, a2) = plt.subplots(1, 2, figsize=(12, 4.8), facecolor=SURFACE)
-    _style(a1, "Median mark (FV / PAR, cents per dollar)", "")
-    _style(a2, "Share with a PIK switch that quarter (%)", "")
+    """Median mark in the four quarters before a non-accrual entry, against borrowers that stayed
+    accruing."""
+    fig, ax = plt.subplots(figsize=(8, 4.8), facecolor=SURFACE)
+    _style(ax, "", "Median mark (FV / PAR, cents per dollar)")
     for group, color in [("stayed accruing", MUTED), ("entered non-accrual", BLUE)]:
         d = p[p["group"] == group].sort_values("k")
-        a1.plot(d["k"], d["median_price"] * 100, color=color, linewidth=2, marker="o", markersize=7, zorder=3)
+        ax.plot(d["k"], d["median_price"] * 100, color=color, linewidth=2, marker="o", markersize=7, zorder=3)
         if group == "entered non-accrual":
-            a1.fill_between(d["k"], d["p25_price"] * 100, d["p75_price"] * 100, color=color, alpha=0.12, linewidth=0)
-        a2.plot(d["k"], d["share_pik_switch"] * 100, color=color, linewidth=2, marker="o", markersize=7, zorder=3)
-        for ax, v in [(a1, d["median_price"].iloc[-1] * 100), (a2, d["share_pik_switch"].iloc[-1] * 100)]:
-            ax.text(0.15, v, group, va="center", fontsize=8.5, color=INK)
-    for ax in (a1, a2):
-        ax.set_xticks(range(-4, 1), ["-4", "-3", "-2", "-1", "event\nquarter"])
-        ax.set_xlim(-4.3, 1.6)
-        ax.set_xlabel("Quarters before the non-accrual entry", color=MUTED, fontsize=9)
+            ax.fill_between(d["k"], d["p25_price"] * 100, d["p75_price"] * 100, color=color, alpha=0.12, linewidth=0)
+        ax.text(0.15, d["median_price"].iloc[-1] * 100, group, va="center", fontsize=8.5, color=INK)
+    ax.set_xticks(range(-4, 1), ["-4", "-3", "-2", "-1", "event\nquarter"])
+    ax.set_xlim(-4.3, 1.6)
+    ax.set_xlabel("Quarters before the non-accrual entry", color=MUTED, fontsize=9)
     _title(fig, "Marks fall before a borrower enters non-accrual",
-           "Borrowers entering non-accrual (shaded: middle half) vs borrowers that stayed accruing, same quarters")
+           "Borrowers entering non-accrual (shaded: middle half) vs borrowers that stayed accruing")
     _note(fig, f"Entries in {window} from the labelled risk set. Mark = all BDCs' fair value / par on priceable loans.")
-    fig.subplots_adjust(left=0.06, right=0.98, top=0.82, bottom=0.17, wspace=0.18)
+    fig.subplots_adjust(left=0.09, right=0.97, top=0.82, bottom=0.17)
     fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)
 
 
-def rolling_auc_by_quarter(t: pd.DataFrame, path, test_from: str):
+def rolling_auc_by_quarter(t: pd.DataFrame, path, dev_end: str, test_from: str):
     """ROC-AUC of each rolling test quarter (model_analysis.by_quarter): the scorecard against the
-    mark alone. Quarters from `test_from` on are the out-of-sample test; the earlier ones chose
-    the signs."""
+    mark alone. Signal quarters up to `dev_end` chose the signs, those from `test_from` on are the
+    out-of-sample test, and any in between are skipped (their windows overlap the test)."""
     x = np.arange(len(t))
     fig, ax = plt.subplots(figsize=(10, 4.6), facecolor=SURFACE)
     _style(ax, "", "ROC-AUC")
+    q = t["cal_q"].to_numpy()
+    zones = [(q <= dev_end, "development:\nchose the signs", None),
+             ((q > dev_end) & (q < test_from), "skipped: window\noverlaps the test", GRID),
+             (q >= test_from, "test quarters", BLUE)]
+    for mask, label, shade in zones:
+        idx = np.flatnonzero(mask)
+        if len(idx):
+            lo, hi = idx.min() - 0.5, idx.max() + 0.5
+            if shade:
+                ax.axvspan(lo, hi, color=shade, alpha=0.6 if shade == GRID else 0.07, linewidth=0, zorder=0)
+            ax.text((lo + hi) / 2, 0.52, label, ha="center", va="bottom", fontsize=8, color=MUTED)
     ends = []
     for col, label, color in [("mark alone", "mark alone", MUTED), ("scorecard", "scorecard", BLUE)]:
         ax.plot(x, t[col], color=color, linewidth=2, marker="o", markersize=7, zorder=3)
         ends.append((t[col].iloc[-1], label))
     for (_, label), y in zip(ends, _spread([v for v, _ in ends], gap=0.03)):
         ax.text(len(t) - 1 + 0.2, y, label, va="center", fontsize=8.5, color=INK)
-    first_test = int(np.argmax(t["cal_q"].to_numpy() >= test_from))      # test_from: first test signal quarter
-    ax.axvline(first_test - 0.5, color=MUTED, linewidth=1, linestyle=(0, (4, 3)))
-    ax.text(first_test - 0.4, 0.53, "out-of-sample test", fontsize=8, color=MUTED)
-    ax.set_xticks(x, [f"{q}\n{int(n)} events" for q, n in zip(t["outcome_q"], t["events"])], fontsize=8)
-    ax.set_xlim(-0.4, len(t) + 0.6)
+    ax.set_xticks(x, [f"{w}\n{int(n)} events" for w, n in zip(t["outcome_q"], t["events"])], fontsize=8)
+    ax.set_xlim(-0.5, len(t) + 0.6)
     ax.set_ylim(0.5, 1.0)
-    _title(fig, "Out of sample, quarter by quarter: non-accrual entries",
-           "Each quarter's signals scored by a model fitted only on windows closed by then; x-axis: the outcome window")
+    _title(fig, "Out of sample, quarter by quarter: non-accrual entries within two quarters",
+           "Each quarter scored by a model refitted on every window closed by then; x-axis: the outcome window")
     fig.subplots_adjust(left=0.08, right=0.97, top=0.82, bottom=0.17)
     fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)

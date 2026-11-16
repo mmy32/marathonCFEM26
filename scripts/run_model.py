@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Early-warning scorecard: ranks borrowers by the chance of entering non-accrual within the next
-two quarters. Builds the borrower-quarter panel (signs at t: the mark, its change over the quarter,
-PIK switch, valuation gap, crowding; outcome: any BDC flags the borrower non-accrual at t + 1 or
-t + 2; borrowers that leave every BDC's books before then have no label and their exits are counted
-by type, and a mark never enters the outcome), chooses the signs on the development quarters, tests
-the scorecard out of sample on signals from the second half of 2025, and applies it to the latest
-quarter. Reads FINAL_DATASET.csv; writes
-data/model/ (the panel and the out-of-sample predictions) and outputs/model/. About 6
-minutes; `--cached` reuses the saved panel (skips the 2-minute panel build). See
-docs/14_early_warning_model.md."""
+two quarters. Builds the borrower-quarter panel (signs at t: the mark and its change over the
+quarter, then the candidates PIK switch, fall over the past year, valuation gap and crowding;
+outcome: any BDC flags the borrower non-accrual at t + 1 or t + 2; borrowers that leave every BDC's
+books before then have no label, and a mark never enters the outcome), counts restructurings and
+puts every loan exit in one of four buckets (repaid, refinanced, impaired, unresolved) at two
+cutoffs, chooses the signs on the development quarters, tests the scorecard out of sample on
+signals from the second half of 2025, and applies it to the latest quarter. Reads
+FINAL_DATASET.csv; writes data/model/ (the panel and the out-of-sample predictions) and
+outputs/model/. About 6 minutes; `--cached` reuses the saved panel (skips the 2-minute panel
+build). See docs/14_early_warning_model.md."""
 from __future__ import annotations
 
 import argparse
@@ -23,11 +24,13 @@ sys.path.insert(0, str(ROOT / "src" / "1_data_processing"))
 from paths import FINAL_DIR, MODEL_DATA_DIR, MODEL_DIR, add_code_dirs_to_path  # noqa: E402
 add_code_dirs_to_path()
 
+import credit_events as CE  # noqa: E402
 import model_analysis as A  # noqa: E402
 import model_charts as C  # noqa: E402
 from model_fit import BASELINE, CANDIDATES, SCORECARD, decile_table, model_frame, performance, \
     split_predictions  # noqa: E402
-from model_panel import HORIZON, build_model_panel, event_counts, exit_table, q_next, q_sort, sample_waterfall,     window_label  # noqa: E402
+from model_panel import HORIZON, build_model_panel, event_counts, q_next, q_sort, restructuring_vs_nonaccrual, \
+    sample_waterfall, unlabelled_exits, window_label  # noqa: E402
 
 warnings.filterwarnings("ignore")
 
@@ -42,22 +45,28 @@ RESERVED_Q = "2026Q3"             # reserved: nothing is fitted or chosen on it.
 CONTEXT = ["price", "d_price", "pik_switch", "max_drawdown", "dispersion", "crowding", "fv_debt", "sector"]
 
 
-def load_panel(cached: bool) -> pd.DataFrame:
+def load_panel(cached: bool) -> tuple[pd.DataFrame, dict]:
+    """The borrower-quarter panel and the loan-level restructurings and exits at both cutoffs."""
     path = MODEL_DATA_DIR / "model_panel.csv"
+    loan_files = {(kind, k): MODEL_DATA_DIR / f"loan_{kind}_{k}.csv" for kind in ("changes", "exits") for k in CE.CUTOFFS}
     if cached:
         print(f"Reading {path} ...")
         # round_trip: pandas' default parser misreads the last bit of some floats, which moved
         # borrowers sitting exactly on a bucket edge; this one reads back exactly what was written
-        return pd.read_csv(path, float_precision="round_trip")
+        m = pd.read_csv(path, float_precision="round_trip")
+        ev = {kind: {k: pd.read_csv(loan_files[(kind, k)]) for k in CE.CUTOFFS} for kind in ("changes", "exits")}
+        return m, ev
     from monitor_panel import build_monitor_panel
     print("Building the tranche-quarter panel ...")
     tr, rows = build_monitor_panel(FINAL_DIR / "FINAL_DATASET.csv")
     print("Building the borrower-quarter model panel ...")
-    m = build_model_panel(tr, rows)
+    m, ev = build_model_panel(tr, rows)
     MODEL_DATA_DIR.mkdir(parents=True, exist_ok=True)
     m.to_csv(path, index=False)
+    for (kind, k), f in loan_files.items():
+        ev[kind][k].to_csv(f, index=False)
     print(f"  {len(m):,} borrower-quarters -> {path}")
-    return m
+    return m, ev
 
 
 def main(cached: bool = False):
@@ -65,7 +74,7 @@ def main(cached: bool = False):
     out.mkdir(parents=True, exist_ok=True)
     pd.set_option("display.width", 220)
     pd.set_option("display.max_columns", 30)
-    m = load_panel(cached)
+    m, ev = load_panel(cached)
     train_end, test_qs, score_q = q_sort(TRAIN_END), [q_sort(q) for q in TEST_QS], q_sort(SCORE_Q)
     fit_end = score_q - HORIZON                     # the scorecard is fitted on every window closed by SCORE_Q
     first = m.loc[m["in_sample"], "cal_q"].min()
@@ -79,9 +88,21 @@ def main(cached: bool = False):
     ec = event_counts(m[m["qsort"] <= score_q])
     ec.to_csv(out / "event_counts.csv", index=False)
     print(ec.round(4).to_string(index=False))
-    xt = exit_table(m[m["qsort"] <= score_q])
-    xt.to_csv(out / "exits.csv", index=False)
-    print(xt.round(3).to_string(index=False))
+    xu = unlabelled_exits(m[m["qsort"] <= score_q])
+    xu.to_csv(out / "exits_unlabelled.csv", index=False)
+    print(xu.round(3).to_string(index=False))
+
+    print("Restructurings and loan exits (both cutoffs) ...")
+    last_q = int(m["qsort"].max())
+    rq = CE.restructuring_by_quarter(ev["changes"], ev["exits"], last_q)
+    rq.to_csv(out / "restructuring_events.csv", index=False)
+    print(rq.to_string(index=False))
+    rn = restructuring_vs_nonaccrual(m[m["qsort"] <= fit_end])
+    rn.to_csv(out / "restructuring_vs_nonaccrual.csv", index=False)
+    print(rn.round(4).to_string(index=False))
+    xl = CE.exit_counts(ev["exits"], last_q)
+    xl.to_csv(out / "exits.csv", index=False)
+    print(xl.round(3).to_string(index=False))
 
     print("The signs one by one ...")
     A.predictor_summary(m, fit_end).to_csv(out / "predictor_summary.csv", index=False)
@@ -114,7 +135,7 @@ def main(cached: bool = False):
         raise SystemExit(f"The rule keeps {kept}; model_fit.SCORECARD is {SCORECARD}. Update SCORECARD.")
     bq = A.by_quarter(roll)
     bq.to_csv(out / "rolling_by_quarter.csv", index=False)
-    C.rolling_auc_by_quarter(bq, out / "rolling_auc_by_quarter.png", TEST_QS[0])
+    C.rolling_auc_by_quarter(bq, out / "rolling_auc_by_quarter.png", TRAIN_END, TEST_QS[0])
     print(bq.round(3).to_string(index=False))
 
     print(f"Out-of-sample test: fitted on signs up to {TRAIN_END}, entries in {test_events} ...")
@@ -125,6 +146,9 @@ def main(cached: bool = False):
     C.score_deciles(dec, out / "oos_score_deciles.png", test_events, f"signs up to {TRAIN_END}")
     print(perf.round(4).to_string(index=False))
     print(dec.round(4).to_string(index=False))
+    rb = A.ranks_by_outcome(m, train_end, test_qs)      # incl. the exits the test leaves unlabelled
+    rb.to_csv(out / "oos_ranks_by_outcome.csv", index=False)
+    print(rb.round(3).to_string(index=False))
 
     print("Robustness ...")
     rs, rc = A.robustness(m, fit_end, train_end, test_qs)

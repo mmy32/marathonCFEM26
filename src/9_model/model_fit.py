@@ -23,8 +23,8 @@ PREDICTOR_CAPS = {"price": (0.70, None), "d_price": (-0.20, 0.20), "max_drawdown
 # The baseline: the mark and its change over the quarter. Each other sign is added to it alone and
 # kept only if it improves the ranking out of sample (model_analysis.sign_selection).
 BASELINE = ["price", "d_price"]
-# Dispersion exists only for borrowers with a tranche held by 2+ manager families; it is 0
-# elsewhere and comes with its indicator.
+# Dispersion (the valuation gap: highest minus lowest lender family's mark) exists only for
+# borrowers with a tranche held by 2+ manager families; it is 0 elsewhere and comes with its indicator.
 CANDIDATES = {"pik_switch": ["pik_switch"], "dispersion": ["dispersion", "has_dispersion"],
               "crowding": ["crowding"], "max_drawdown": ["max_drawdown"]}
 # The baseline and the signs the frozen rule kept on the development quarters (2026-11-14, outcome
@@ -33,10 +33,10 @@ CANDIDATES = {"pik_switch": ["pik_switch"], "dispersion": ["dispersion", "has_di
 SCORECARD = BASELINE + CANDIDATES["pik_switch"] + CANDIDATES["max_drawdown"] + CANDIDATES["dispersion"]
 RISK_SIGN = {"price": -1, "d_price": -1, "pik_switch": 1, "dispersion": 1, "crowding": 1,
              "max_drawdown": 1}             # equal-weighted ranking: +1 if a higher value means more risk
-STRUCTURAL_ZERO = {"dispersion", "dispersion_range"}       # 0 where has_dispersion == 0
+STRUCTURAL_ZERO = {"dispersion", "dispersion_std"}       # 0 where has_dispersion == 0
 # Coefficients are reported per these steps, in the predictor's own units (0.10 = ten points of par)
 UNITS = {"price": 0.10, "price_rel": 0.10, "d_price": 0.05, "d_price_adj": 0.05, "max_drawdown": 0.05,
-         "dispersion": 0.01, "dispersion_range": 0.01, "d_pik_pp": 10.0, "junior_share": 0.5}
+         "dispersion": 0.01, "dispersion_std": 0.01, "d_pik_pp": 10.0, "junior_share": 0.5}
 
 MIN_TRAIN_QUARTERS = 3         # rolling: a test quarter needs at least three labelled training quarters
 N_BOOT = 500
@@ -183,13 +183,32 @@ def equal_weight_score(d: pd.DataFrame, cols: list[str]) -> pd.Series:
 
 # ------------------------------------------------------------------ metrics
 
+def _boot_counts(n_groups: int, n: int = N_BOOT):
+    """How many times each of n_groups borrowers is drawn, in each of n resamples."""
+    rng = np.random.default_rng(SEED)
+    for _ in range(n):
+        yield np.bincount(rng.integers(0, n_groups, n_groups), minlength=n_groups)
+
+
 def _boot_weights(groups: np.ndarray, n: int = N_BOOT):
     """Bootstrap weights when borrowers (not rows) are resampled: a borrower appears in several
     quarters, so rows are not independent."""
     codes, uniq = pd.factorize(groups)
-    rng = np.random.default_rng(SEED)
-    for _ in range(n):
-        yield np.bincount(rng.integers(0, len(uniq), len(uniq)), minlength=len(uniq))[codes]
+    for c in _boot_counts(len(uniq), n):
+        yield c[codes]
+
+
+def ratio_ci(num, den, groups) -> tuple[float, float]:
+    """Borrower-resampled 95% interval for sum(num) / sum(den). Every rate in the model uses it
+    (event rates: num = y, den = 1; recall: num = caught events, den = events), so a borrower whose
+    one default is counted in two overlapping windows counts as one draw, not two."""
+    t = pd.DataFrame({"num": np.asarray(num, float), "den": np.asarray(den, float),
+                      "g": np.asarray(groups)}).groupby("g")[["num", "den"]].sum()
+    if t["den"].sum() == 0:
+        return np.nan, np.nan
+    a, b = t["num"].to_numpy(), t["den"].to_numpy()
+    vals = [(c @ a) / (c @ b) if c @ b > 0 else np.nan for c in _boot_counts(len(t))]
+    return tuple(np.nanpercentile(vals, [2.5, 97.5]))
 
 
 def _auc(y: np.ndarray, s: np.ndarray, w: np.ndarray) -> float:
@@ -212,7 +231,7 @@ def auc_ci(p: pd.DataFrame) -> tuple[float, float, float]:
 def pr_auc_ci(p: pd.DataFrame) -> tuple[float, float, float]:
     """PR-AUC (average precision) of predictions `p` with a borrower-resampled 95% interval. It
     scores only how well the events are found, so a model that ranks at random scores the event
-    rate (about 0.008 here), not 0.5."""
+    rate (about 0.02 here), not 0.5."""
     y, s = p["y"].to_numpy(), p["pred"].to_numpy()
     vals = [_ap(y, s, w) for w in _boot_weights(p["borrower"].to_numpy())]
     return (average_precision_score(y, s), *np.nanpercentile(vals, [2.5, 97.5]))
@@ -220,10 +239,11 @@ def pr_auc_ci(p: pd.DataFrame) -> tuple[float, float, float]:
 
 def recall_at(p: pd.DataFrame, share: float) -> tuple[float, float, float]:
     """Share of the events caught by reviewing the riskiest `share` of each quarter's borrowers
-    (Wilson 95% interval): the miss rate for a fixed review budget is one minus this."""
+    (borrower-resampled 95% interval; the review list is held fixed): the miss rate for a fixed
+    review budget is one minus this."""
     y = p["y"].to_numpy()
-    caught = int(y[(quarter_rank(p) <= share).to_numpy()].sum())
-    return (caught / y.sum(), *wilson(caught, int(y.sum())))
+    caught = y * (quarter_rank(p) <= share).to_numpy()
+    return (caught.sum() / y.sum(), *ratio_ci(caught, y, p["borrower"]))
 
 
 def auc_gain(p: pd.DataFrame, base: pd.DataFrame) -> tuple[float, float, float]:
@@ -234,16 +254,6 @@ def auc_gain(p: pd.DataFrame, base: pd.DataFrame) -> tuple[float, float, float]:
     y, a, b = j["y"].to_numpy(), j["pred"].to_numpy(), j["pred_base"].to_numpy()
     vals = [_auc(y, a, w) - _auc(y, b, w) for w in _boot_weights(j["borrower"].to_numpy())]
     return (roc_auc_score(y, a) - roc_auc_score(y, b), *np.nanpercentile(vals, [2.5, 97.5]))
-
-
-def wilson(k: float, n: int, z: float = 1.96) -> tuple[float, float]:
-    """Wilson 95% interval for a rate of k events in n."""
-    if n == 0:
-        return np.nan, np.nan
-    p = k / n
-    c = (p + z * z / (2 * n)) / (1 + z * z / n)
-    h = z * np.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / (1 + z * z / n)
-    return c - h, c + h
 
 
 def quarter_rank(p: pd.DataFrame) -> pd.Series:
@@ -257,33 +267,44 @@ def score_decile(p: pd.DataFrame, bins: int = 10) -> pd.Series:
 
 
 def decile_table(p: pd.DataFrame, probabilities: bool = True) -> pd.DataFrame:
-    """Realized event rate by score decile (Wilson 95% interval), the share of all events each decile
-    holds and, when the scores are probabilities, the predicted rate next to the realized one."""
-    g = p.assign(decile=score_decile(p)).groupby("decile")
-    t = g.agg(n=("y", "size"), events=("y", "sum")).reset_index().sort_values("decile", ascending=False)
+    """Realized event rate by score decile and the share of all events each decile holds. When the
+    scores are probabilities, also the predicted rate and realized / predicted (1 = the model
+    predicts the right number of events; 1.25 = 25% more events than predicted). Intervals are
+    borrower-resampled 95%, with the deciles and the predictions held fixed."""
+    p = p.assign(decile=score_decile(p))
+    t = p.groupby("decile").agg(n=("y", "size"), events=("y", "sum"), expected=("pred", "sum")).reset_index()
+    t = t.sort_values("decile", ascending=False).reset_index(drop=True)
+    parts = [p[p["decile"] == k] for k in t["decile"]]
     t["event_rate"] = t["events"] / t["n"]
-    ci = [wilson(k, n) for k, n in zip(t["events"], t["n"])]
-    t["rate_ci_low"], t["rate_ci_high"] = [c[0] for c in ci], [c[1] for c in ci]
-    t["predicted_rate"] = g["pred"].mean().reindex(t["decile"]).to_numpy() if probabilities else np.nan
+    t["rate_ci_low"], t["rate_ci_high"] = zip(*(ratio_ci(s["y"], np.ones(len(s)), s["borrower"]) for s in parts))
+    t["predicted_rate"] = t["expected"] / t["n"] if probabilities else np.nan
+    if probabilities:
+        t["realized_to_predicted"] = t["events"] / t["expected"]
+        t["ratio_ci_low"], t["ratio_ci_high"] = zip(*(ratio_ci(s["y"], s["pred"], s["borrower"]) for s in parts))
     t["share_of_events"] = t["events"] / t["events"].sum()
-    return t.reset_index(drop=True)
+    return t.drop(columns="expected")
 
 
 def performance(p: pd.DataFrame, probabilities: bool = True) -> dict:
     """Out-of-sample summary of predictions `p`: ROC-AUC, PR-AUC, the share of events caught in the
-    riskiest 10% and 20%, the riskiest tenth's event rate, and predicted against realized events,
-    each with a 95% interval."""
+    riskiest 10% and 20%, the riskiest tenth's event rate, and the realized against the predicted
+    event rate (realized / predicted: 1 = right on average), each with a 95% interval."""
     auc, lo, hi = auc_ci(p)
     ap, ap_lo, ap_hi = pr_auc_ci(p)
     r20, r20_lo, r20_hi = recall_at(p, 0.20)
     top = decile_table(p, probabilities).iloc[0]
     n, events = len(p), int(p["y"].sum())
-    r_lo, r_hi = wilson(events, n)
-    return {"test_quarters": f"{p['cal_q'].min()} to {p['cal_q'].max()}", "n": n, "events": events,
-            "roc_auc": auc, "roc_auc_lo": lo, "roc_auc_hi": hi,
-            "pr_auc": ap, "pr_auc_lo": ap_lo, "pr_auc_hi": ap_hi,
-            "recall_top_20pct": r20, "recall_top_20pct_lo": r20_lo, "recall_top_20pct_hi": r20_hi,
-            "top_decile_event_rate": top["event_rate"], "top_decile_rate_lo": top["rate_ci_low"],
-            "top_decile_rate_hi": top["rate_ci_high"], "top_decile_share_of_events": top["share_of_events"],
-            "realized_rate": events / n, "realized_rate_lo": r_lo, "realized_rate_hi": r_hi,
-            "predicted_rate": p["pred"].mean() if probabilities else np.nan}
+    r_lo, r_hi = ratio_ci(p["y"], np.ones(n), p["borrower"])
+    out = {"test_quarters": f"{p['cal_q'].min()} to {p['cal_q'].max()}", "n": n, "events": events,
+           "roc_auc": auc, "roc_auc_lo": lo, "roc_auc_hi": hi,
+           "pr_auc": ap, "pr_auc_lo": ap_lo, "pr_auc_hi": ap_hi,
+           "recall_top_20pct": r20, "recall_top_20pct_lo": r20_lo, "recall_top_20pct_hi": r20_hi,
+           "top_decile_event_rate": top["event_rate"], "top_decile_rate_lo": top["rate_ci_low"],
+           "top_decile_rate_hi": top["rate_ci_high"], "top_decile_share_of_events": top["share_of_events"],
+           "realized_rate": events / n, "realized_rate_lo": r_lo, "realized_rate_hi": r_hi,
+           "predicted_rate": np.nan, "realized_to_predicted": np.nan, "ratio_lo": np.nan, "ratio_hi": np.nan}
+    if probabilities:
+        out["predicted_rate"] = p["pred"].mean()
+        out["realized_to_predicted"] = events / p["pred"].sum()
+        out["ratio_lo"], out["ratio_hi"] = ratio_ci(p["y"], p["pred"], p["borrower"])
+    return out

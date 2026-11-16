@@ -1,11 +1,12 @@
 variant,outcome,predictors,n_obs,n_events,auc_in_sample,test_n,test_events,test_roc_auc
-scorecard,y_na,"price, d_price, pik_switch, max_drawdown, dispersion, has_dispersion",45365,776,0.8260406096182475,10223,190,0.8288437629506837
-PIK: change in PIK share of coupon (pp),y_na,"price, d_price, d_pik_pp, max_drawdown, dispersion, has_dispersion",45365,776,0.8227726320785974,10223,190,0.8263047731958223
-market-adjusted mark and change,y_na,"price_rel, d_price_adj, pik_switch, max_drawdown, dispersion, has_dispersion",45365,776,0.8268126957020745,10223,190,0.8255352074994623
-+ seniority mix (junior share of par),y_na,"price, d_price, pik_switch, max_drawdown, dispersion, has_dispersion, junior_share",45365,776,0.8253171347563186,10223,190,0.8296028369538418
-+ borrower size (log BDC-held par),y_na,"price, d_price, pik_switch, max_drawdown, dispersion, has_dispersion, log_par",45365,776,0.8256841754924068,10223,190,0.8399088271860754
-valuation gap as the range of family marks,y_na,"price, d_price, pik_switch, max_drawdown, dispersion_range, has_dispersion",45365,776,0.8260532103868251,10223,190,0.8288269762415608
-borrowers with 2+ lender families only,y_na,"price, d_price, pik_switch, max_drawdown, dispersion",15249,208,0.8199824326328549,3751,62,0.8187680899623117
+scorecard,y_na,"price, d_price, pik_switch, max_drawdown, dispersion, has_dispersion",45365,776,0.8260532103868251,10223,190,0.8288269762415608
+PIK: change in PIK share of coupon (pp),y_na,"price, d_price, d_pik_pp, max_drawdown, dispersion, has_dispersion",45365,776,0.82296962024058,10223,190,0.8262843143940785
+market-adjusted mark and change,y_na,"price_rel, d_price_adj, pik_switch, max_drawdown, dispersion, has_dispersion",45365,776,0.8268908580383539,10223,190,0.8260241204026711
++ seniority mix (junior share of par),y_na,"price, d_price, pik_switch, max_drawdown, dispersion, has_dispersion, junior_share",45365,776,0.8253561508975562,10223,190,0.8295787060594774
++ borrower size (log BDC-held par),y_na,"price, d_price, pik_switch, max_drawdown, dispersion, has_dispersion, log_par",45365,776,0.8257134520487579,10223,190,0.8400342029198382
+valuation gap as the std of family marks,y_na,"price, d_price, pik_switch, max_drawdown, dispersion_std, has_dispersion",45365,776,0.8260406096182475,10223,190,0.8288437629506837
+borrowers with 2+ lender families only,y_na,"price, d_price, pik_switch, max_drawdown, dispersion",15249,208,0.8200559496351,3751,62,0.8187112514100334
 "without the two weakest signs (mark, change, PIK switch)",y_na,"price, d_price, pik_switch",45365,776,0.8248608193089091,10223,190,0.8356082821426136
-outcome: first-ever non-accrual,y_na_first,"price, d_price, pik_switch, max_drawdown, dispersion, has_dispersion",44704,707,0.8418849214966727,10008,170,0.8356576539947144
-outcome: same-lender entries only,y_na_same_lender,"price, d_price, pik_switch, max_drawdown, dispersion, has_dispersion",45328,739,0.8342697918996812,10218,185,0.834867639492378
+outcome: first-ever non-accrual,y_na_first,"price, d_price, pik_switch, max_drawdown, dispersion, has_dispersion",44704,707,0.8419660958624574,10008,170,0.8369587314494815
+outcome: same-lender entries only,y_na_same_lender,"price, d_price, pik_switch, max_drawdown, dispersion, has_dispersion",45328,739,0.8341068239826015,10218,185,0.8347733560331986
+outcome: non-accrual or a restructuring,y_credit,"price, d_price, pik_switch, max_drawdown, dispersion, has_dispersion",45650,8516,0.5890147096662328,10293,1714,0.5871995781400486
