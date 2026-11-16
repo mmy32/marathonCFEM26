@@ -1,139 +1,15 @@
-"""Estimation and evaluation for the early-warning scorecard (src/9_model): model frames, the
-logistic regression with borrower-clustered standard errors, the equal-weighted ranking, the out-of-sample predictions (rolling and single split) and their
-metrics with confidence intervals."""
+"""Evaluation of the early-warning model (src/9_prediction): the time-ordered splits (one fit, or a rolling
+fit that only ever sees closed windows), and the metrics with their intervals: ROC-AUC and PR-AUC
+with borrower-resampled bootstrap intervals, Wilson intervals for rates, score deciles, and R2 /
+RMSE for the markdown outcomes."""
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from scipy.stats import norm
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score, roc_auc_score
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler
 
-from model_panel import HORIZON
-
-OUTCOME = "y_na"               # the one outcome: an accruing borrower enters non-accrual at t + 1 or t + 2
-# Fixed caps: a mark below 70 counts as 70, a move of more than 20 points in the quarter (or a fall of
-# more than 20 over the year) as 20, six or more lender families as five. Beyond them risk keeps
-# rising, but far more slowly than the logistic's straight line; uncapped, the deepest marks got
-# 95-99%.
-PREDICTOR_CAPS = {"price": (0.70, None), "d_price": (-0.20, 0.20), "max_drawdown": (None, 0.20),
-                  "crowding": (None, 5)}
-# The baseline: the mark and its change over the quarter. Each other sign is added to it alone and
-# kept only if it improves the ranking out of sample (model_analysis.sign_selection).
-BASELINE = ["price", "d_price"]
-# Dispersion exists only for borrowers with a tranche held by 2+ manager families; it is 0
-# elsewhere and comes with its indicator.
-CANDIDATES = {"pik_switch": ["pik_switch"], "dispersion": ["dispersion", "has_dispersion"],
-              "crowding": ["crowding"], "max_drawdown": ["max_drawdown"]}
-# The baseline and the signs the frozen rule kept on the development quarters (2026-11-14, outcome
-# within two quarters): PIK switch, fall over the past year, valuation gap; crowding was dropped.
-# run_model.py stops if sign_selection.csv ever keeps a different set.
-SCORECARD = BASELINE + CANDIDATES["pik_switch"] + CANDIDATES["max_drawdown"] + CANDIDATES["dispersion"]
-RISK_SIGN = {"price": -1, "d_price": -1, "pik_switch": 1, "dispersion": 1, "crowding": 1,
-             "max_drawdown": 1}             # equal-weighted ranking: +1 if a higher value means more risk
-STRUCTURAL_ZERO = {"dispersion", "dispersion_range"}       # 0 where has_dispersion == 0
-# Coefficients are reported per these steps, in the predictor's own units (0.10 = ten points of par)
-UNITS = {"price": 0.10, "price_rel": 0.10, "d_price": 0.05, "d_price_adj": 0.05, "max_drawdown": 0.05,
-         "dispersion": 0.01, "dispersion_range": 0.01, "d_pik_pp": 10.0, "junior_share": 0.5}
-
-MIN_TRAIN_QUARTERS = 3         # rolling: a test quarter needs at least three labelled training quarters
-N_BOOT = 500
-SEED = 0
-
-
-# ------------------------------------------------------------------ frames and preprocessing
-
-def model_frame(m: pd.DataFrame, cols: list[str], outcome: str = OUTCOME, only_multi: bool = False,
-                labelled: bool = True) -> pd.DataFrame:
-    """Accruing borrowers in the sample (na_risk_set) with every predictor in `cols` defined
-    (dispersion may be structurally missing; design() fills it with 0) and, if `labelled`, the
-    outcome observed. only_multi keeps borrowers with dispersion defined. The outcome is renamed y."""
-    d = m[m["na_risk_set"].astype(bool)]
-    if labelled:
-        d = d[d[outcome].notna()]
-    if only_multi:
-        d = d[d["has_dispersion"] == 1]
-    d = d.dropna(subset=[c for c in cols if c not in STRUCTURAL_ZERO])
-    keep = ["borrower", "cal_q", "outcome_q", "qsort", outcome] + [c for c in cols if c != outcome]
-    if "has_dispersion" not in keep:
-        keep.append("has_dispersion")
-    return d[keep].rename(columns={outcome: "y"}).reset_index(drop=True)
-
-
-def design(d: pd.DataFrame, cols: list[str]) -> np.ndarray:
-    """Apply the fixed caps (PREDICTOR_CAPS), then fill the structurally missing dispersion with 0
-    (has_dispersion carries the difference). Other predictors are used as reported."""
-    X = d[cols].astype(float).copy()
-    for c in PREDICTOR_CAPS.keys() & set(cols):
-        X[c] = X[c].clip(*PREDICTOR_CAPS[c])
-    for c in STRUCTURAL_ZERO & set(cols):
-        X[c] = X[c].fillna(0.0)
-    return X.to_numpy()
-
-
-# ------------------------------------------------------------------ logit with clustered SEs
-
-def _loglik(X1: np.ndarray, y: np.ndarray, beta: np.ndarray) -> float:
-    eta = X1 @ beta
-    return float(np.sum(y * eta - np.logaddexp(0.0, eta)))
-
-
-def logit_cluster(X: np.ndarray, y: np.ndarray, groups: np.ndarray, max_iter: int = 200) -> dict:
-    """Unpenalized logit by Newton-Raphson with step halving (plain Newton overshoots with rare
-    events). Sandwich covariance clustered by `groups`, with the usual G / (G - 1) factor."""
-    X1 = np.column_stack([np.ones(len(X)), X])
-    beta = np.zeros(X1.shape[1])
-    beta[0] = np.log(y.mean() / (1 - y.mean()))
-    ll = _loglik(X1, y, beta)
-    for _ in range(max_iter):
-        p = 1 / (1 + np.exp(-(X1 @ beta)))
-        step = np.linalg.solve(X1.T @ (X1 * (p * (1 - p))[:, None]), X1.T @ (y - p))
-        t = 1.0
-        while _loglik(X1, y, beta + t * step) < ll - 1e-12 and t > 1e-10:
-            t /= 2
-        beta = beta + t * step
-        ll_new = _loglik(X1, y, beta)
-        done = np.abs(t * step).max() < 1e-10 or abs(ll_new - ll) < 1e-12
-        ll = ll_new
-        if done:
-            break
-    p = 1 / (1 + np.exp(-(X1 @ beta)))
-    bread = np.linalg.inv(X1.T @ (X1 * (p * (1 - p))[:, None]))
-    S = pd.DataFrame(X1 * (y - p)[:, None]).groupby(groups).sum().to_numpy()
-    cov = len(S) / (len(S) - 1) * bread @ (S.T @ S) @ bread
-    p0 = y.mean()
-    ll0 = len(y) * (p0 * np.log(p0) + (1 - p0) * np.log(1 - p0))
-    return {"beta": beta, "cov": cov, "fit": 1 - ll / ll0, "fitted": p}
-
-
-def coefficient_table(d: pd.DataFrame, cols: list[str], label: dict) -> pd.DataFrame:
-    """In-sample logit on frame `d`, predictors expressed per UNITS step; standard errors clustered
-    by borrower. One row per term."""
-    X = design(d, cols) / np.array([UNITS.get(c, 1.0) for c in cols])
-    y = d["y"].to_numpy(dtype=float)
-    r = logit_cluster(X, y, d["borrower"].to_numpy())
-    se = np.sqrt(np.diag(r["cov"]))
-    z = r["beta"] / se
-    out = pd.DataFrame({"term": ["const"] + cols, "per": [np.nan] + [UNITS.get(c, 1.0) for c in cols],
-                        "coef": r["beta"], "se_cluster": se, "z": z, "p_value": 2 * norm.sf(np.abs(z)),
-                        "ci_low": r["beta"] - 1.96 * se, "ci_high": r["beta"] + 1.96 * se})
-    out["odds_ratio"] = np.exp(out["coef"])
-    out["or_ci_low"], out["or_ci_high"] = np.exp(out["ci_low"]), np.exp(out["ci_high"])
-    for k, v in {**label, "n_obs": len(d), "n_borrowers": d["borrower"].nunique(), "n_events": int(y.sum()),
-                 "pseudo_r2": r["fit"], "auc_in_sample": roc_auc_score(y, r["fitted"])}.items():
-        out[k] = v
-    return out
-
-
-# ------------------------------------------------------------------ predictions
-
-def fit_predict(train: pd.DataFrame, test: pd.DataFrame, cols: list[str]) -> np.ndarray:
-    """Fit the unpenalized logit on `train` and return the predicted probabilities for `test`."""
-    model = make_pipeline(StandardScaler(), LogisticRegression(penalty=None, max_iter=5000))
-    model.fit(design(train, cols), train["y"].to_numpy(dtype=float))
-    return model.predict_proba(design(test, cols))[:, 1]
+from config import HORIZON, MIN_TRAIN_QUARTERS, N_BOOT, SEED
+from models.logit import fit_predict
 
 
 def _predictions(test: pd.DataFrame, pred: np.ndarray) -> pd.DataFrame:
@@ -172,16 +48,6 @@ def rolling_predictions(d: pd.DataFrame, cols: list[str],
                 train_auc=roc_auc_score(train["y"], fit_predict(train, train, cols))))
     return pd.concat(out, ignore_index=True) if out else pd.DataFrame()
 
-
-def equal_weight_score(d: pd.DataFrame, cols: list[str]) -> pd.Series:
-    """The equal-weighted ranking of the same signs, with nothing fitted: each sign is ranked within
-    the quarter (as a share, riskiest = 1; ties share their average rank) and the ranks are averaged."""
-    signs = [c for c in cols if c in RISK_SIGN]
-    X = d[signs].astype(float).fillna(0.0) * [RISK_SIGN[c] for c in signs]
-    return X.groupby(d["qsort"]).rank(pct=True).mean(axis=1)
-
-
-# ------------------------------------------------------------------ metrics
 
 def _boot_weights(groups: np.ndarray, n: int = N_BOOT):
     """Bootstrap weights when borrowers (not rows) are resampled: a borrower appears in several
@@ -287,3 +153,11 @@ def performance(p: pd.DataFrame, probabilities: bool = True) -> dict:
             "top_decile_rate_hi": top["rate_ci_high"], "top_decile_share_of_events": top["share_of_events"],
             "realized_rate": events / n, "realized_rate_lo": r_lo, "realized_rate_hi": r_hi,
             "predicted_rate": p["pred"].mean() if probabilities else np.nan}
+
+
+def regression_scores(y: pd.Series, pred: np.ndarray, benchmark: float) -> dict:
+    """R2 and RMSE of `pred` against `y`, with the RMSE and R2 of always predicting `benchmark` (the
+    training mean): R2 = 1 - SSE / SST about the benchmark, so it is out of sample when `benchmark`
+    comes from the training rows."""
+    sse, sse0 = ((y - pred) ** 2).sum(), ((y - benchmark) ** 2).sum()
+    return {"r2": 1 - sse / sse0, "rmse": np.sqrt(sse / len(y)), "rmse_benchmark": np.sqrt(sse0 / len(y))}

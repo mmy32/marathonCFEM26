@@ -2,7 +2,7 @@
 old check and the stricter ones can be compared on the same predictions:
 
   A. old:    per-decile Wilson interval on the realized rate, predicted rate taken as exact
-             (what model_fit.decile_table reports).
+             (what evaluation.decile_table reports).
   B. fixed:  borrower-cluster bootstrap of the TEST set, predictions held fixed
              (sampling noise of the realized rates, allowing for a borrower appearing in two
              test quarters with overlapping windows).
@@ -39,11 +39,11 @@ sys.path.insert(0, str(ROOT / "src" / "1_data_processing"))
 from paths import MODEL_DATA_DIR, MODEL_DIR, add_code_dirs_to_path  # noqa: E402
 
 add_code_dirs_to_path()
-from model_fit import SCORECARD, decile_table, design, model_frame, score_decile  # noqa: E402
-from model_panel import HORIZON, q_sort  # noqa: E402
-
-sys.path.insert(0, str(ROOT / "scripts"))
-from run_model import TEST_QS, TRAIN_END  # noqa: E402
+from common import q_sort  # noqa: E402
+from config import HORIZON, TEST_QS, TRAIN_END  # noqa: E402
+from frames import design, model_frame  # noqa: E402
+from evaluation import decile_table, score_decile  # noqa: E402
+from specs import SCORECARD  # noqa: E402
 
 SEED = 20261115
 
@@ -51,7 +51,7 @@ SEED = 20261115
 # ------------------------------------------------------------------ fitting with weights
 
 def fit(train: pd.DataFrame, w: np.ndarray | None = None):
-    """The same pipeline as model_fit.fit_predict (scaler + unpenalized logit). A bootstrap weight
+    """The same pipeline as models.logit.fit_predict (scaler + unpenalized logit). A bootstrap weight
     w = k fits a borrower-quarter drawn k times exactly as k copies would."""
     model = make_pipeline(StandardScaler(), LogisticRegression(penalty=None, max_iter=5000))
     kw = {} if w is None else {"standardscaler__sample_weight": w, "logisticregression__sample_weight": w}
@@ -95,7 +95,7 @@ def apply_recal(p, a, b):
 
 def weighted_deciles(qsort: np.ndarray, pred: np.ndarray, w: np.ndarray, bins: int = 10) -> np.ndarray:
     """Score decile within the quarter on a weighted sample: rows sorted by score, the cumulative
-    weight share sets the decile (with unit weights this is model_fit.score_decile)."""
+    weight share sets the decile (with unit weights this is evaluation.score_decile)."""
     dec = np.zeros(len(pred), dtype=int)
     for q in np.unique(qsort):
         i = np.where(qsort == q)[0]

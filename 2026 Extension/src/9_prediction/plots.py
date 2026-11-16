@@ -1,4 +1,4 @@
-"""Charts for the early-warning scorecard (src/9_model), in the deck's style
+"""Charts for the early-warning scorecard (src/9_prediction), in the deck's style
 (src/8_risk_monitor/charts.py): event rate by bucket of each sign, the mark path before a
 non-accrual entry, the scorecard's odds ratios, the out-of-sample event rate by score decile and
 the rolling AUC by quarter."""
@@ -161,7 +161,7 @@ def event_profile(p: pd.DataFrame, path, window: str):
 
 
 def rolling_auc_by_quarter(t: pd.DataFrame, path, test_from: str):
-    """ROC-AUC of each rolling test quarter (model_analysis.by_quarter): the scorecard against the
+    """ROC-AUC of each rolling test quarter (analysis.by_quarter): the scorecard against the
     mark alone. Quarters from `test_from` on are the out-of-sample test; the earlier ones chose
     the signs."""
     x = np.arange(len(t))

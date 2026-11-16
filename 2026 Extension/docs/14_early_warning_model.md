@@ -165,8 +165,13 @@ blind on the 2026Q1 signals (`reserved_test_2026Q3.csv`); this list itself is sc
 
 ## Method
 
-Code in `src/9_model/` (`model_panel.py`: panel, outcome and exits; `model_fit.py`: logit and
-metrics; `model_analysis.py`: tables; `model_charts.py`: charts). Outputs in `outputs/model/`.
+Code in `src/9_prediction/`, one job per file: `config.py` (constants), `features.py` (the signs and the
+`FEATURES` registry of units, caps and buckets), `targets.py` (the outcomes: non-accrual, exits,
+next-quarter markdown), `panel.py` (joins them, sample rules, event and exit counts), `specs.py` (which
+signs go in which model), `frames.py` (the rows a model sees), `models/` (one file per kind of
+estimator: `logit.py`, `linear.py`, `ranking.py`; lasso, trees and a neural net go here),
+`evaluation.py` (time splits and metrics), `analysis.py` (tables, including the one-input baselines)
+and `plots.py`. Outputs in `outputs/model/`.
 
 - **Unit:** a borrower in a quarter, every BDC's loans pooled. Kept if it is not a CLO vehicle,
   has a mark on at least half its par, holds $1m+ of debt, and its loans were priced the quarter
