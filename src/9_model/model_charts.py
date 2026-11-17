@@ -1,7 +1,7 @@
 """Charts for the early-warning scorecard (src/9_model), in the deck's style
 (src/8_risk_monitor/charts.py): event rate by bucket of each sign, the mark path before a
-non-accrual entry, the scorecard's odds ratios, the out-of-sample event rate by score decile and
-the rolling AUC by quarter."""
+credit event, the scorecard's odds ratios, the out-of-sample event rate by score decile and
+the rolling AUC by quarter. The event throughout is the model's one outcome (model_fit.OUTCOME)."""
 from __future__ import annotations
 
 import matplotlib
@@ -12,6 +12,11 @@ import numpy as np
 import pandas as pd
 
 from charts import BLUE, GRID, INK, MUTED, ORANGE, SURFACE, _spread, _style
+from model_fit import SCORECARD
+
+EVENT_NOTE = ("Event: within the next two quarters a BDC flags the borrower's debt non-accrual, or a lender switches "
+              "its interest to PIK, swaps its debt for equity or writes down its cost")
+COUNT_WORDS = {2: "Two", 3: "Three", 4: "Four", 5: "Five", 6: "Six"}
 
 SCORECARD_UNITS = {"price": "Mark 10 points lower", "d_price": "Mark fell 5 points\nthis quarter",
                    "pik_switch": "Switched to PIK\nthis quarter",
@@ -19,7 +24,8 @@ SCORECARD_UNITS = {"price": "Mark 10 points lower", "d_price": "Mark fell 5 poin
                    "dispersion": "Lenders' marks 1 point\nfurther apart"}
 NAMES = {"price": "Mark level (FV / PAR)", "d_price": "Change in the mark this quarter",
          "max_drawdown": "Fall in the mark over the past year", "pik_switch": "PIK switch",
-         "dispersion": "Valuation gap", "crowding": "Crowding (tested, not kept)"}
+         "dispersion": "Valuation gap", "crowding": "Crowding"}
+NAMES = {k: v if k in SCORECARD else v + " (tested, not kept)" for k, v in NAMES.items()}
 SHORT = {"single lender": "1 lender", "under 0.5": "< 0.5", "over 5": "> 5", "under 1": "< 1",
          "over 10": "> 10"}     # bucket labels that fit under a bar
 XLABELS = {"price": "Mark, cents per dollar of par", "d_price": "Same loans, points of par",
@@ -62,25 +68,26 @@ def event_rate_by_predictor(t: pd.DataFrame, path, window: str):
         ax.tick_params(axis="x", length=0)
         ax.set_xlabel(XLABELS[col], color=MUTED, fontsize=8.5)
         ax.set_ylim(0, top * 1.2)
-    _title(fig, "Borrowers entering non-accrual within two quarters, by warning sign",
+    _title(fig, "Borrowers with a credit event within two quarters, by warning sign",
            f"Accruing borrowers, all BDCs' loans pooled; signs from {window}. "
            f"Dashed line: average event rate, {base:.2f}%. Whiskers: 95% intervals")
-    _note(fig, "Event: any BDC flags the borrower's debt non-accrual within the next two quarters (exits unlabelled). "
-               "Under each bar: events / borrower-quarters.\nThe valuation gap needs a loan held by 2+ manager families "
-               "('single lender' otherwise). Points = cents per dollar of par.")
+    _note(fig, EVENT_NOTE + " (exits unlabelled).\nUnder each bar: events / borrower-quarters. "
+               "The valuation gap needs a loan held by 2+ manager families ('single lender' otherwise). "
+               "Points = cents per dollar of par.")
     fig.subplots_adjust(left=0.06, right=0.98, top=0.86, bottom=0.13, hspace=0.62, wspace=0.2)
     fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)
 
 
 def odds_ratios(coefs: pd.DataFrame, path, window: str):
-    """The scorecard in one picture: odds ratios (95% CI, borrower-clustered) of its five signs. The
-    mark and its change are shown per fall, so every sign reads as 'times the odds'. The valuation
-    gap's indicator (held by 2+ lender families) is in coefficients.csv, not drawn."""
+    """The scorecard in one picture: odds ratios (95% CI, borrower-clustered) of its signs. The
+    mark and its change are shown per fall, so every sign reads as 'times the odds'. If the
+    valuation gap is in the scorecard, its indicator (held by 2+ lender families) is in
+    coefficients.csv, not drawn."""
     c = coefs[coefs["scorecard"] & coefs["term"].isin(SCORECARD_UNITS)].set_index("term")
     fall = ["price", "d_price"]             # flip: per 10 points lower, per 5-point fall
     c.loc[fall, ["odds_ratio", "or_ci_low", "or_ci_high"]] = 1 / c.loc[fall, ["odds_ratio", "or_ci_high", "or_ci_low"]].to_numpy()
-    terms = list(SCORECARD_UNITS)[::-1]
+    terms = [t for t in SCORECARD_UNITS if t in c.index][::-1]
     d = c.reindex(terms)
     fig, ax = plt.subplots(figsize=(10, 4.8), facecolor=SURFACE)
     _style(ax, "", "")
@@ -94,17 +101,20 @@ def odds_ratios(coefs: pd.DataFrame, path, window: str):
                 color=INK)
     ax.axvline(1, color=MUTED, linewidth=1, linestyle=(0, (4, 3)))
     ax.set_xscale("log")
-    ax.set_xticks([1, 1.5, 2, 3, 4, 5], ["1", "1.5", "2", "3", "4", "5"])
+    ticks = [v for v in [1, 1.5, 2, 3, 4, 5, 7, 10] if v <= max(5, d["or_ci_high"].max())]
+    ax.set_xticks(ticks, [f"{v:g}" for v in ticks])
     ax.set_xticks([], minor=True)
-    ax.set_xlim(0.9, 6)
+    ax.set_xlim(0.9, max(6, d["or_ci_high"].max() * 1.1))
     ax.set_ylim(-0.5, len(terms) - 0.4)
     ax.set_yticks(y, [SCORECARD_UNITS[t] for t in terms])
-    ax.set_xlabel("Times the odds of entering non-accrual within two quarters (log scale; 1 = no effect)", color=MUTED,
+    ax.set_xlabel("Times the odds of a credit event within two quarters (log scale; 1 = no effect)", color=MUTED,
                   fontsize=9)
-    _title(fig, "Five warning signs, each multiplying the odds of non-accrual",
-           f"Logistic regression on the five together; accruing borrowers, signs from {window}; "
+    n = COUNT_WORDS.get(len(terms), str(len(terms)))
+    _title(fig, f"{n} warning signs, each multiplying the odds of a credit event",
+           f"Logistic regression on the {n.lower()} together; accruing borrowers, signs from {window}; "
            "95% intervals clustered by borrower")
-    fig.subplots_adjust(left=0.22, right=0.97, top=0.83, bottom=0.13)
+    _note(fig, EVENT_NOTE + ".")
+    fig.subplots_adjust(left=0.22, right=0.97, top=0.83, bottom=0.2)
     fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)
 
@@ -116,46 +126,50 @@ def score_deciles(dec: pd.DataFrame, path, events: str, fitted: str):
     fig, axes = plt.subplots(1, 2, figsize=(12, 5.0), facecolor=SURFACE, sharey=True)
     for ax, model, color in zip(axes, models, [BLUE, ORANGE]):
         d = dec[dec["model"] == model].sort_values("decile")
-        _style(ax, model[0].upper() + model[1:], "Borrowers entering non-accrual (%)" if ax is axes[0] else "")
+        _style(ax, model[0].upper() + model[1:], "Borrowers with a credit event (%)" if ax is axes[0] else "")
         x = d["decile"].to_numpy()
         _rate_bars(ax, x, d["event_rate"], d["rate_ci_low"], d["rate_ci_high"], color=color, width=0.7)
         if d["predicted_rate"].notna().any():
             ax.scatter(x, d["predicted_rate"] * 100, s=45, color=SURFACE, edgecolor=INK, linewidth=1.5, zorder=5,
                        label="predicted by the scorecard")
             ax.legend(frameon=False, fontsize=8.5, loc="upper left", labelcolor=INK)
-        for xi, r, top in zip(x, d["event_rate"], np.fmax(d["rate_ci_high"], d["predicted_rate"].fillna(0))):
-            ax.text(xi, top * 100 + 0.25, f"{r * 100:.1f}", ha="center", va="bottom", fontsize=8, color=INK)
+        tops = np.fmax(d["rate_ci_high"], d["predicted_rate"].fillna(0))
+        for xi, r, top in zip(x, d["event_rate"], tops):
+            ax.text(xi, top * 100 + tops.max() * 1.5, f"{r * 100:.1f}", ha="center", va="bottom", fontsize=8, color=INK)
         ax.set_xticks(x, [f"{v}\n{int(e)}" for v, e in zip(x, d["events"])])
         ax.tick_params(axis="x", length=0)
         ax.set_xlabel("Score decile within the quarter (10 = riskiest tenth)", color=MUTED, fontsize=9)
     axes[0].set_ylim(bottom=0)
-    _title(fig, f"Out of sample: non-accrual entries in {events}, by score decile",
+    _title(fig, f"Out of sample: credit events in {events}, by score decile",
            f"Fitted on {fitted} only. Bars: realized rate; whiskers: 95% intervals")
-    _note(fig, "Event: any BDC flags the borrower's debt non-accrual within the next two quarters. Under each decile: its events. The equal-weighted ranking averages the five signs' ranks "
-               "within the quarter; nothing is fitted.")
+    _note(fig, EVENT_NOTE + ".\nUnder each decile: its events. The equal-weighted ranking averages the same signs' "
+               "ranks within the quarter; nothing is fitted.")
     fig.subplots_adjust(left=0.07, right=0.98, top=0.83, bottom=0.17, wspace=0.06)
     fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)
 
 
 def event_profile(p: pd.DataFrame, path, window: str):
-    """Median mark in the four quarters before a non-accrual entry, against borrowers that stayed
-    accruing."""
-    fig, ax = plt.subplots(figsize=(8, 4.8), facecolor=SURFACE)
+    """Median mark in the four quarters before a credit event (borrowers flagged non-accrual, and
+    borrowers with a concession only), against borrowers with no event."""
+    fig, ax = plt.subplots(figsize=(8.6, 4.8), facecolor=SURFACE)
     _style(ax, "", "Median mark (FV / PAR, cents per dollar)")
-    for group, color in [("stayed accruing", MUTED), ("entered non-accrual", BLUE)]:
+    groups = [("no credit event", MUTED), ("concession, no non-accrual", ORANGE), ("entered non-accrual", BLUE)]
+    last = [p[p["group"] == g].sort_values("k")["median_price"].iloc[-1] * 100 for g, _ in groups]
+    for (group, color), y in zip(groups, _spread(last, gap=1.0)):
         d = p[p["group"] == group].sort_values("k")
         ax.plot(d["k"], d["median_price"] * 100, color=color, linewidth=2, marker="o", markersize=7, zorder=3)
         if group == "entered non-accrual":
             ax.fill_between(d["k"], d["p25_price"] * 100, d["p75_price"] * 100, color=color, alpha=0.12, linewidth=0)
-        ax.text(0.15, d["median_price"].iloc[-1] * 100, group, va="center", fontsize=8.5, color=INK)
+        ax.text(0.15, y, f"{group} ({int(d['borrowers'].iloc[0]):,})", va="center", fontsize=8.5, color=INK)
     ax.set_xticks(range(-4, 1), ["-4", "-3", "-2", "-1", "event\nquarter"])
-    ax.set_xlim(-4.3, 1.6)
-    ax.set_xlabel("Quarters before the non-accrual entry", color=MUTED, fontsize=9)
-    _title(fig, "Marks fall before a borrower enters non-accrual",
-           "Borrowers entering non-accrual (shaded: middle half) vs borrowers that stayed accruing")
-    _note(fig, f"Entries in {window} from the labelled risk set. Mark = all BDCs' fair value / par on priceable loans.")
-    fig.subplots_adjust(left=0.09, right=0.97, top=0.82, bottom=0.17)
+    ax.set_xlim(-4.3, 2.6)
+    ax.set_xlabel("Quarters before the credit event", color=MUTED, fontsize=9)
+    _title(fig, "Marks fall before non-accrual; before a concession they barely move",
+           "Borrowers entering non-accrual (shaded: middle half), borrowers with a concession only, and borrowers with no event")
+    _note(fig, f"Events in {window} from the labelled risk set (borrower-quarters in brackets). Concession: a switch to PIK, "
+               "a debt-for-equity swap or a cost write-down.\nMark = all BDCs' fair value / par on priceable loans.")
+    fig.subplots_adjust(left=0.09, right=0.97, top=0.82, bottom=0.2)
     fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)
 
@@ -187,7 +201,7 @@ def rolling_auc_by_quarter(t: pd.DataFrame, path, dev_end: str, test_from: str):
     ax.set_xticks(x, [f"{w}\n{int(n)} events" for w, n in zip(t["outcome_q"], t["events"])], fontsize=8)
     ax.set_xlim(-0.5, len(t) + 0.6)
     ax.set_ylim(0.5, 1.0)
-    _title(fig, "Out of sample, quarter by quarter: non-accrual entries within two quarters",
+    _title(fig, "Out of sample, quarter by quarter: credit events within two quarters",
            "Each quarter scored by a model refitted on every window closed by then; x-axis: the outcome window")
     fig.subplots_adjust(left=0.08, right=0.97, top=0.82, bottom=0.17)
     fig.savefig(path, dpi=200, facecolor=SURFACE)

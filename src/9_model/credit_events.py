@@ -1,6 +1,5 @@
 """Restructurings and exits, read from how each BDC's schedule changes from one quarter to the
-next (the sponsor's definitions of 2026-11-16). Non-accrual stays the model's one outcome; these
-are counted beside it.
+next (the sponsor's definitions of 2026-11-16).
 
 Restructuring: a change in terms on the same loan held by the same BDC (a tranche chain,
 tranches.link_tranche_chains) between consecutive filings:
@@ -9,6 +8,9 @@ tranches.link_tranche_chains) between consecutive filings:
   maturity    the maturity is pushed out
   write_down  cost falls while the loan stays in the schedule
   equity      the BDC's debt to the borrower is replaced by an equity row
+Three of them are concessions (CONCESSIONS: the lender gives something up) and are credit events
+in the model's outcome next to non-accrual; the spread step-up and the maturity extension are
+counted beside it.
 
 Exit: a loan whose chain ends while the data go on, put in exactly one of four buckets, tested in
 this order: impaired (non-accrual, marked well below par, or swapped for equity), refinanced
@@ -38,6 +40,14 @@ MIN_PIK_RATE = 0.0025  # PIK under 25 bp is rounding (as in pik_metrics)
 MAX_MARK = 1.5        # a mark above 150% of par is par left in local currency (a cleaning issue): no mark
 
 EVENT_TYPES = ["pik", "spread", "maturity", "equity", "write_down"]
+# The restructurings that count as a credit event in the model's outcome, next to non-accrual:
+# those where the lender gives something up (cash interest deferred into PIK, debt swapped for
+# equity, cost written down; the last two are the realized losses a schedule shows while the
+# borrower stays on the books). A spread step-up pays the lender more, and a maturity extension is
+# mostly a routine amend-and-extend of a loan marked at par (3,858 of the 8,516 events all five
+# would give are an extension alone), so those two are counted beside the outcome. Chosen by the
+# user on 2026-11-16 after the counts of all five had been seen; the cutoffs did not move.
+CONCESSIONS = ["pik", "equity", "write_down"]
 EXIT_CLASSES = ["repaid", "refinanced", "impaired", "unresolved"]
 DEBT = {"SENIOR_SECURED_1L", "UNITRANCHE", "SENIOR_SECURED_2L", "SUBORDINATED_MEZZ", "SENIOR_UNSECURED",
         "SENIOR_SECURED_UNSPEC"}      # operating debt; CLO_STRUCTURED_EQUITY and OTHER_UNKNOWN are not
@@ -161,11 +171,13 @@ def borrower_exit_class(exits: pd.DataFrame, b: pd.DataFrame) -> np.ndarray:
 
 def borrower_events(changes: pd.DataFrame, exits: pd.DataFrame) -> pd.DataFrame:
     """Per borrower x quarter: 1 if any BDC's loan to it had the event in that quarter (equity:
-    a loan replaced by equity at that quarter), and restructured = any of the five."""
+    a loan replaced by equity at that quarter), restructured = any of the five, and concession =
+    any of CONCESSIONS (the ones in the model's outcome)."""
     c = changes.groupby(["borrower", "qsort"])[["pik", "spread", "maturity", "write_down"]].max()
     e = exits[exits["equity"] == 1].groupby(["borrower", "exit_q"])["equity"].max().rename_axis(["borrower", "qsort"])
     out = c.join(e, how="outer").fillna(0).astype(int)
     out["restructured"] = out[EVENT_TYPES].max(axis=1)
+    out["concession"] = out[CONCESSIONS].max(axis=1)
     return out.reset_index()
 
 

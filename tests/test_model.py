@@ -1,8 +1,9 @@
 """
 Tests for the early-warning scorecard (src/9_model): the borrower-quarter panel (same-loan price
-changes, non-accrual entries within two quarters, unlabelled exits in four buckets, sample rules),
-restructurings and loan exits (credit_events.py), and the estimation helpers (clustered standard
-errors, no look-ahead, equal-weighted ranking, deciles, realized against predicted).
+changes, credit events within two quarters: non-accrual or a lender's concession, unlabelled exits
+in four buckets, sample rules), term changes and loan exits (credit_events.py), filing dates, and
+the estimation helpers (clustered standard errors, no look-ahead, equal-weighted ranking, deciles,
+realized against predicted).
 """
 
 import sys
@@ -35,10 +36,11 @@ def tranche(chain, cik, borrower, q, price, link_rule, toggle=False, par=PAR, v1
 
 
 def toy_panel():
-    """ACME: two BDCs' loans (chains 1 and 2) marked down over 2024; BDC 1 flags it non-accrual in
-    2024Q4; BDC 2 lends a new loan at 70 in 2024Q4 (chain 3). Four borrowers held 2024Q1-Q2 that
-    then leave: BETA at par long before maturity, DELTA at par at maturity, EPSILON marked at 60,
-    ZETA marked at 90. GAMMA CLO 1: a CLO debt tranche, held all year."""
+    """ACME: two BDCs' loans (chains 1 and 2) marked down over 2024; BDC 1's loan switches to PIK
+    in 2024Q3 and BDC 1 flags it non-accrual in 2024Q4; BDC 2 lends a new loan at 70 in 2024Q4
+    (chain 3). Four borrowers held 2024Q1-Q2 that then leave: BETA at par long before maturity,
+    DELTA at par at maturity, EPSILON marked at 60, ZETA marked at 90. ETA: held all year at par,
+    its maturity extended by a year in 2024Q3. GAMMA CLO 1: a CLO debt tranche, held all year."""
     p1 = [1.00, 0.98, 0.90, 0.85]
     p2 = [1.00, 1.00, 1.00, 0.95]
     t = []
@@ -50,6 +52,8 @@ def toy_panel():
                                    (7, "EPSILON", 0.60, {}), (8, "ZETA", 0.90, {})]:
         t += [tranche(chain, 1, name, "2024Q1", price, 0, **kw), tranche(chain, 1, name, "2024Q2", price, 1, **kw)]
     t += [tranche(5, 1, "GAMMA CLO 1", q, 0.80, 0 if i == 0 else 1, lien="CLO") for i, q in enumerate(Q)]
+    t += [tranche(9, 1, "ETA", q, 1.0, 0 if i == 0 else 1, maturity="2029-06-30" if i < 2 else "2030-06-30")
+          for i, q in enumerate(Q)]
     tr = pd.DataFrame(t)
     rows = []
     for r in t:
@@ -102,14 +106,42 @@ class TestPanel(unittest.TestCase):
         self.assertEqual(a.loc["2024Q4", "na_status"], 1)
         self.assertFalse(a.loc["2024Q4", "na_risk_set"])             # already on non-accrual
 
+    def test_credit_event_is_non_accrual_or_a_concession(self):
+        # The outcome: non-accrual, or a lender's concession (PIK switch, debt-for-equity,
+        # write-down), at t + 1 or t + 2. ACME's chain 1 switches to PIK in 2024Q3, so 2024Q1
+        # (window 2024Q2-Q3) is an event although ACME is still accruing; non-accrual alone
+        # (y_na, a robustness outcome) says 0.
+        a = self.m.loc["ACME"]
+        self.assertEqual(a.loc["2024Q3", "restr_pik"], 1)
+        self.assertEqual((a.loc["2024Q1", "y_event"], a.loc["2024Q1", "y_na"]), (1, 0))
+        self.assertEqual(a.loc["2024Q1", "event_q"], MP.q_sort("2024Q3"))
+        self.assertEqual(a.loc["2024Q2", "y_event"], 1)
+        self.assertEqual(a.loc["2024Q2", "event_q"], MP.q_sort("2024Q3"))    # the switch comes before the flag
+        self.assertEqual(a.loc["2024Q2", "entry_q"], MP.q_sort("2024Q4"))
+        self.assertTrue(np.isnan(a.loc["2024Q3", "y_event"]))                # window runs past the data
+        self.assertEqual(set(CE.CONCESSIONS), {"pik", "equity", "write_down"})
+        self.assertTrue(set(CE.CONCESSIONS) < set(CE.EVENT_TYPES))
+
+    def test_extension_is_counted_beside_the_outcome(self):
+        # ETA's maturity is extended in 2024Q3 while it stays at par and accruing: a term change,
+        # not a credit event. Only the labelled robustness outcome y_all_terms counts it.
+        e = self.m.loc["ETA"]
+        self.assertEqual(e.loc["2024Q3", "restr_maturity"], 1)
+        for q in ["2024Q1", "2024Q2"]:
+            self.assertEqual((e.loc[q, "y_event"], e.loc[q, "y_na"], e.loc[q, "y_all_terms"]), (0, 0, 1))
+            self.assertEqual((e.loc[q, "win_maturity"], e.loc[q, "win_pik"]), (1, 0))
+        self.assertTrue(np.isnan(e.loc["2024Q1", "event_q"]))
+
     def test_exits_have_no_label_and_go_in_four_buckets(self):
-        # The outcome comes from non-accrual flags only: a borrower that leaves before the window
-        # closes gets no label, at par (BETA, DELTA) or deeply marked down (EPSILON at 60). Its
-        # bucket: repaid at par, impaired at 60, unresolved at 90 (impaired at the second cutoff).
+        # The outcome comes from non-accrual flags and loan terms, never from a mark: a borrower
+        # that leaves before the window closes without an event gets no label, at par (BETA, DELTA)
+        # or deeply marked down (EPSILON at 60). Its bucket: repaid at par, impaired at 60,
+        # unresolved at 90 (impaired at the second cutoff).
         m = self.m
         for q in ["2024Q1", "2024Q2"]:                               # gone in 2024Q3, inside both windows
             for name in ["BETA", "DELTA", "EPSILON", "ZETA"]:
                 self.assertTrue(m.loc[(name, q), "exited"])
+                self.assertTrue(np.isnan(m.loc[(name, q), "y_event"]))
                 self.assertTrue(np.isnan(m.loc[(name, q), "y_na"]))
         got = {n: (m.loc[(n, "2024Q2"), "exit_class"], m.loc[(n, "2024Q2"), "exit_class_second"])
                for n in ["BETA", "DELTA", "EPSILON", "ZETA"]}
@@ -117,25 +149,20 @@ class TestPanel(unittest.TestCase):
                                "EPSILON": ("impaired", "impaired"), "ZETA": ("unresolved", "impaired")})
         self.assertFalse(m.loc[("ACME", "2024Q3"), "exited"])                       # window runs past the data
 
-    def test_restructuring_counts_in_y_credit_only(self):
-        # ACME's chain 1 switches to PIK in 2024Q3: a restructuring in the window of 2024Q1
-        # (2024Q2-Q3), which y_credit counts and y_na, the model's outcome, does not.
-        a = self.m.loc["ACME"]
-        self.assertEqual(a.loc["2024Q3", "restr_pik"], 1)
-        self.assertEqual((a.loc["2024Q1", "y_na"], a.loc["2024Q1", "y_credit"]), (0, 1))
-        self.assertEqual(a.loc["2024Q2", "y_credit"], 1)                            # non-accrual in 2024Q4
-
     def test_event_counts_cover_every_borrower(self):
         m = self.m.reset_index()
         c = MP.event_counts(m).set_index("cal_q")
-        parts = ["entered_non_accrual", "still_accruing", "exited", "status_unknown"]
+        parts = ["events", "no_event", "exited", "status_unknown"]
         exits = ["exit_" + k for k in CE.EXIT_CLASSES]
         self.assertTrue((c[parts].sum(axis=1) == c["at_risk"]).all())
         self.assertTrue((c[exits].sum(axis=1) == c["exited"]).all())
+        self.assertTrue((c["event_non_accrual"] + c["event_concession_only"] == c["events"]).all())
         q2 = c.loc["2024Q2"]
-        self.assertEqual([q2[k] for k in parts], [1, 0, 4, 0])                      # ACME enters, four exits
+        self.assertEqual([q2[k] for k in parts], [1, 1, 4, 0])                      # ACME; ETA; four exits
         self.assertEqual([q2[k] for k in exits], [2, 0, 1, 1])                      # BETA, DELTA / EPSILON / ZETA
-        self.assertEqual((q2["labelled"], q2["events"]), (1, 1))                    # a low-marked exit is not an event
+        self.assertEqual((q2["labelled"], q2["events"]), (2, 1))                    # a low-marked exit is not an event
+        self.assertEqual((q2["event_non_accrual"], q2["event_pik"]), (1, 1))        # ACME: flagged, and switched to PIK
+        self.assertEqual(q2["no_event_other_change"], 1)                            # ETA's extension
         self.assertNotIn("2024Q3", c.index)                                         # window incomplete
         x = MP.unlabelled_exits(m).set_index("exit_class")
         self.assertEqual(x.loc["all", "exits_primary"], x.loc["all", "exits_second"])   # no exit dropped
@@ -170,12 +197,11 @@ class TestPanel(unittest.TestCase):
         self.assertFalse(g["in_sample"].any())
 
     def test_event_rates_cover_every_sign(self):
-        # Each sign alone: every borrower falls in one bucket of every sign, the scorecard's fall
-        # over the past year included.
+        # Each sign alone: every borrower falls in one bucket of every sign, kept by the rule or not.
         import model_analysis as A
         n = 8
         d = pd.DataFrame({"borrower": [str(i) for i in range(n)], "qsort": 1, "na_risk_set": True,
-                          "y_na": [1, 0, 0, 0, 1, 0, 0, 0], "price": np.linspace(0.7, 1.0, n),
+                          F.OUTCOME: [1, 0, 0, 0, 1, 0, 0, 0], "price": np.linspace(0.7, 1.0, n),
                           "d_price": np.linspace(-0.1, 0.02, n), "max_drawdown": [0.2, 0.07, 0.03, 0, 0.12, 0, 0, 0.005],
                           "dispersion": 0.01, "has_dispersion": [1, 0] * 4, "crowding": [1, 2, 3, 6] * 2,
                           "pik_switch": [1, 0, 0, 0, 0, 0, 0, 0]})
@@ -259,6 +285,28 @@ class TestCreditEvents(unittest.TestCase):
         self.assertEqual(CE.equity_holdings(rows)["borrower"].tolist(), ["A"])        # B: shares only; C: debt; D: par
 
 
+class TestFilingLags(unittest.TestCase):
+
+    def test_days_from_quarter_end_to_filing(self):
+        # Two 2024Q1 filings (a 10-Q after 40 days, a 10-K after 91) and one 2024Q2 filing; the
+        # accession in the dataset has lost its dashes and leading zeros.
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            final, meta = Path(tmp) / "final.csv", Path(tmp) / "meta.csv"
+            pd.DataFrame({"accession": ["119312524000001", "119312524000001", "95017024000002", "119312524000003"],
+                          "cal_q": ["2024Q1", "2024Q1", "2024Q1", "2024Q2"]}).to_csv(final, index=False)
+            pd.DataFrame({"accessionNumber": ["0001193125-24-000001", "0000950170-24-000002", "0001193125-24-000003"],
+                          "filingDate": ["2024-05-10", "2024-06-30", "2024-08-09"],
+                          "form": ["10-Q", "10-K", "10-Q"]}).to_csv(meta, index=False)
+            t = MP.filing_lags(final, meta).set_index("cal_q")
+        q1 = t.loc["2024Q1"]
+        self.assertEqual((q1["filings"], q1["with_filing_date"], q1["annual_reports"]), (2, 2, 1))
+        self.assertEqual((q1["median_days"], q1["max_days"]), (65.5, 91))
+        self.assertEqual((q1["within_45_days"], q1["within_90_days"]), (0.5, 0.5))
+        self.assertEqual(str(q1["last_filing"]), "2024-06-30")                    # when 2024Q1 can be scored
+        self.assertEqual(t["filed_before_quarter_end"].sum(), 0)
+
+
 class TestFit(unittest.TestCase):
 
     def test_logit_matches_sklearn(self):
@@ -297,6 +345,8 @@ class TestFit(unittest.TestCase):
         X = F.design(d, ["price", "d_price", "pik_switch"])
         np.testing.assert_allclose(X[:, 0], [0.70, 0.85, 1.02])      # a mark below 70 counts as 70
         np.testing.assert_allclose(X[:, 1], [-0.20, -0.10, 0.20])    # a move of more than 20 points counts as 20
+        X = F.design(d, ["price", "d_price", "pik_switch"], caps={})  # the uncapped robustness check
+        np.testing.assert_allclose(X[:, :2], d[["price", "d_price"]].to_numpy())
 
     def test_design_fills_missing_dispersion_with_zero(self):
         d = pd.DataFrame({"dispersion": [np.nan, 0.01, 0.5], "has_dispersion": [0, 1, 1]})
@@ -395,7 +445,7 @@ class TestFit(unittest.TestCase):
 
     def test_ranks_by_outcome_scores_every_borrower(self):
         # Every accruing borrower of the test quarter is ranked, labelled or not, and falls in one
-        # group; refinanced is listed though empty (no exit dropped).
+        # group; events are split by kind; refinanced is listed though empty (no exit dropped).
         import model_analysis as A
         rng = np.random.default_rng(1)
         n_b, quarters = 80, 8
@@ -406,14 +456,20 @@ class TestFit(unittest.TestCase):
         for c in ["price", "d_price", "max_drawdown", "dispersion"]:
             m[c] = rng.normal(size=len(m))
         m["pik_switch"] = (rng.random(len(m)) < 0.1).astype(float)
-        m["y_na"] = (rng.random(len(m)) < 0.15).astype(float)
+        m[F.OUTCOME] = (rng.random(len(m)) < 0.3).astype(float)
+        m["flag_in_window"] = (m[F.OUTCOME] == 1) & (rng.random(len(m)) < 0.5)
         gone = rng.random(len(m)) < 0.1
-        m.loc[gone, ["y_na", "exited", "exit_class"]] = [np.nan, True, "impaired"]
+        m.loc[gone, [F.OUTCOME, "exited", "exit_class", "flag_in_window"]] = [np.nan, True, "impaired", False]
         t = A.ranks_by_outcome(m, 6, [8]).set_index("what_happened")
         self.assertEqual(t.loc["all", "borrower_quarters"], n_b)
         self.assertEqual(t.drop("all")["borrower_quarters"].sum(), n_b)
         self.assertEqual(t.loc["left the books: refinanced", "borrower_quarters"], 0)
         self.assertEqual(t.loc["all", "in_riskiest_tenth"], n_b // 10)
+        events = t.loc[["credit event: non-accrual", "credit event: concession only"], "borrower_quarters"].sum()
+        last = m[m["qsort"] == 8]
+        self.assertEqual(events, (last[F.OUTCOME] == 1).sum())
+        self.assertAlmostEqual(t.loc["all", "labelled_share"], last[F.OUTCOME].notna().mean())
+        self.assertTrue(np.isnan(t.loc["no credit event", "roc_auc_vs_no_event"]))
 
     def test_pr_auc_and_recall_at_budget(self):
         # 4 events, 3 of them in the top 10% (2 of 20 per quarter) and all 4 in the top 20%.

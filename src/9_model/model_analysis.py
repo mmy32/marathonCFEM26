@@ -1,16 +1,18 @@
 """Tables for the early-warning scorecard (src/9_model): the signs one by one (event rates by
-bucket, the PIK-switch hypotheses, the mark path before an entry), the in-sample coefficients,
+bucket, the PIK-switch hypotheses, the mark path before an event), the in-sample coefficients,
 the sign selection, the out-of-sample test, robustness and the scorecard itself. One outcome
-throughout: an accruing borrower enters non-accrual within the next two quarters."""
+throughout (model_fit.OUTCOME): an accruing borrower has a credit event within the next two
+quarters, i.e. non-accrual or a lender's concession (PIK switch, debt-for-equity, write-down).
+Any other outcome appears only as a labelled robustness row."""
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import average_precision_score, roc_auc_score
 
-from model_fit import BASELINE, CANDIDATES, OUTCOME, SCORECARD, auc_ci, auc_gain, coefficient_table, \
-    decile_table, equal_weight_score, model_frame, performance, rolling_predictions, score_decile, \
-    ratio_ci, split_predictions, _predictions
+from model_fit import BASELINE, CANDIDATES, OUTCOME, PREDICTOR_CAPS, SCORECARD, auc_ci, auc_gain, \
+    coefficient_table, decile_table, equal_weight_score, model_frame, performance, rolling_predictions, \
+    quarter_rank, score_decile, ratio_ci, split_predictions, _predictions
 import credit_events as CE
 from model_panel import HORIZON, LOW_MARK, MARKDOWN
 
@@ -36,20 +38,35 @@ def _swap(cols: list[str], old: str, new: list[str]) -> list[str]:
     return cols[:i] + new + cols[i + 1:]
 
 
-ROBUSTNESS = [  # (variant, outcome, predictors, multi-lender borrowers only); the scorecard varied
-    ("scorecard", OUTCOME, SCORECARD, False),
-    ("PIK: change in PIK share of coupon (pp)", OUTCOME, _swap(SCORECARD, "pik_switch", ["d_pik_pp"]), False),
-    ("market-adjusted mark and change", OUTCOME,
-     _swap(_swap(SCORECARD, "price", ["price_rel"]), "d_price", ["d_price_adj"]), False),
-    ("+ seniority mix (junior share of par)", OUTCOME, SCORECARD + ["junior_share"], False),
-    ("+ borrower size (log BDC-held par)", OUTCOME, SCORECARD + ["log_par"], False),
-    ("valuation gap as the std of family marks", OUTCOME, _swap(SCORECARD, "dispersion", ["dispersion_std"]), False),
-    ("borrowers with 2+ lender families only", OUTCOME, [c for c in SCORECARD if c != "has_dispersion"], True),
-    ("without the two weakest signs (mark, change, PIK switch)", OUTCOME, BASELINE + ["pik_switch"], False),
-    ("outcome: first-ever non-accrual", "y_na_first", SCORECARD, False),
-    ("outcome: same-lender entries only", "y_na_same_lender", SCORECARD, False),
-    ("outcome: non-accrual or a restructuring", "y_credit", SCORECARD, False),
-]
+NO_CAPS = "no caps: mark, its change and the fall over the year as reported"
+NON_ACCRUAL_SIGNS = BASELINE + CANDIDATES["pik_switch"] + CANDIDATES["max_drawdown"] + CANDIDATES["dispersion"]
+
+
+def _robustness() -> list[tuple]:
+    """(variant, outcome, predictors, multi-lender borrowers only): the scorecard varied one way
+    at a time. The last rows change the outcome and say so in their name."""
+    v = [("scorecard", OUTCOME, SCORECARD, False), (NO_CAPS, OUTCOME, SCORECARD, False)]
+    if "pik_switch" in SCORECARD:
+        v.append(("PIK: change in PIK share of coupon (pp)", OUTCOME, _swap(SCORECARD, "pik_switch", ["d_pik_pp"]), False))
+    v += [("market-adjusted mark and change", OUTCOME,
+           _swap(_swap(SCORECARD, "price", ["price_rel"]), "d_price", ["d_price_adj"]), False),
+          ("+ seniority mix (junior share of par)", OUTCOME, SCORECARD + ["junior_share"], False),
+          ("+ borrower size (log BDC-held par)", OUTCOME, SCORECARD + ["log_par"], False)]
+    if "dispersion" in SCORECARD:
+        v.append(("valuation gap as the std of family marks", OUTCOME, _swap(SCORECARD, "dispersion", ["dispersion_std"]), False))
+    else:
+        v.append(("+ valuation gap (dropped by the sign rule)", OUTCOME, SCORECARD + CANDIDATES["dispersion"], False))
+    v += [("borrowers with 2+ lender families only", OUTCOME, [c for c in SCORECARD if c != "has_dispersion"], True),
+          ("mark, change and PIK switch only", OUTCOME, BASELINE + ["pik_switch"], False),
+          ("outcome: non-accrual alone (the outcome until 2026-11-16)", "y_na", SCORECARD, False),
+          ("outcome: non-accrual alone, with the five signs the rule kept for it", "y_na", NON_ACCRUAL_SIGNS, False),
+          ("outcome: non-accrual alone, first-ever", "y_na_first", SCORECARD, False),
+          ("outcome: non-accrual alone, same-lender entries only", "y_na_same_lender", SCORECARD, False),
+          ("outcome: non-accrual or any of the five term changes", "y_all_terms", SCORECARD, False)]
+    return v
+
+
+ROBUSTNESS = _robustness()
 
 
 def labelled_risk_set(m: pd.DataFrame, fit_end: int) -> pd.DataFrame:
@@ -63,7 +80,7 @@ def predictor_summary(m: pd.DataFrame, fit_end: int) -> pd.DataFrame:
     d = labelled_risk_set(m, fit_end)
     cols = ["price", "d_price", "pik_switch", "dispersion", "crowding", "max_drawdown", "d_pik_pp", "dispersion_std"]
     out = []
-    for group, g in [("all", d), ("no entry in t+1..t+2", d[d[OUTCOME] == 0]), ("entry in t+1..t+2", d[d[OUTCOME] == 1])]:
+    for group, g in [("all", d), ("no event in t+1..t+2", d[d[OUTCOME] == 0]), ("event in t+1..t+2", d[d[OUTCOME] == 1])]:
         for c in cols:
             s = g[c]
             out.append({"predictor": c, "group": group, "n": len(s), "missing_share": s.isna().mean(),
@@ -72,7 +89,7 @@ def predictor_summary(m: pd.DataFrame, fit_end: int) -> pd.DataFrame:
 
 
 def event_rates(m: pd.DataFrame, fit_end: int) -> pd.DataFrame:
-    """Entry rate (borrower-resampled 95% interval) by bucket of each sign (labelled risk set)."""
+    """Event rate (borrower-resampled 95% interval) by bucket of each sign (labelled risk set)."""
     d = labelled_risk_set(m, fit_end)
     parts = []
     for col, (bins, labels) in BUCKETS.items():
@@ -95,7 +112,7 @@ def event_rates(m: pd.DataFrame, fit_end: int) -> pd.DataFrame:
 
 def pik_hypotheses(m: pd.DataFrame, fit_end: int) -> pd.DataFrame:
     """Is a PIK switch a stronger warning on a low mark (below LOW_MARK) or after a markdown of
-    MARKDOWN or more in the quarter? Entry rates with borrower-resampled 95% intervals."""
+    MARKDOWN or more in the quarter? Event rates with borrower-resampled 95% intervals."""
     d = labelled_risk_set(m, fit_end)
     sw, low, md = d["pik_switch"] == 1, d["price"] < LOW_MARK, d["recent_markdown"] == 1
     groups = [("all borrowers", sw | ~sw), ("no PIK switch", ~sw), ("PIK switch", sw),
@@ -116,16 +133,21 @@ def pik_hypotheses(m: pd.DataFrame, fit_end: int) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
+PROFILE_GROUPS = ["entered non-accrual", "concession, no non-accrual", "no credit event"]
+
+
 def event_profile(m: pd.DataFrame, fit_end: int, horizon: int = 4) -> pd.DataFrame:
-    """Mark path around a non-accrual entry: for borrowers entering at e (t + 1 or t + 2, the first
-    flagged quarter), their mark at quarters e - horizon .. e (k = -horizon .. 0); for borrowers
-    that stay accruing, the same around e = t + 1."""
+    """Mark path around a credit event: for borrowers with an event at e (t + 1 or t + 2, the first
+    quarter of the event), their mark at quarters e - horizon .. e (k = -horizon .. 0), split into
+    those flagged non-accrual in the window and those with a concession only; for borrowers
+    without an event, the same around e = t + 1."""
     d = labelled_risk_set(m, fit_end)
     full = m.set_index(["borrower", "qsort"])
+    ev, flag = d[OUTCOME] == 1, d["flag_in_window"].astype(bool)
     out = []
-    for group, g in [("entered non-accrual", d[d[OUTCOME] == 1]), ("stayed accruing", d[d[OUTCOME] == 0])]:
+    for group, g in zip(PROFILE_GROUPS, [d[ev & flag], d[ev & ~flag], d[~ev]]):
         for k in range(-horizon, 1):
-            e = g["entry_q"].fillna(g["qsort"] + 1).astype(int)
+            e = g["event_q"].fillna(g["qsort"] + 1).astype(int)
             px = full["price"].reindex(pd.MultiIndex.from_arrays([g["borrower"], e + k]))
             out.append({"group": group, "k": k, "borrowers": len(g), "n_priced": int(px.notna().sum()),
                         "median_price": px.median(), "p25_price": px.quantile(0.25), "p75_price": px.quantile(0.75)})
@@ -230,52 +252,139 @@ def oos_test(m: pd.DataFrame, train_end: int, test_qs: list[int]) -> tuple[pd.Da
 
 def ranks_by_outcome(m: pd.DataFrame, train_end: int, test_qs: list[int]) -> pd.DataFrame:
     """Where the scorecard of the out-of-sample test ranked every accruing borrower of the test
-    quarters, labelled or not, by what happened next: entered non-accrual, still accruing, left
-    every BDC's books (by exit bucket, primary cutoff; refinanced is empty by construction) or
-    status unknown. Deciles are taken within the quarter over all of them. Impaired exits are not
-    events; this shows whether the scorecard also flagged them (partly by construction: an exit
-    marked well below par is impaired)."""
+    quarters, labelled or not, by what happened next: a credit event (split into those flagged
+    non-accrual and those with a concession only), no event, left every BDC's books (by exit
+    bucket, primary cutoff; refinanced is empty by construction) or status unknown. Deciles are
+    taken within the quarter over all of them. roc_auc_vs_no_event ranks each group against the
+    borrowers with no event: how well the one scorecard finds each kind of event, and whether it
+    also flags the exits it was not fitted on (partly by construction for the impaired: an exit
+    marked well below par is impaired). labelled_share on the last row is the test's coverage."""
     d = model_frame(m, SCORECARD, labelled=False)
     p = split_predictions(d, SCORECARD, train_end, test_qs)
     p["decile"] = score_decile(p)
-    p = p.merge(m[["borrower", "qsort", "exited", "exit_class", "window_complete"]], on=["borrower", "qsort"])
+    p = p.merge(m[["borrower", "qsort", "exited", "exit_class", "window_complete", "flag_in_window"]],
+                on=["borrower", "qsort"])
     p = p[p["window_complete"].astype(bool)]
-    exited = p["exited"].astype(bool)
+    exited, flag = p["exited"].astype(bool), p["flag_in_window"].astype(bool)
     left = ("left the books: " + p["exit_class"].astype(str)).to_numpy(dtype=object)
-    p["what_happened"] = np.select([p["y"] == 1, p["y"] == 0, exited], ["entered non-accrual", "still accruing", left],
+    p["what_happened"] = np.select([(p["y"] == 1) & flag, p["y"] == 1, p["y"] == 0, exited],
+                                   ["credit event: non-accrual", "credit event: concession only", "no credit event", left],
                                    "status unknown")
-    order = (["entered non-accrual", "still accruing"] + [f"left the books: {k}" for k in CE.EXIT_CLASSES]
-             + ["status unknown"])
+    order = (["credit event: non-accrual", "credit event: concession only", "no credit event"]
+             + [f"left the books: {k}" for k in CE.EXIT_CLASSES] + ["status unknown"])
     g = p.assign(top10=p["decile"] == 10, top20=p["decile"] >= 9).groupby("what_happened")
     t = g.agg(borrower_quarters=("pred", "size"), in_riskiest_tenth=("top10", "sum"),
               in_riskiest_fifth=("top20", "sum"), mean_probability=("pred", "mean")).reindex(order)
-    t.loc["all"] = [len(p), (p["decile"] == 10).sum(), (p["decile"] >= 9).sum(), p["pred"].mean()]
+    none = p[p["what_happened"] == "no credit event"]
+    t["roc_auc_vs_no_event"] = np.nan
+    for k in order:
+        x = p[p["what_happened"] == k]
+        if k != "no credit event" and len(x) and len(none):
+            t.loc[k, "roc_auc_vs_no_event"] = roc_auc_score(np.r_[np.ones(len(x)), np.zeros(len(none))],
+                                                            np.r_[x["pred"], none["pred"]])
+    t.loc["all"] = [len(p), (p["decile"] == 10).sum(), (p["decile"] >= 9).sum(), p["pred"].mean(), np.nan]
     counts = ["borrower_quarters", "in_riskiest_tenth", "in_riskiest_fifth"]
     t[counts] = t[counts].fillna(0).astype(int)
     t.insert(2, "share_in_riskiest_tenth", t["in_riskiest_tenth"] / t["borrower_quarters"])
     t["share_in_riskiest_fifth"] = t["in_riskiest_fifth"] / t["borrower_quarters"]
+    t.loc["all", "labelled_share"] = p["y"].notna().mean()
     return t.rename_axis("what_happened").reset_index()
 
 
 def robustness(m: pd.DataFrame, fit_end: int, train_end: int, test_qs: list[int]) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Alternative sign and outcome definitions: in-sample coefficients on predictor quarters
-    <= fit_end, and the ROC-AUC of the out-of-sample test."""
+    <= fit_end, and on the out-of-sample test the ROC-AUC, PR-AUC, realized / predicted events
+    (overall and in the riskiest tenth) and the highest predicted probability."""
     coefs, summary = [], []
     for variant, outcome, cols, multi in ROBUSTNESS:
+        caps = {} if variant == NO_CAPS else PREDICTOR_CAPS
         d = model_frame(m, cols, outcome, only_multi=multi)
-        c = coefficient_table(d[d["qsort"] <= fit_end], cols, {"variant": variant, "outcome": outcome})
+        c = coefficient_table(d[d["qsort"] <= fit_end], cols, {"variant": variant, "outcome": outcome}, caps)
         coefs.append(c)
-        p = split_predictions(d, cols, train_end, test_qs)
+        p = split_predictions(d, cols, train_end, test_qs, caps)
+        top = p[score_decile(p) == 10]
         summary.append({"variant": variant, "outcome": outcome, "predictors": ", ".join(cols),
                         "n_obs": c["n_obs"].iloc[0], "n_events": c["n_events"].iloc[0],
                         "auc_in_sample": c["auc_in_sample"].iloc[0], "test_n": len(p),
-                        "test_events": int(p["y"].sum()), "test_roc_auc": roc_auc_score(p["y"], p["pred"])})
+                        "test_events": int(p["y"].sum()), "test_roc_auc": roc_auc_score(p["y"], p["pred"]),
+                        "test_pr_auc": average_precision_score(p["y"], p["pred"]),
+                        "test_realized_to_predicted": p["y"].sum() / p["pred"].sum(),
+                        "test_top_decile_realized_to_predicted": top["y"].sum() / top["pred"].sum(),
+                        "test_max_probability": p["pred"].max()})
     return pd.DataFrame(summary), pd.concat(coefs, ignore_index=True)
 
 
+def _capped(d: pd.DataFrame) -> pd.Series:
+    """True where a cap changes at least one of the scorecard's predictors."""
+    hit = pd.Series(False, index=d.index)
+    for c, (lo, hi) in PREDICTOR_CAPS.items():
+        if c in SCORECARD:
+            hit |= (d[c] < lo if lo is not None else False) | (d[c] > hi if hi is not None else False)
+    return hit
+
+
+def caps_comparison(m: pd.DataFrame, train_end: int, test_qs: list[int]) -> pd.DataFrame:
+    """The scorecard on the out-of-sample test with and without the caps, side by side: ranking
+    (ROC-AUC, PR-AUC, share of events in the riskiest tenth), calibration (realized / predicted
+    events overall, by score decile group, and on the borrower-quarters a cap changes), the
+    highest predicted probability, and the false negatives: events outside the riskiest 5, 10, 20
+    and 30% of each quarter's borrowers, on the test and on the development quarters (rolling,
+    as in the sign selection). Borrower-resampled 95% intervals; the ROC-AUC row last is the
+    uncapped fit minus the capped one, on the same resamples."""
+    d = model_frame(m, SCORECARD)
+    d = d.assign(capped=_capped(d))
+    fits = {"capped": PREDICTOR_CAPS, "uncapped": {}}
+    preds = {}
+    for k, caps in fits.items():
+        p = split_predictions(d, SCORECARD, train_end, test_qs, caps)
+        preds[k] = p.merge(d[["borrower", "qsort", "capped"]], on=["borrower", "qsort"]).assign(
+            decile=score_decile)
+
+    def ratio(p, k):
+        s = p[k]
+        return (s["y"].sum() / s["pred"].sum(), *ratio_ci(s["y"], s["pred"], s["borrower"]))
+
+    cp = preds["capped"]
+    n_cap, e_cap = int(cp["capped"].sum()), int(cp.loc[cp["capped"], "y"].sum())
+    metrics = {
+        "ROC-AUC": lambda p: auc_ci(p),
+        "PR-AUC": lambda p: tuple(performance(p)[c] for c in ["pr_auc", "pr_auc_lo", "pr_auc_hi"]),
+        "share of events in the riskiest tenth": lambda p: (
+            p.loc[p["decile"] == 10, "y"].sum() / p["y"].sum(),
+            *ratio_ci(p["y"] * (p["decile"] == 10), p["y"], p["borrower"])),
+        "realized / predicted: all": lambda p: ratio(p, p["y"].notna()),
+        "realized / predicted: riskiest tenth": lambda p: ratio(p, p["decile"] == 10),
+        "realized / predicted: decile 9": lambda p: ratio(p, p["decile"] == 9),
+        "realized / predicted: deciles 1-8": lambda p: ratio(p, p["decile"] <= 8),
+        f"realized / predicted: rows a cap changes ({n_cap}, {e_cap} events)": lambda p: ratio(p, p["capped"]),
+        "mean predicted probability: rows a cap changes": lambda p: (p.loc[p["capped"], "pred"].mean(), np.nan, np.nan),
+        "realized event rate: rows a cap changes": lambda p: (
+            p.loc[p["capped"], "y"].mean(), *ratio_ci(p.loc[p["capped"], "y"], np.ones(n_cap), p.loc[p["capped"], "borrower"])),
+        "highest predicted probability": lambda p: (p["pred"].max(), np.nan, np.nan),
+        "borrower-quarters predicted at 50% or more": lambda p: ((p["pred"] >= 0.5).sum(), np.nan, np.nan),
+    }
+    rows = []
+    for name, f in metrics.items():
+        row = {"metric": name}
+        for k, p in preds.items():
+            row[k], row[f"{k}_lo"], row[f"{k}_hi"] = f(p)
+        rows.append(row)
+    dev = {k: rolling_predictions(d[d["qsort"] <= train_end], SCORECARD, caps=caps) for k, caps in fits.items()}
+    for label, ps in [("test", preds), ("development", dev)]:
+        for share in [0.05, 0.10, 0.20, 0.30]:
+            row = {"metric": f"{label}: events missed outside the riskiest {share:.0%} "
+                             f"(of {int(ps['capped']['y'].sum())})"}
+            for k, p in ps.items():
+                row[k] = int(((quarter_rank(p) > share) & (p["y"] == 1)).sum())
+            rows.append(row)
+    g, lo, hi = auc_gain(preds["uncapped"], cp)
+    rows.append({"metric": "ROC-AUC, uncapped minus capped", "uncapped": g, "uncapped_lo": lo, "uncapped_hi": hi})
+    return pd.DataFrame(rows)
+
+
 def scorecard(m: pd.DataFrame, score_q: int, context: list[str]) -> pd.DataFrame:
-    """The scorecard for quarter score_q: every accruing borrower's probability of entering
-    non-accrual within the next two quarters (SCORECARD logit fitted on the labelled quarters up
+    """The scorecard for quarter score_q: every accruing borrower's probability of a credit
+    event within the next two quarters (SCORECARD logit fitted on the labelled quarters up
     to score_q - HORIZON, whose windows have closed), its
     rank and its score decile (10 = riskiest tenth). The model counts a mark below 70 as 70, so
     the deepest borrowers can tie; ties are ordered by the lower mark. `y` is the outcome, empty

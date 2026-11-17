@@ -1,10 +1,12 @@
 """Borrower-quarter panel for the early-warning scorecard. One row per borrower and quarter t,
 every BDC's loans to the borrower pooled. The warning signs use only what is filed for quarter t;
-the one outcome is entry into non-accrual within the next two quarters (t + 1 or t + 2), read from
-the filings' non-accrual flags and never from a mark. A borrower that leaves every BDC's books
-before the window closes has no label; its exit is put in one of four buckets (repaid, refinanced,
-impaired, unresolved; credit_events.py), which never enter the outcome. Restructurings (term
-changes on the same loan) are counted beside it and give one robustness outcome. Built from the
+the one outcome is a credit event within the next two quarters (t + 1 or t + 2): some BDC flags the
+borrower non-accrual, or a lender makes a concession on one of its loans (a switch to PIK, a
+debt-for-equity swap, a cost write-down; credit_events.CONCESSIONS). It is read from the filings'
+non-accrual flags and loan terms and never from a mark. A borrower that leaves every BDC's books
+before the window closes without an event has no label; its exit is put in one of four buckets
+(repaid, refinanced, impaired, unresolved; credit_events.py), which never enter the outcome. The
+other two term changes (spread step-up, maturity extension) are counted beside it. Built from the
 tranche-quarter panel (monitor_panel.build_monitor_panel) and the FINAL_DATASET rows. Definitions
 and sample rules: docs/14_early_warning_model.md."""
 from __future__ import annotations
@@ -18,7 +20,7 @@ import credit_events as CE
 MIN_PRIOR_FV = 1_000_000    # sample: the borrower's debt fair value at t is at least $1m
 MIN_PRICED_SHARE = 0.5      # sample: priceable par is at least half of the borrower's funded par at t
 MAX_CLO_SHARE = 0.5         # sample: CLO / structured tranches under half of par (CLO vehicles are not operating borrowers)
-HORIZON = 2                 # the outcome window: non-accrual at t + 1 or t + 2
+HORIZON = 2                 # the outcome window: a credit event at t + 1 or t + 2
 WINDOW_TEXT = "within the next two quarters"
 DD_WINDOW = 4               # rolling max drawdown over the preceding four quarters
 LOW_MARK = 0.90             # PIK-switch hypotheses: mark below 90% of par ...
@@ -202,14 +204,17 @@ def build_model_panel(tr: pd.DataFrame, rows: pl.DataFrame) -> tuple[pd.DataFram
     max_drawdown, pik_switch (alternative d_pik_pp), dispersion (the valuation gap: highest minus
     lowest lender family's mark; alternative dispersion_std; has_dispersion = 1 when defined), crowding, plus market-adjusted versions (price_rel,
     d_price_adj) and controls.
-    Outcome: y_na = 1 if an accruing borrower is flagged non-accrual by any BDC at t + 1 or
-    t + 2, 0 if it is held and known accruing in both quarters, missing otherwise: it left every
-    BDC's books before the window closed without a flag (exited; exit_class repaid / refinanced /
-    impaired / unresolved, exit_class_second at the second cutoff), its status is unknown, or the
-    window runs past the data. A mark never enters the outcome. Restructurings at t: restr_pik,
-    restr_spread, restr_maturity, restr_equity, restr_write_down, restructured. Robustness:
-    y_na_first, y_na_same_lender, y_credit (non-accrual or a restructuring in the window). Sample
-    flags: in_sample, na_risk_set."""
+    Outcome: y_event = 1 if an accruing borrower has a credit event at t + 1 or t + 2 (any BDC
+    flags it non-accrual, or a lender makes a concession: credit_events.CONCESSIONS), 0 if it is
+    held and known accruing in both quarters with no concession, missing otherwise: it left every
+    BDC's books before the window closed without an event (exited; exit_class repaid / refinanced
+    / impaired / unresolved, exit_class_second at the second cutoff), its status is unknown, or
+    the window runs past the data. A mark never enters the outcome. event_q is the first quarter
+    of the event; win_pik, win_spread, win_maturity, win_equity, win_write_down say which term
+    changes fall in the window. Restructurings at t: restr_pik, restr_spread, restr_maturity,
+    restr_equity, restr_write_down, restructured. Robustness outcomes: y_na (non-accrual alone,
+    the outcome until 2026-11-16; y_na_first, y_na_same_lender are its variants) and y_all_terms
+    (non-accrual or any of the five term changes). Sample flags: in_sample, na_risk_set."""
     t = _named(tr)
     b = borrower_marks(t)
     # the mark: FV / par on loans with par, FV / cost on debt without par
@@ -246,29 +251,49 @@ def build_model_panel(tr: pd.DataFrame, rows: pl.DataFrame) -> tuple[pd.DataFram
     b["flag_in_window"] = (st == 1).any(axis=1)
     b["entry_q"] = (b["qsort"] + (st == 1).to_numpy().argmax(axis=1) + 1).where(b["flag_in_window"])
     clean = (st == 0).all(axis=1)
-    y = pd.Series(np.select([b["flag_in_window"], clean], [1.0, 0.0], np.nan), index=b.index)
-    b["y_na"] = y.where((b["na_status"] == 0) & b["window_complete"])
-    # exits: left every BDC's books before the window closed, with no flag in it
-    b["exited"] = b["window_complete"] & ~b["flag_in_window"] & ~held.all(axis=1)
-    b["exit_q"] = (b["qsort"] + (~held).argmax(axis=1) + 1).where(b["exited"])
+    at_risk = (b["na_status"] == 0) & b["window_complete"]
+
+    def label(event: pd.Series) -> pd.Series:
+        """1 if the event falls in the window, 0 if held and known accruing through it."""
+        return pd.Series(np.select([event, clean], [1.0, 0.0], np.nan), index=b.index).where(at_risk)
+
+    # restructurings (term changes on the same loan) at t and in the window t + 1 .. t + HORIZON
     ev = build_credit_events(t, rows, d, ls)
+    r = CE.borrower_events(ev["changes"]["primary"], ev["exits"]["primary"])
+    kinds = CE.EVENT_TYPES + ["restructured", "concession"]
+    b = b.merge(r.rename(columns={c: "restr_" + c for c in CE.EVENT_TYPES}).drop(columns="concession"),
+                on=["borrower", "qsort"], how="left")
+    rcols = ["restr_" + c for c in CE.EVENT_TYPES] + ["restructured"]
+    b[rcols] = b[rcols].fillna(0).astype(int)
+    ahead = [r.assign(qsort=r["qsort"] - k, k=k) for k in range(1, HORIZON + 1)]
+    win = pd.concat(ahead).groupby(["borrower", "qsort"])[kinds].max().rename(
+        columns={**{c: "win_" + c for c in CE.EVENT_TYPES}, "restructured": "restr_in_window",
+                 "concession": "concession_in_window"})
+    b = b.merge(win.reset_index(), on=["borrower", "qsort"], how="left")
+    b[list(win.columns)] = b[list(win.columns)].fillna(0).astype(int)
+    for c in ["restr_in_window", "concession_in_window"]:
+        b[c] = b[c].astype(bool)
+
+    # the outcome: non-accrual or a concession in the window; and the quarter it first happens
+    b["event_in_window"] = b["flag_in_window"] | b["concession_in_window"]
+    b["y_event"] = label(b["event_in_window"])
+    hit = []
+    for k, a in enumerate(ahead, start=1):
+        c = a.loc[a["concession"] == 1, ["borrower", "qsort"]].assign(_c=True)
+        hit.append((b[f"na_status_{k}"] == 1).to_numpy()
+                   | b[["borrower", "qsort"]].merge(c, how="left")["_c"].fillna(False).to_numpy(dtype=bool))
+    hit = np.column_stack(hit)
+    b["event_q"] = (b["qsort"] + hit.argmax(axis=1) + 1).where(hit.any(axis=1))
+    b["y_na"] = label(b["flag_in_window"])                               # robustness: non-accrual alone
+    b["y_all_terms"] = label(b["flag_in_window"] | b["restr_in_window"])   # robustness: any of the five
+
+    # exits: left every BDC's books before the window closed, with no event in it
+    b["exited"] = b["window_complete"] & ~b["event_in_window"] & ~held.all(axis=1)
+    b["exit_q"] = (b["qsort"] + (~held).argmax(axis=1) + 1).where(b["exited"])
     ex = b[b["exited"]]
     for k, col in [("primary", "exit_class"), ("second", "exit_class_second")]:
         b[col] = ""
         b.loc[ex.index, col] = CE.borrower_exit_class(ev["exits"][k], ex)
-
-    # restructurings at t, and the robustness outcome: non-accrual or a restructuring in the window
-    r = CE.borrower_events(ev["changes"]["primary"], ev["exits"]["primary"])
-    r = r.rename(columns={c: "restr_" + c for c in CE.EVENT_TYPES})
-    b = b.merge(r, on=["borrower", "qsort"], how="left")
-    rcols = ["restr_" + c for c in CE.EVENT_TYPES] + ["restructured"]
-    b[rcols] = b[rcols].fillna(0).astype(int)
-    rk = [r.assign(qsort=r["qsort"] - k)[["borrower", "qsort", "restructured"]] for k in range(1, HORIZON + 1)]
-    rw = pd.concat(rk).groupby(["borrower", "qsort"])["restructured"].max().rename("restr_in_window")
-    b = b.merge(rw.reset_index(), on=["borrower", "qsort"], how="left")
-    b["restr_in_window"] = b["restr_in_window"].fillna(0).astype(bool)
-    yc = pd.Series(np.select([b["flag_in_window"] | b["restr_in_window"], clean], [1.0, 0.0], np.nan), index=b.index)
-    b["y_credit"] = yc.where((b["na_status"] == 0) & b["window_complete"])
 
     b["y_na_first"] = b["y_na"].where(b["na_ever"] == 0)
     same = same_lender_entries(ls).assign(_same=1.0)
@@ -288,7 +313,8 @@ def build_model_panel(tr: pd.DataFrame, rows: pl.DataFrame) -> tuple[pd.DataFram
     b["cal_q"] = q_label(b["qsort"])
     b["outcome_q"] = window_label(b["qsort"])
     first = ["borrower", "cal_q", "outcome_q", "qsort", "sector", "in_sample", "na_risk_set",
-             "y_na", "exited", "exit_class", "exit_class_second", "y_na_first", "y_na_same_lender", "y_credit",
+             "y_event", "exited", "exit_class", "exit_class_second", "y_na", "y_all_terms", "y_na_first",
+             "y_na_same_lender",
              "price", "d_price", "pik_switch", "dispersion", "has_dispersion", "crowding", "max_drawdown",
              "d_pik_pp", "dispersion_std", "price_rel", "d_price_adj", "junior_share", "recent_markdown"]
     b = b[first + [c for c in b.columns if c not in first]].sort_values(["qsort", "borrower"]).reset_index(drop=True)
@@ -297,8 +323,8 @@ def build_model_panel(tr: pd.DataFrame, rows: pl.DataFrame) -> tuple[pd.DataFram
 
 def sample_waterfall(m: pd.DataFrame) -> pd.DataFrame:
     """Borrower-quarters (with the whole outcome window in the data) left after each sample rule,
-    and the new non-accrual entries within the window among them. The last step keeps the labelled
-    rows: flagged in the window, or held and known accruing through it."""
+    and the credit events within the window among those accruing at t. The last step keeps the
+    labelled rows: an event in the window, or held and known accruing through it."""
     m = m[m["window_complete"].astype(bool)]
     steps = [
         ("named borrower-quarters, funded debt", pd.Series(True, index=m.index)),
@@ -309,33 +335,39 @@ def sample_waterfall(m: pd.DataFrame) -> pd.DataFrame:
         ("same loans priced the quarter before (change in mark, PIK switch defined)",
          m["d_price"].notna() & m["pik_switch"].notna()),
         ("non-accrual status known at t and accruing (risk set)", m["na_status"] == 0),
-        ("labelled: flagged within t + 1 .. t + 2, or held and accruing through it", m["y_na"].notna()),
+        ("labelled: an event within t + 1 .. t + 2, or held and accruing through it", m["y_event"].notna()),
     ]
     keep = pd.Series(True, index=m.index)
     out = []
     for name, cond in steps:
         keep &= cond.fillna(False).astype(bool)
         k = m[keep]
+        accruing = k["na_status"].eq(0)
         out.append({"step": name, "borrower_quarters": int(keep.sum()), "borrowers": k["borrower"].nunique(),
-                    "new_nonaccruals": int((k["na_status"].eq(0) & k["flag_in_window"].astype(bool)).sum())})
+                    "credit_events": int((accruing & k["event_in_window"].astype(bool)).sum()),
+                    "of_which_non_accrual": int((accruing & k["flag_in_window"].astype(bool)).sum())})
     return pd.DataFrame(out)
 
 
 def event_counts(m: pd.DataFrame) -> pd.DataFrame:
     """Per predictor quarter, what happened within t + 1 .. t + 2 to every accruing borrower in the
-    sample: entered non-accrual, still accruing through the window, left every BDC's books, and
-    status unknown (these four add up to at_risk). Exits are split into the four buckets (they add
-    up to exited); still_accruing_restructured counts the borrowers still accruing that had a
-    restructuring in the window. events = entered non-accrual; labelled = events + still accruing.
-    Exits and unknown status have no label."""
+    sample: a credit event, no event (held and accruing through the window), left every BDC's books
+    without one, and status unknown (these four add up to at_risk). Events are split into those
+    with a non-accrual flag and those with a concession only (they add up to events), and counted
+    by type (a borrower can have several). Exits are split into the four buckets (they add up to
+    exited). no_event_other_change counts the borrowers without an event that had a spread step-up
+    or a maturity extension in the window. labelled = events + no_event; exits and unknown status
+    have no label."""
     r = m[m["na_risk_set"].astype(bool) & m["window_complete"].astype(bool)]
     ex = r["exited"].astype(bool)
-    cols = {"at_risk": pd.Series(True, index=r.index), "entered_non_accrual": r["y_na"] == 1,
-            "still_accruing": r["y_na"] == 0, "exited": ex,
-            "status_unknown": r["y_na"].isna() & ~ex,
+    ev, flag = r["y_event"] == 1, r["flag_in_window"].astype(bool)
+    cols = {"at_risk": pd.Series(True, index=r.index), "events": ev, "no_event": r["y_event"] == 0, "exited": ex,
+            "status_unknown": r["y_event"].isna() & ~ex,
+            "event_non_accrual": ev & flag, "event_concession_only": ev & ~flag,
+            **{"event_" + k: ev & (r["win_" + k] == 1) for k in CE.CONCESSIONS},
             **{"exit_" + k: ex & (r["exit_class"] == k) for k in CE.EXIT_CLASSES},
-            "still_accruing_restructured": (r["y_na"] == 0) & r["restr_in_window"].astype(bool),
-            "events": r["y_na"] == 1, "labelled": r["y_na"].notna()}
+            "no_event_other_change": (r["y_event"] == 0) & r["restr_in_window"].astype(bool),
+            "labelled": r["y_event"].notna()}
     t = pd.DataFrame(cols).groupby([r["cal_q"], r["outcome_q"]]).sum().reset_index()
     t["event_rate"] = t["events"] / t["labelled"]
     total = t.drop(columns=["cal_q", "outcome_q", "event_rate"]).sum()
@@ -344,8 +376,9 @@ def event_counts(m: pd.DataFrame) -> pd.DataFrame:
 
 
 def unlabelled_exits(m: pd.DataFrame) -> pd.DataFrame:
-    """The exits in event_counts (borrowers that left every BDC's books, no label) by bucket, at
-    both cutoffs. Refinanced is empty by construction: no BDC holds the borrower any more."""
+    """The exits in event_counts (borrowers that left every BDC's books without an event, no
+    label) by bucket, at both cutoffs. Refinanced is empty by construction: no BDC holds the
+    borrower any more."""
     r = m[m["na_risk_set"].astype(bool) & m["window_complete"].astype(bool) & m["exited"].astype(bool)]
     t = pd.DataFrame({"exits_primary": r["exit_class"].value_counts(), "exits_second": r["exit_class_second"].value_counts()})
     t = t.reindex(CE.EXIT_CLASSES).fillna(0).astype(int)
@@ -356,13 +389,39 @@ def unlabelled_exits(m: pd.DataFrame) -> pd.DataFrame:
 
 
 def restructuring_vs_nonaccrual(m: pd.DataFrame) -> pd.DataFrame:
-    """Accruing, labelled borrowers with each restructuring at t, and how many entered non-accrual
-    within the next two quarters, next to those with none."""
+    """Accruing borrowers with each term change at t, and how many entered non-accrual within the
+    next two quarters, next to those with none: which term changes precede a default. Rows with
+    the non-accrual outcome observed (y_na)."""
     d = m[m["na_risk_set"].astype(bool) & m["y_na"].notna()]
     out = []
     for name, mask in [*((k, d["restr_" + k] == 1) for k in CE.EVENT_TYPES), ("any", d["restructured"] == 1),
                        ("none", d["restructured"] == 0)]:
         g = d.loc[mask, "y_na"]
-        out.append({"restructuring_at_t": name, "borrower_quarters": len(g), "entered_non_accrual": int(g.sum()),
-                    "entry_rate": g.mean() if len(g) else np.nan})
+        out.append({"restructuring_at_t": name, "in_outcome": name in CE.CONCESSIONS, "borrower_quarters": len(g),
+                    "entered_non_accrual": int(g.sum()), "entry_rate": g.mean() if len(g) else np.nan})
     return pd.DataFrame(out)
+
+
+def filing_lags(final_csv, metadata_csv, first_q: str = "2023Q1") -> pd.DataFrame:
+    """When each quarter's filings became public: days from the calendar quarter-end to the SEC
+    filing date of every filing in FINAL_DATASET (dates from the EDGAR index, cache/all_metadata.csv).
+    Everything a quarter's scorecard uses (its signs, and the outcomes observed up to it) is public
+    on `last_filing`, the earliest date the scorecard can be made. A filing dated before the
+    quarter-end (filed_before_quarter_end) is a fiscal quarter that ended a month or two earlier."""
+    f = (pl.scan_csv(final_csv, infer_schema_length=0).select(["accession", "cal_q"]).unique().collect().to_pandas())
+    u = pd.read_csv(metadata_csv, dtype=str, usecols=["accessionNumber", "filingDate", "form"])
+    key = lambda x: x.astype(str).str.replace("-", "", regex=False).str.lstrip("0")   # noqa: E731
+    u = u.assign(key=key(u["accessionNumber"]), filed=pd.to_datetime(u["filingDate"].str[:10], errors="coerce"))
+    j = f.assign(key=key(f["accession"])).merge(u.drop_duplicates("key")[["key", "filed", "form"]], on="key", how="left")
+    j = j[j["cal_q"] >= first_q]
+    j["lag"] = (j["filed"] - pd.PeriodIndex(j["cal_q"], freq="Q").end_time.normalize()).dt.days
+    g = j.groupby("cal_q")
+    t = g.agg(filings=("key", "size"), with_filing_date=("filed", "count"), annual_reports=("form", lambda x: (x == "10-K").sum()),
+              median_days=("lag", "median"), max_days=("lag", "max"), first_filing=("filed", "min"),
+              last_filing=("filed", "max")).reset_index()
+    for name, f_ in [("within_45_days", lambda x: (x["lag"] <= 45).mean()), ("within_90_days", lambda x: (x["lag"] <= 90).mean()),
+                     ("filed_before_quarter_end", lambda x: (x["lag"] < 0).sum())]:
+        t[name] = g.apply(f_).to_numpy()
+    for c in ["first_filing", "last_filing"]:
+        t[c] = t[c].dt.date
+    return t

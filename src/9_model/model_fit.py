@@ -13,11 +13,13 @@ from sklearn.preprocessing import StandardScaler
 
 from model_panel import HORIZON
 
-OUTCOME = "y_na"               # the one outcome: an accruing borrower enters non-accrual at t + 1 or t + 2
+OUTCOME = "y_event"            # the one outcome: an accruing borrower has a credit event at t + 1 or t + 2
+                               # (non-accrual, or a lender's concession: PIK switch, debt-for-equity, write-down)
 # Fixed caps: a mark below 70 counts as 70, a move of more than 20 points in the quarter (or a fall of
 # more than 20 over the year) as 20, six or more lender families as five. Beyond them risk keeps
-# rising, but far more slowly than the logistic's straight line; uncapped, the deepest marks got
-# 95-99%.
+# rising, but far more slowly than the logistic's straight line. The caps were fixed on 2026-11-13
+# and kept on 2026-11-16 when the outcome was non-accrual alone; caps_comparison.csv shows the
+# scorecard with and without them on the current outcome.
 PREDICTOR_CAPS = {"price": (0.70, None), "d_price": (-0.20, 0.20), "max_drawdown": (None, 0.20),
                   "crowding": (None, 5)}
 # The baseline: the mark and its change over the quarter. Each other sign is added to it alone and
@@ -27,10 +29,12 @@ BASELINE = ["price", "d_price"]
 # borrowers with a tranche held by 2+ manager families; it is 0 elsewhere and comes with its indicator.
 CANDIDATES = {"pik_switch": ["pik_switch"], "dispersion": ["dispersion", "has_dispersion"],
               "crowding": ["crowding"], "max_drawdown": ["max_drawdown"]}
-# The baseline and the signs the frozen rule kept on the development quarters (2026-11-14, outcome
-# within two quarters): PIK switch, fall over the past year, valuation gap; crowding was dropped.
-# run_model.py stops if sign_selection.csv ever keeps a different set.
-SCORECARD = BASELINE + CANDIDATES["pik_switch"] + CANDIDATES["max_drawdown"] + CANDIDATES["dispersion"]
+# The baseline and the signs the frozen rule kept on the development quarters (2026-11-16, outcome:
+# a credit event within two quarters): PIK switch and fall over the past year; the valuation gap
+# (+0.004, under the rule's +0.005) and crowding were dropped. With non-accrual alone as the
+# outcome the rule had also kept the valuation gap. run_model.py stops if sign_selection.csv ever
+# keeps a different set.
+SCORECARD = BASELINE + CANDIDATES["pik_switch"] + CANDIDATES["max_drawdown"]
 RISK_SIGN = {"price": -1, "d_price": -1, "pik_switch": 1, "dispersion": 1, "crowding": 1,
              "max_drawdown": 1}             # equal-weighted ranking: +1 if a higher value means more risk
 STRUCTURAL_ZERO = {"dispersion", "dispersion_std"}       # 0 where has_dispersion == 0
@@ -62,12 +66,13 @@ def model_frame(m: pd.DataFrame, cols: list[str], outcome: str = OUTCOME, only_m
     return d[keep].rename(columns={outcome: "y"}).reset_index(drop=True)
 
 
-def design(d: pd.DataFrame, cols: list[str]) -> np.ndarray:
-    """Apply the fixed caps (PREDICTOR_CAPS), then fill the structurally missing dispersion with 0
-    (has_dispersion carries the difference). Other predictors are used as reported."""
+def design(d: pd.DataFrame, cols: list[str], caps: dict = PREDICTOR_CAPS) -> np.ndarray:
+    """Apply the fixed caps (PREDICTOR_CAPS; caps={} for the uncapped robustness check), then fill
+    the structurally missing dispersion with 0 (has_dispersion carries the difference). Other
+    predictors are used as reported."""
     X = d[cols].astype(float).copy()
-    for c in PREDICTOR_CAPS.keys() & set(cols):
-        X[c] = X[c].clip(*PREDICTOR_CAPS[c])
+    for c in caps.keys() & set(cols):
+        X[c] = X[c].clip(*caps[c])
     for c in STRUCTURAL_ZERO & set(cols):
         X[c] = X[c].fillna(0.0)
     return X.to_numpy()
@@ -108,10 +113,10 @@ def logit_cluster(X: np.ndarray, y: np.ndarray, groups: np.ndarray, max_iter: in
     return {"beta": beta, "cov": cov, "fit": 1 - ll / ll0, "fitted": p}
 
 
-def coefficient_table(d: pd.DataFrame, cols: list[str], label: dict) -> pd.DataFrame:
+def coefficient_table(d: pd.DataFrame, cols: list[str], label: dict, caps: dict = PREDICTOR_CAPS) -> pd.DataFrame:
     """In-sample logit on frame `d`, predictors expressed per UNITS step; standard errors clustered
     by borrower. One row per term."""
-    X = design(d, cols) / np.array([UNITS.get(c, 1.0) for c in cols])
+    X = design(d, cols, caps) / np.array([UNITS.get(c, 1.0) for c in cols])
     y = d["y"].to_numpy(dtype=float)
     r = logit_cluster(X, y, d["borrower"].to_numpy())
     se = np.sqrt(np.diag(r["cov"]))
@@ -129,18 +134,19 @@ def coefficient_table(d: pd.DataFrame, cols: list[str], label: dict) -> pd.DataF
 
 # ------------------------------------------------------------------ predictions
 
-def fit_predict(train: pd.DataFrame, test: pd.DataFrame, cols: list[str]) -> np.ndarray:
+def fit_predict(train: pd.DataFrame, test: pd.DataFrame, cols: list[str], caps: dict = PREDICTOR_CAPS) -> np.ndarray:
     """Fit the unpenalized logit on `train` and return the predicted probabilities for `test`."""
     model = make_pipeline(StandardScaler(), LogisticRegression(penalty=None, max_iter=5000))
-    model.fit(design(train, cols), train["y"].to_numpy(dtype=float))
-    return model.predict_proba(design(test, cols))[:, 1]
+    model.fit(design(train, cols, caps), train["y"].to_numpy(dtype=float))
+    return model.predict_proba(design(test, cols, caps))[:, 1]
 
 
 def _predictions(test: pd.DataFrame, pred: np.ndarray) -> pd.DataFrame:
     return test[["borrower", "cal_q", "outcome_q", "qsort", "y"]].assign(pred=pred)
 
 
-def split_predictions(d: pd.DataFrame, cols: list[str], train_end: int, test_qs: list[int]) -> pd.DataFrame:
+def split_predictions(d: pd.DataFrame, cols: list[str], train_end: int, test_qs: list[int],
+                      caps: dict = PREDICTOR_CAPS) -> pd.DataFrame:
     """One fit on the labelled quarters <= train_end, scored on the quarters `test_qs`. A training
     quarter's window closes HORIZON quarters later, so every test quarter is at least train_end +
     HORIZON: the outcomes fitted on are all filed when the test quarter is scored. `d` may hold
@@ -150,12 +156,12 @@ def split_predictions(d: pd.DataFrame, cols: list[str], train_end: int, test_qs:
         raise ValueError("training windows must close by the first test quarter")
     train = d[(d["qsort"] <= train_end) & d["y"].notna()]
     test = d[d["qsort"].isin(test_qs)]
-    return _predictions(test, fit_predict(train, test, cols)).assign(
-        train_auc=roc_auc_score(train["y"], fit_predict(train, train, cols)))
+    return _predictions(test, fit_predict(train, test, cols, caps)).assign(
+        train_auc=roc_auc_score(train["y"], fit_predict(train, train, cols, caps)))
 
 
 def rolling_predictions(d: pd.DataFrame, cols: list[str],
-                        min_train_quarters: int = MIN_TRAIN_QUARTERS) -> pd.DataFrame:
+                        min_train_quarters: int = MIN_TRAIN_QUARTERS, caps: dict = PREDICTOR_CAPS) -> pd.DataFrame:
     """Out-of-sample scores for every quarter: quarter q is scored by a logit fitted on the labelled
     quarters up to q - HORIZON (their windows close by q, so their outcomes are filed when q is
     scored).
@@ -167,9 +173,9 @@ def rolling_predictions(d: pd.DataFrame, cols: list[str],
         train = d[d["qsort"] <= q - HORIZON]
         if train["qsort"].nunique() >= min_train_quarters:
             test = d[d["qsort"] == q]
-            out.append(_predictions(test, fit_predict(train, test, cols)).assign(
+            out.append(_predictions(test, fit_predict(train, test, cols, caps)).assign(
                 train_last_q=train["qsort"].max(), train_events=int(train["y"].sum()),
-                train_auc=roc_auc_score(train["y"], fit_predict(train, train, cols))))
+                train_auc=roc_auc_score(train["y"], fit_predict(train, train, cols, caps))))
     return pd.concat(out, ignore_index=True) if out else pd.DataFrame()
 
 

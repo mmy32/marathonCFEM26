@@ -1,9 +1,9 @@
-step,borrower_quarters,borrowers,new_nonaccruals
-"named borrower-quarters, funded debt",85333,13367,932
-not a CLO / structured vehicle,81383,12502,932
-"price at t (priceable par, FV/PAR <= 1.5)",80428,12376,918
-priced share >= 50% of funded par,79908,12350,910
-debt fair value >= $1m,75042,11649,873
-"same loans priced the quarter before (change in mark, PIK switch defined)",62298,10152,776
-non-accrual status known at t and accruing (risk set),51520,8707,776
-"labelled: flagged within t + 1 .. t + 2, or held and accruing through it",45365,7712,776
+step,borrower_quarters,borrowers,credit_events,of_which_non_accrual
+"named borrower-quarters, funded debt",85333,13367,3580,932
+not a CLO / structured vehicle,81383,12502,3580,932
+"price at t (priceable par, FV/PAR <= 1.5)",80428,12376,3543,918
+priced share >= 50% of funded par,79908,12350,3525,910
+debt fair value >= $1m,75042,11649,3424,873
+"same loans priced the quarter before (change in mark, PIK switch defined)",62298,10152,2995,776
+non-accrual status known at t and accruing (risk set),51520,8707,2995,776
+"labelled: an event within t + 1 .. t + 2, or held and accruing through it",45427,7722,2995,776
