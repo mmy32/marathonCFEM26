@@ -1,5 +1,5 @@
 """
-Tests for the early-warning scorecard (src/9_model): the borrower-quarter panel (same-loan price
+Tests for the early-warning scorecard (src/9_prediction): the borrower-quarter panel (same-loan price
 changes, credit events within two quarters: non-accrual or a lender's concession, unlabelled exits
 in four buckets, sample rules), term changes and loan exits (credit_events.py), filing dates, and
 the estimation helpers (clustered standard errors, no look-ahead, equal-weighted ranking, deciles,
@@ -18,9 +18,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "1_data_pro
 from paths import add_code_dirs_to_path
 add_code_dirs_to_path()
 
+import common as MC
+import config as CFG
 import credit_events as CE
-import model_fit as F
-import model_panel as MP
+import evaluation as EV
+import features as FT
+import frames as FR
+import models.logit as LG
+import models.ranking as RK
+import panel as MP
+import targets as TG
 
 PAR = 10_000_000.0
 Q = ["2024Q1", "2024Q2", "2024Q3", "2024Q4"]
@@ -29,7 +36,7 @@ Q = ["2024Q1", "2024Q2", "2024Q3", "2024Q4"]
 def tranche(chain, cik, borrower, q, price, link_rule, toggle=False, par=PAR, v1=np.nan, family=None, lien="1L",
             maturity="2029-06-30"):
     return {"chain_id": chain, "cik": cik, "family": family or f"F{cik}", "borrower_key": borrower, "cal_q": q,
-            "qsort": MP.q_sort(q), "FV": price * par, "PAR": par, "COST": par, "FV_px": price * par, "PAR_px": par,
+            "qsort": MC.q_sort(q), "FV": price * par, "PAR": par, "COST": par, "FV_px": price * par, "PAR_px": par,
             "lien_group": lien, "link_rule": link_rule, "is_distress_amendment": toggle, "pik_share": 0.0,
             "V1_std": v1, "V1_range": v1, "sector": "Software", "maturity": pd.Timestamp(maturity),
             "price": price, "spread": 0.05, "IR_Final": 0.10, "PIK_Final": 0.0, "non_accrual": 0.0}
@@ -80,6 +87,14 @@ class TestPanel(unittest.TestCase):
         self.assertAlmostEqual(a.loc["2024Q2", "d_price"], -0.01)
         self.assertAlmostEqual(a.loc["2024Q4", "d_price"], -0.05)
 
+    def test_markdown_outcomes_are_next_quarter_same_loan_changes(self):
+        # signals at 2024Q1: the next quarter's change in the mark (-0.01) and val_ret (FV -$0.2m on
+        # $20m of prior fair value, cost unchanged); nothing after the last quarter
+        a = self.m.loc["ACME"]
+        self.assertAlmostEqual(a.loc["2024Q1", "y_dprice"], -0.01)
+        self.assertAlmostEqual(a.loc["2024Q1", "y_valret"], -0.01)
+        self.assertTrue(np.isnan(a.loc["2024Q4", "y_dprice"]) and np.isnan(a.loc["2024Q4", "y_valret"]))
+
     def test_rolling_max_drawdown(self):
         a = self.m.loc["ACME"]
         self.assertTrue(np.isnan(a.loc["2024Q1", "max_drawdown"]))     # no earlier quarter
@@ -90,7 +105,7 @@ class TestPanel(unittest.TestCase):
     def test_drawdown_window_is_four_quarters(self):
         d = pd.DataFrame({"borrower": "X", "qsort": range(1, 8),
                           "d_price": [np.nan, -0.10, 0.0, 0.0, 0.0, 0.0, 0.02]})
-        dd = MP.rolling_max_drawdown(d).set_index("qsort")["dd"]
+        dd = FT.rolling_max_drawdown(d).set_index("qsort")["dd"]
         self.assertAlmostEqual(dd[5], 0.10)        # quarters 1-5 include the fall in quarter 2
         self.assertAlmostEqual(dd[6], 0.0)         # quarters 2-6: the fall happened before the window
         self.assertAlmostEqual(dd[7], 0.0)
@@ -99,7 +114,7 @@ class TestPanel(unittest.TestCase):
         a = self.m.loc["ACME"]
         self.assertEqual(a.loc["2024Q1", "y_na"], 0)                  # accruing in 2024Q2 and 2024Q3
         self.assertEqual(a.loc["2024Q2", "y_na"], 1)                  # flagged in 2024Q4 = t + 2
-        self.assertEqual(a.loc["2024Q2", "entry_q"], MP.q_sort("2024Q4"))
+        self.assertEqual(a.loc["2024Q2", "entry_q"], MC.q_sort("2024Q4"))
         self.assertEqual(a.loc["2024Q2", "outcome_q"], "2024Q3-2024Q4")
         self.assertEqual(a.loc["2024Q2", "y_na_same_lender"], 1)     # BDC 1 reported it accruing in 2024Q2
         self.assertTrue(np.isnan(a.loc["2024Q3", "y_na"]))           # window runs past the data
@@ -114,10 +129,10 @@ class TestPanel(unittest.TestCase):
         a = self.m.loc["ACME"]
         self.assertEqual(a.loc["2024Q3", "restr_pik"], 1)
         self.assertEqual((a.loc["2024Q1", "y_event"], a.loc["2024Q1", "y_na"]), (1, 0))
-        self.assertEqual(a.loc["2024Q1", "event_q"], MP.q_sort("2024Q3"))
+        self.assertEqual(a.loc["2024Q1", "event_q"], MC.q_sort("2024Q3"))
         self.assertEqual(a.loc["2024Q2", "y_event"], 1)
-        self.assertEqual(a.loc["2024Q2", "event_q"], MP.q_sort("2024Q3"))    # the switch comes before the flag
-        self.assertEqual(a.loc["2024Q2", "entry_q"], MP.q_sort("2024Q4"))
+        self.assertEqual(a.loc["2024Q2", "event_q"], MC.q_sort("2024Q3"))    # the switch comes before the flag
+        self.assertEqual(a.loc["2024Q2", "entry_q"], MC.q_sort("2024Q4"))
         self.assertTrue(np.isnan(a.loc["2024Q3", "y_event"]))                # window runs past the data
         self.assertEqual(set(CE.CONCESSIONS), {"pik", "equity", "write_down"})
         self.assertTrue(set(CE.CONCESSIONS) < set(CE.EVENT_TYPES))
@@ -172,7 +187,7 @@ class TestPanel(unittest.TestCase):
         rows = pl.DataFrame({"cal_q": ["2024Q1"] * 3, "borrower_canonical": ["ACME"] * 3,
                              "instrument_seniority": ["SENIOR_SECURED_1L", "OTHER_UNKNOWN", "SENIOR_SECURED_1L"],
                              "PAR": [None, None, 5.0], "FV": [9.0, 50.0, 5.0], "COST": [10.0, 40.0, 5.0]})
-        n = MP.no_par_debt(rows).iloc[0]                                            # only the first row: debt, no par
+        n = FT.no_par_debt(rows).iloc[0]                                            # only the first row: debt, no par
         self.assertEqual((n["borrower"], n["fv_nopar"], n["cost_nopar"]), ("ACME", 9.0, 10.0))
 
     def test_pik_switch_and_sample(self):
@@ -186,7 +201,7 @@ class TestPanel(unittest.TestCase):
     def test_valuation_gap_is_the_range(self):
         # Two lender families mark the same loan at 90 and 100: the gap is 10 points (std: 7.1).
         t = pd.DataFrame([tranche(1, 1, "ACME", "2024Q1", 0.95, 0)]).assign(V1_range=0.10, V1_std=0.10 / np.sqrt(2))
-        b = MP.borrower_marks(MP._named(t)).iloc[0]
+        b = FT.borrower_marks(FT.named_tranches(t)).iloc[0]
         self.assertAlmostEqual(b["dispersion"], 0.10)
         self.assertAlmostEqual(b["dispersion_std"], 0.10 / np.sqrt(2))
         self.assertEqual(b["has_dispersion"], 1)
@@ -198,10 +213,10 @@ class TestPanel(unittest.TestCase):
 
     def test_event_rates_cover_every_sign(self):
         # Each sign alone: every borrower falls in one bucket of every sign, kept by the rule or not.
-        import model_analysis as A
+        import analysis as A
         n = 8
         d = pd.DataFrame({"borrower": [str(i) for i in range(n)], "qsort": 1, "na_risk_set": True,
-                          F.OUTCOME: [1, 0, 0, 0, 1, 0, 0, 0], "price": np.linspace(0.7, 1.0, n),
+                          CFG.OUTCOME: [1, 0, 0, 0, 1, 0, 0, 0], "price": np.linspace(0.7, 1.0, n),
                           "d_price": np.linspace(-0.1, 0.02, n), "max_drawdown": [0.2, 0.07, 0.03, 0, 0.12, 0, 0, 0.005],
                           "dispersion": 0.01, "has_dispersion": [1, 0] * 4, "crowding": [1, 2, 3, 6] * 2,
                           "pik_switch": [1, 0, 0, 0, 0, 0, 0, 0]})
@@ -258,7 +273,7 @@ class TestCreditEvents(unittest.TestCase):
         t.loc[t["chain_id"].isin([1, 2, 4, 6, 7, 8, 9, 10]) & (t["qsort"] == 1), "link_rule"] = 0
         L = CE.loans(t)
         d = t[["borrower", "qsort", "cik", "FV", "non_accrual"]]
-        ls = MP.lender_status(d)
+        ls = TG.lender_status(d)
         eq = pd.DataFrame({"borrower": ["EQ", "KEEP"], "qsort": [2, 1], "cik": [1, 1]})   # BDC 1 reports equity at 1
         ex = CE.loan_exits(L, d, ls, eq, CE.CUTOFFS["primary"]).set_index("chain_id")
         self.assertEqual(sorted(ex.index), list(range(1, 11)))                        # every ended chain; 11, 12 run on
@@ -314,7 +329,7 @@ class TestFit(unittest.TestCase):
         rng = np.random.default_rng(1)
         X = rng.normal(size=(3000, 2))
         y = (rng.random(3000) < 1 / (1 + np.exp(-(-3 + X @ [1.0, -0.5])))).astype(float)
-        r = F.logit_cluster(X, y, np.arange(3000))
+        r = LG.logit_cluster(X, y, np.arange(3000))
         sk = LogisticRegression(penalty=None, tol=1e-10, max_iter=10_000).fit(X, y)
         np.testing.assert_allclose(r["beta"], np.r_[sk.intercept_, sk.coef_[0]], atol=1e-5)
 
@@ -324,7 +339,7 @@ class TestFit(unittest.TestCase):
         n = 2000
         X = rng.normal(size=(n, 2))
         y = (rng.random(n) < 1 / (1 + np.exp(-(-2 + X @ [1.0, -0.5])))).astype(float)
-        r = F.logit_cluster(X, y, np.arange(n))
+        r = LG.logit_cluster(X, y, np.arange(n))
         X1 = np.column_stack([np.ones(n), X])
         p = r["fitted"]
         bread = np.linalg.inv(X1.T @ (X1 * (p * (1 - p))[:, None]))
@@ -336,21 +351,21 @@ class TestFit(unittest.TestCase):
         g = np.repeat(np.arange(300), 10)
         xb = rng.normal(size=300)                                  # predictor and outcome constant within borrower
         x, y = np.repeat(xb, 10), np.repeat((rng.random(300) < 1 / (1 + np.exp(-xb))).astype(float), 10)
-        se_cl = np.sqrt(F.logit_cluster(x[:, None], y, g)["cov"][1, 1])
-        se_iid = np.sqrt(F.logit_cluster(x[:, None], y, np.arange(3000))["cov"][1, 1])
+        se_cl = np.sqrt(LG.logit_cluster(x[:, None], y, g)["cov"][1, 1])
+        se_iid = np.sqrt(LG.logit_cluster(x[:, None], y, np.arange(3000))["cov"][1, 1])
         self.assertGreater(se_cl, 2 * se_iid)
 
     def test_fixed_caps(self):
         d = pd.DataFrame({"price": [0.30, 0.85, 1.02], "d_price": [-0.45, -0.10, 0.30], "pik_switch": [1, 0, 0]})
-        X = F.design(d, ["price", "d_price", "pik_switch"])
+        X = FR.design(d, ["price", "d_price", "pik_switch"])
         np.testing.assert_allclose(X[:, 0], [0.70, 0.85, 1.02])      # a mark below 70 counts as 70
         np.testing.assert_allclose(X[:, 1], [-0.20, -0.10, 0.20])    # a move of more than 20 points counts as 20
-        X = F.design(d, ["price", "d_price", "pik_switch"], caps={})  # the uncapped robustness check
+        X = FR.design(d, ["price", "d_price", "pik_switch"], caps={})  # the uncapped robustness check
         np.testing.assert_allclose(X[:, :2], d[["price", "d_price"]].to_numpy())
 
     def test_design_fills_missing_dispersion_with_zero(self):
         d = pd.DataFrame({"dispersion": [np.nan, 0.01, 0.5], "has_dispersion": [0, 1, 1]})
-        X = F.design(d, ["dispersion", "has_dispersion"])
+        X = FR.design(d, ["dispersion", "has_dispersion"])
         np.testing.assert_allclose(X[:, 0], [0.0, 0.01, 0.5])        # single lender: 0, indicator carries it
 
     @staticmethod
@@ -367,32 +382,32 @@ class TestFit(unittest.TestCase):
         # Test-quarter outcomes must not change the fitted model: hide them and the scores are identical.
         d = self._frame(4)
         d.loc[d["qsort"] >= 9, "y"] = 1.0                       # outcomes the model must not see
-        seen = F.split_predictions(d, ["x"], 7, [9, 10])
+        seen = EV.split_predictions(d, ["x"], 7, [9, 10])
         hidden = d.assign(y=d["y"].where(d["qsort"] <= 7))      # quarter 8's window is still open at 9
-        unseen = F.split_predictions(hidden, ["x"], 7, [9, 10])
+        unseen = EV.split_predictions(hidden, ["x"], 7, [9, 10])
         np.testing.assert_allclose(seen["pred"].to_numpy(), unseen["pred"].to_numpy())
         self.assertEqual(set(seen["qsort"]), {9, 10})
 
     def test_training_windows_must_close_before_the_test(self):
         # Quarter 8's two-quarter window ends at 10: fitting on it to score 9 would look ahead.
         with self.assertRaises(ValueError):
-            F.split_predictions(self._frame(4), ["x"], 8, [9, 10])
+            EV.split_predictions(self._frame(4), ["x"], 8, [9, 10])
 
     def test_fit_is_deterministic(self):
         d = self._frame(6)
         tr, te = d[d["qsort"] <= 7], d[d["qsort"] > 7]
-        np.testing.assert_array_equal(F.fit_predict(tr, te, ["x"]), F.fit_predict(tr, te, ["x"]))
+        np.testing.assert_array_equal(LG.fit_predict(tr, te, ["x"]), LG.fit_predict(tr, te, ["x"]))
 
     def test_rolling_folds_use_only_earlier_quarters(self):
-        p = F.rolling_predictions(self._frame(5), ["x"])
-        self.assertTrue((p["train_last_q"] <= p["qsort"] - MP.HORIZON).all())     # windows closed by q
-        self.assertEqual(p["qsort"].min(), MP.HORIZON + F.MIN_TRAIN_QUARTERS)
+        p = EV.rolling_predictions(self._frame(5), ["x"])
+        self.assertTrue((p["train_last_q"] <= p["qsort"] - CFG.HORIZON).all())     # windows closed by q
+        self.assertEqual(p["qsort"].min(), CFG.HORIZON + CFG.MIN_TRAIN_QUARTERS)
 
     def test_equal_weight_score(self):
         # Lower mark, larger fall and a PIK switch each raise the rank; ranks are taken within the quarter.
         d = pd.DataFrame({"qsort": [1, 1, 1, 2, 2], "price": [0.6, 0.9, 1.0, 0.99, 1.0],
                           "d_price": [-0.10, -0.02, 0.0, 0.0, -0.01], "pik_switch": [1, 0, 0, 0, 0]})
-        s = F.equal_weight_score(d, ["price", "d_price", "pik_switch"])
+        s = RK.equal_weight_score(d, ["price", "d_price", "pik_switch"])
         self.assertAlmostEqual(s[0], 1.0)                          # riskiest on all three signs
         self.assertGreater(s[1], s[2])
         self.assertAlmostEqual(s[3], s[4])                         # one sign each, PIK tied
@@ -406,7 +421,7 @@ class TestFit(unittest.TestCase):
 
     def test_decile_table(self):
         p = self._scores()
-        t = F.decile_table(p).set_index("decile")
+        t = EV.decile_table(p).set_index("decile")
         self.assertTrue((t["n"] == 4).all())
         self.assertEqual(t.loc[10, "events"], 3)                   # top two of each quarter
         self.assertEqual(t.loc[9, "events"], 1)
@@ -416,37 +431,37 @@ class TestFit(unittest.TestCase):
         self.assertAlmostEqual(t.loc[10, "realized_to_predicted"], 3 / top.sum())
         lo, hi = t.loc[10, ["rate_ci_low", "rate_ci_high"]]
         self.assertTrue(0 <= lo < 0.75 < hi <= 1)
-        self.assertNotIn("realized_to_predicted", F.decile_table(p, probabilities=False))   # ranks, not probabilities
+        self.assertNotIn("realized_to_predicted", EV.decile_table(p, probabilities=False))   # ranks, not probabilities
 
     def test_realized_to_predicted(self):
         # 4 events against 10.2 predicted: the model predicts too many, and says so with an interval.
         p = self._scores()
-        perf = F.performance(p)
+        perf = EV.performance(p)
         self.assertAlmostEqual(perf["realized_to_predicted"], 4 / p["pred"].sum())
         self.assertTrue(perf["ratio_lo"] <= perf["realized_to_predicted"] <= perf["ratio_hi"] < 1)
-        self.assertTrue(np.isnan(F.performance(p, probabilities=False)["realized_to_predicted"]))
+        self.assertTrue(np.isnan(EV.performance(p, probabilities=False)["realized_to_predicted"]))
 
     def test_rate_interval_counts_a_borrower_once(self):
         # The same 40 rows and 6 events, first as 40 borrowers, then as 20 borrowers seen twice
         # with each event repeated: the repeated borrowers carry less information, so a wider interval.
         y = np.array([1, 1, 1, 1, 1, 1] + [0] * 34)
-        lo1, hi1 = F.ratio_ci(y, np.ones(40), np.arange(40))
-        lo2, hi2 = F.ratio_ci(y, np.ones(40), np.arange(40) // 2)
+        lo1, hi1 = EV.ratio_ci(y, np.ones(40), np.arange(40))
+        lo2, hi2 = EV.ratio_ci(y, np.ones(40), np.arange(40) // 2)
         self.assertTrue(lo1 <= y.mean() <= hi1)
         self.assertGreater(hi2 - lo2, hi1 - lo1)
-        self.assertTrue(np.isnan(F.ratio_ci([0, 0], [0, 0], [1, 2])[0]))       # no denominator
+        self.assertTrue(np.isnan(EV.ratio_ci([0, 0], [0, 0], [1, 2])[0]))       # no denominator
 
     def test_auc_gain_of_a_model_over_itself_is_zero(self):
         d = self._frame(7)
-        p = F.split_predictions(d, ["x"], 7, [9, 10])
-        self.assertEqual(F.auc_gain(p, p), (0.0, 0.0, 0.0))
-        auc, lo, hi = F.auc_ci(p)
+        p = EV.split_predictions(d, ["x"], 7, [9, 10])
+        self.assertEqual(EV.auc_gain(p, p), (0.0, 0.0, 0.0))
+        auc, lo, hi = EV.auc_ci(p)
         self.assertTrue(lo < auc < hi)
 
     def test_ranks_by_outcome_scores_every_borrower(self):
         # Every accruing borrower of the test quarter is ranked, labelled or not, and falls in one
         # group; events are split by kind; refinanced is listed though empty (no exit dropped).
-        import model_analysis as A
+        import analysis as A
         rng = np.random.default_rng(1)
         n_b, quarters = 80, 8
         i = np.arange(n_b * quarters)
@@ -456,10 +471,10 @@ class TestFit(unittest.TestCase):
         for c in ["price", "d_price", "max_drawdown", "dispersion"]:
             m[c] = rng.normal(size=len(m))
         m["pik_switch"] = (rng.random(len(m)) < 0.1).astype(float)
-        m[F.OUTCOME] = (rng.random(len(m)) < 0.3).astype(float)
-        m["flag_in_window"] = (m[F.OUTCOME] == 1) & (rng.random(len(m)) < 0.5)
+        m[CFG.OUTCOME] = (rng.random(len(m)) < 0.3).astype(float)
+        m["flag_in_window"] = (m[CFG.OUTCOME] == 1) & (rng.random(len(m)) < 0.5)
         gone = rng.random(len(m)) < 0.1
-        m.loc[gone, [F.OUTCOME, "exited", "exit_class", "flag_in_window"]] = [np.nan, True, "impaired", False]
+        m.loc[gone, [CFG.OUTCOME, "exited", "exit_class", "flag_in_window"]] = [np.nan, True, "impaired", False]
         t = A.ranks_by_outcome(m, 6, [8]).set_index("what_happened")
         self.assertEqual(t.loc["all", "borrower_quarters"], n_b)
         self.assertEqual(t.drop("all")["borrower_quarters"].sum(), n_b)
@@ -467,16 +482,16 @@ class TestFit(unittest.TestCase):
         self.assertEqual(t.loc["all", "in_riskiest_tenth"], n_b // 10)
         events = t.loc[["credit event: non-accrual", "credit event: concession only"], "borrower_quarters"].sum()
         last = m[m["qsort"] == 8]
-        self.assertEqual(events, (last[F.OUTCOME] == 1).sum())
-        self.assertAlmostEqual(t.loc["all", "labelled_share"], last[F.OUTCOME].notna().mean())
+        self.assertEqual(events, (last[CFG.OUTCOME] == 1).sum())
+        self.assertAlmostEqual(t.loc["all", "labelled_share"], last[CFG.OUTCOME].notna().mean())
         self.assertTrue(np.isnan(t.loc["no credit event", "roc_auc_vs_no_event"]))
 
     def test_pr_auc_and_recall_at_budget(self):
         # 4 events, 3 of them in the top 10% (2 of 20 per quarter) and all 4 in the top 20%.
         p = self._scores()
-        self.assertAlmostEqual(F.recall_at(p, 0.10)[0], 0.75)
-        self.assertAlmostEqual(F.recall_at(p, 0.20)[0], 1.0)
-        ap, lo, hi = F.pr_auc_ci(p)
+        self.assertAlmostEqual(EV.recall_at(p, 0.10)[0], 0.75)
+        self.assertAlmostEqual(EV.recall_at(p, 0.20)[0], 1.0)
+        ap, lo, hi = EV.pr_auc_ci(p)
         self.assertTrue(p["y"].mean() < ap <= 1.0)              # better than the event rate (random)
         self.assertTrue(lo <= ap <= hi)
 

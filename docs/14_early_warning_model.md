@@ -121,7 +121,7 @@ clustered and intervals resampled by borrower.
 ## 2. Term changes and exits
 
 Both are read from how each BDC's schedule changes between consecutive filings
-(`src/9_model/credit_events.py`). A "loan" is one BDC's tranche followed over time (the tranche
+(`src/9_prediction/credit_events.py`). A "loan" is one BDC's tranche followed over time (the tranche
 chains of doc 11), for operating borrowers only (no CLO tranches). A loan's mark is fair value /
 par.
 
@@ -424,9 +424,14 @@ In the full data it comes back, and the swap falls a quarter later. This touches
 
 ## Method
 
-Code in `src/9_model/` (`model_panel.py`: panel, outcome and exits; `credit_events.py`: term
-changes and loan exits; `model_fit.py`: logit and metrics; `model_analysis.py`: tables;
-`model_charts.py`: charts). Outputs in `outputs/model/`.
+Code in `src/9_prediction/`, one job per file: `config.py` (constants), `features.py` (the signs and the
+`FEATURES` registry of units, caps and buckets), `targets.py` (the outcomes: credit event, exits,
+restructurings, next-quarter markdown), `credit_events.py` (term changes and loan exits), `panel.py`
+(joins them, sample rules, event and exit counts), `specs.py` (which signs go in which model),
+`frames.py` (the rows a model sees), `models/` (one file per kind of estimator: `logit.py`,
+`linear.py`, `ranking.py`; lasso, trees and a neural net go here), `evaluation.py` (time splits and
+metrics), `analysis.py` (tables, including the one-input baselines) and `plots.py`. Outputs in
+`outputs/model/`.
 
 - **Unit:** a borrower in a quarter, every BDC's loans pooled. Kept if it is not a CLO vehicle,
   has a mark on at least half its par, holds $1m+ of debt, and its loans were priced the quarter

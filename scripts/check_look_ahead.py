@@ -28,8 +28,12 @@ sys.path.insert(0, str(ROOT / "src" / "1_data_processing"))
 from paths import FINAL_DIR, MODEL_DATA_DIR, MODEL_DIR, add_code_dirs_to_path  # noqa: E402
 add_code_dirs_to_path()
 
-from model_fit import SCORECARD, model_frame, split_predictions  # noqa: E402
-from model_panel import HORIZON, build_model_panel, q_sort  # noqa: E402
+from common import q_sort  # noqa: E402
+from config import HORIZON  # noqa: E402
+from evaluation import split_predictions  # noqa: E402
+from frames import model_frame  # noqa: E402
+from panel import build_model_panel  # noqa: E402
+from specs import SCORECARD  # noqa: E402
 
 warnings.filterwarnings("ignore")
 

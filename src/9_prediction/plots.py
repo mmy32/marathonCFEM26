@@ -1,7 +1,7 @@
-"""Charts for the early-warning scorecard (src/9_model), in the deck's style
+"""Charts for the early-warning scorecard (src/9_prediction), in the deck's style
 (src/8_risk_monitor/charts.py): event rate by bucket of each sign, the mark path before a
 credit event, the scorecard's odds ratios, the out-of-sample event rate by score decile and
-the rolling AUC by quarter. The event throughout is the model's one outcome (model_fit.OUTCOME)."""
+the rolling AUC by quarter. The event throughout is the model's one outcome (config.OUTCOME)."""
 from __future__ import annotations
 
 import matplotlib
@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 from charts import BLUE, GRID, INK, MUTED, ORANGE, SURFACE, _spread, _style
-from model_fit import SCORECARD
+from specs import SCORECARD
 
 EVENT_NOTE = ("Event: within the next two quarters a BDC flags the borrower's debt non-accrual, or a lender switches "
               "its interest to PIK, swaps its debt for equity or writes down its cost")
@@ -175,7 +175,7 @@ def event_profile(p: pd.DataFrame, path, window: str):
 
 
 def rolling_auc_by_quarter(t: pd.DataFrame, path, dev_end: str, test_from: str):
-    """ROC-AUC of each rolling test quarter (model_analysis.by_quarter): the scorecard against the
+    """ROC-AUC of each rolling test quarter (analysis.by_quarter): the scorecard against the
     mark alone. Signal quarters up to `dev_end` chose the signs, those from `test_from` on are the
     out-of-sample test, and any in between are skipped (their windows overlap the test)."""
     x = np.arange(len(t))

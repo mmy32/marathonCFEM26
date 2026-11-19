@@ -28,7 +28,7 @@ INDEX_PLOTS_DIR       = FIGURES_DIR / "index_construction_plots"
 EDA_PLOTS_DIR         = FIGURES_DIR / "eda_plots"
 DATA_CENTER_PLOTS_DIR = FIGURES_DIR / "data_center_plots"
 RISK_MONITOR_DIR      = FIGURES_DIR / "risk_monitor"       # warning signs, BDC exposure, case studies
-MODEL_DIR             = FIGURES_DIR / "model"              # early-warning models (src/9_model)
+MODEL_DIR             = FIGURES_DIR / "model"              # early-warning models (src/9_prediction)
 
 # Code folders (one per pipeline stage / analysis)
 SRC_DIR = ROOT / "src"
@@ -41,7 +41,7 @@ CODE_DIRS = [
     SRC_DIR / "5_pik",
     SRC_DIR / "6_data_center",
     SRC_DIR / "8_risk_monitor",
-    SRC_DIR / "9_model",
+    SRC_DIR / "9_prediction",
     SCRIPTS_DIR,
 ]
 

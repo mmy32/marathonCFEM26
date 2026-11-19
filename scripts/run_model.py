@@ -25,29 +25,19 @@ sys.path.insert(0, str(ROOT / "src" / "1_data_processing"))
 from paths import FINAL_DIR, METADATA_CSV, MODEL_DATA_DIR, MODEL_DIR, add_code_dirs_to_path  # noqa: E402
 add_code_dirs_to_path()
 
+import analysis as A  # noqa: E402
 import credit_events as CE  # noqa: E402
-import model_analysis as A  # noqa: E402
-import model_charts as C  # noqa: E402
-from model_fit import BASELINE, CANDIDATES, SCORECARD, decile_table, model_frame, performance, \
-    split_predictions  # noqa: E402
-from model_panel import HORIZON, build_model_panel, event_counts, filing_lags, q_next, q_sort, \
-    restructuring_vs_nonaccrual, sample_waterfall, unlabelled_exits, window_label  # noqa: E402
+import plots as C  # noqa: E402
+from common import q_next, q_sort, window_label  # noqa: E402
+from config import HORIZON, RESERVED_Q, SCORE_Q, TEST_QS, TRAIN_END  # noqa: E402
+from evaluation import decile_table, performance, split_predictions  # noqa: E402
+from frames import model_frame  # noqa: E402
+from panel import build_model_panel, event_counts, filing_lags, restructuring_vs_nonaccrual, \
+    sample_waterfall, unlabelled_exits  # noqa: E402
+from specs import BASELINE, CANDIDATES, SCORECARD, SIGN_NAMES  # noqa: E402
 
 warnings.filterwarnings("ignore")
 
-# Signs at t are scored against credit events at t + 1 or t + 2. Three stages, in time order; a stage's
-# training windows all close before the next stage's first signal quarter:
-TRAIN_END = "2025Q2"              # development: signs up to 2025Q2 (windows close by 2025Q4) choose the signs
-TEST_QS = ["2025Q4"]              # test: one fit on the development quarters, scored on one quarter of
-                                  # signals, so it looks two quarters ahead like every other stage
-                                  # (events in 2026Q1-2026Q2, the first half of 2026). Was 2025Q3-Q4 until
-                                  # 2026-11-16 and 2025Q3 (with development up to 2025Q1) until 2026-11-18;
-                                  # the rule keeps the same signs either way.
-SCORE_Q = "2026Q2"                # scorecard quarter (window 2026Q3-2026Q4)
-RESERVED_Q = "2026Q3"             # reserved: nothing is fitted or chosen on it. Once filed, signals from
-                                  # 2026Q1 (window 2026Q2-2026Q3) are the blind test: the only test no
-                                  # choice has seen (the 2025Q4 test was seen in the rolling check before
-                                  # this split was chosen). Change nothing after running it
 CONTEXT = ["price", "d_price", "pik_switch", "max_drawdown", "dispersion", "crowding", "fv_debt", "sector"]
 
 
@@ -144,9 +134,9 @@ def main(cached: bool = False):
     sel = A.sign_selection(roll, train_end)
     sel.to_csv(out / "sign_selection.csv", index=False)
     print(sel.round(4).to_string(index=False))
-    kept = [k for k, cols in CANDIDATES.items() if sel.set_index("spec").loc[f"baseline + {A.SIGN_NAMES[k]}", "kept"]]
+    kept = [k for k, cols in CANDIDATES.items() if sel.set_index("spec").loc[f"baseline + {SIGN_NAMES[k]}", "kept"]]
     if set(SCORECARD) != set(BASELINE + sum((CANDIDATES[k] for k in kept), [])):
-        raise SystemExit(f"The rule keeps {kept}; model_fit.SCORECARD is {SCORECARD}. Update SCORECARD.")
+        raise SystemExit(f"The rule keeps {kept}; specs.SCORECARD is {SCORECARD}. Update SCORECARD.")
     bq = A.by_quarter(roll)
     bq.to_csv(out / "rolling_by_quarter.csv", index=False)
     C.rolling_auc_by_quarter(bq, out / "rolling_auc_by_quarter.png", TRAIN_END, TEST_QS[0])

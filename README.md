@@ -51,7 +51,7 @@ python src/6_data_center/classify_data_center_borrowers.py  # data-center tags, 
 │   ├── 5_pik/                     PIK switches (used by 8 and 9)
 │   ├── 6_data_center/             data-center borrowers
 │   ├── 8_risk_monitor/            warning signs, BDC exposure, borrower panel, case studies
-│   └── 9_model/                   early-warning model
+│   └── 9_prediction/               early-warning model
 ├── scripts/                       run_*.py entry points
 ├── tests/                         unit tests
 ├── docs/                          one write-up per stage
