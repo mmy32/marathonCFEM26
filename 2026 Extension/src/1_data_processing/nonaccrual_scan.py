@@ -1,6 +1,8 @@
 """Scan every filing's XBRL instance for non-accrual footnotes and the contexts they are linked to, plus
 the filing's own non-accrual and net-asset totals -> data/parsed/nonaccrual/. Needs the raw instances in
-data/ixbrl/raw_xml/. Run: python src/1_data_processing/nonaccrual_scan.py"""
+data/ixbrl/raw_xml/. Run: python src/1_data_processing/nonaccrual_scan.py
+For a new quarter, when the old instances are gone: python src/1_data_processing/nonaccrual_scan.py --new
+scans only the filings the saved scan_log does not list and appends them to the saved outputs."""
 from __future__ import annotations
 
 import csv
@@ -73,9 +75,17 @@ def main():
         for row in r:
             keys.add((row[ic], row[ia]))
     keys = sorted(keys)
+    new_only = "--new" in sys.argv
+    if new_only:
+        with open(OUT_DIR / "scan_log.csv", encoding="utf-8", newline="") as f:
+            logged = {(r["cik"], r["accession"]) for r in csv.DictReader(f)}
+        keys = [k for k in keys if k not in logged]
+        absent = [k for k in keys if not (IXBRL_RAW_XML_DIR / f"{k[0]}_{k[1].zfill(18)}.xml").exists()]
+        if absent:
+            sys.exit(f"{len(absent)} unscanned filings have no XBRL instance in {IXBRL_RAW_XML_DIR}; nothing written")
     # The saved scan read every filing's XML. Without them the outputs would mark those filings
     # "missing" and step 8 would leave their non_accrual blank, so stop before overwriting anything.
-    missing = [k for k in keys if not (IXBRL_RAW_XML_DIR / f"{k[0]}_{k[1].zfill(18)}.xml").exists()]
+    missing = [] if new_only else [k for k in keys if not (IXBRL_RAW_XML_DIR / f"{k[0]}_{k[1].zfill(18)}.xml").exists()]
     if missing:
         sys.exit(f"{len(missing)} of {len(keys)} filings have no XBRL instance in {IXBRL_RAW_XML_DIR} "
                  f"(e.g. {missing[0][0]}_{missing[0][1].zfill(18)}.xml). Run the iXBRL parser (step 3) "

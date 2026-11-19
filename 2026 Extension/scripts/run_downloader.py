@@ -1,5 +1,6 @@
 """Step 2: download the 10-K/10-Q filings of every BDC in BDC_intervals.csv to cache/.
 mode in main(): "full", "test" (one company, 2024) or "retry_failed". Calls the SEC (hours for "full")."""
+import os
 import sys
 from pathlib import Path
 
@@ -106,7 +107,7 @@ def run_download(
 
 
 def main():
-    user_agent = "Your Name your.email@domain.com"  # the SEC requires a real name and contact email
+    user_agent = os.environ["SEC_USER_AGENT"]  # the SEC requires a real name and contact email, e.g. set SEC_USER_AGENT="Name email" in your shell
     mode = "full"  # "test" | "full" | "retry_failed"
     run_download(user_agent=user_agent, mode=mode)
 

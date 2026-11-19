@@ -7,10 +7,11 @@ the dataset for two things:
 - **The midterm deck** (*Examining Early Warning Signals in Private Credit*, 5 Nov 2026): BDC
   growth, a BDC loan index against the CDLI, borrower warning signs (crowding, disagreement on
   value, PIK), each BDC's exposure to flagged borrowers, case studies and data-center lending.
-- **The early-warning scorecard** (after the midterm): ranks borrowers by the chance of entering
-  non-accrual within the next two quarters, from five signs (a low mark, a fall this quarter and
-  over the past year, a switch to paying interest in kind, lenders disagreeing on value). A
-  markdown is only ever an input, never the outcome.
+- **The early-warning scorecard** (after the midterm): ranks borrowers by the chance of a credit
+  event within the next two quarters (non-accrual, or a lender's concession: a switch to paying
+  interest in kind, a debt-for-equity swap, a write-down), from four signs (a low mark, a fall
+  this quarter and over the past year, a switch to paying interest in kind). A markdown is only
+  ever an input, never the outcome.
   Start with [docs/14](docs/14_early_warning_model.md).
 
 All analysis reads one file: `data/final_dataset/FINAL_DATASET.csv`.
@@ -152,13 +153,9 @@ steps:
 - 2026-10-24: old and duplicate files moved to `../just in case/`.
 - 2026-11-08: everything outside the midterm deck moved out.
 - 2026-11-12: `val_ret` and the stress events removed; the early-warning model added.
-- 2026-11-13: the model reduced to one outcome (a credit event next quarter: non-accrual or an
-  impaired exit) and one logistic
-  scorecard; exits classified; valuation outcomes, longer horizons, ridge, lasso, boosted trees and the
-  neural network removed.
-- 2026-11-14: the outcome is non-accrual only. Impaired exits were defined by a mark below 80,
-  which made a markdown part of the outcome; the filings have no restructuring or realized-loss
-  field to use instead. Exits now get no label, and the exit classification is removed.
-- 2026-11-14: the outcome window is two quarters (t + 1 or t + 2); the test uses signals from the
-  second half of 2025. Exits are typed by scheduled maturity (`exits.csv`). The frozen sign rule
-  now keeps the PIK switch, the fall over the past year and the valuation gap.
+- 2026-11-13 to 11-16: the model rebuilt to the sponsor's rules: one outcome (a credit event
+  within two quarters: non-accrual or a lender's concession), one small logistic scorecard tested
+  out of sample, the other term changes and the exits counted beside the outcome. Earlier
+  versions (other outcomes, ridge, lasso, trees, a neural network) are in the git history; the
+  version with non-accrual alone as the outcome is in
+  `ORIE 5220/miscellaneous/model_before_credit_event_outcome_2026-11-16/`.

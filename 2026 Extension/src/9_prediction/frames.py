@@ -27,12 +27,13 @@ def model_frame(m: pd.DataFrame, cols: list[str], outcome: str = OUTCOME, only_m
     return d[keep].rename(columns={outcome: "y"}).reset_index(drop=True)
 
 
-def design(d: pd.DataFrame, cols: list[str]) -> np.ndarray:
-    """Apply the fixed caps (PREDICTOR_CAPS), then fill the structurally missing dispersion with 0
-    (has_dispersion carries the difference). Other predictors are used as reported."""
+def design(d: pd.DataFrame, cols: list[str], caps: dict = PREDICTOR_CAPS) -> np.ndarray:
+    """Apply the fixed caps (PREDICTOR_CAPS; caps={} for the uncapped robustness check), then fill
+    the structurally missing dispersion with 0 (has_dispersion carries the difference). Other
+    predictors are used as reported."""
     X = d[cols].astype(float).copy()
-    for c in PREDICTOR_CAPS.keys() & set(cols):
-        X[c] = X[c].clip(*PREDICTOR_CAPS[c])
+    for c in caps.keys() & set(cols):
+        X[c] = X[c].clip(*caps[c])
     for c in STRUCTURAL_ZERO & set(cols):
         X[c] = X[c].fillna(0.0)
     return X.to_numpy()

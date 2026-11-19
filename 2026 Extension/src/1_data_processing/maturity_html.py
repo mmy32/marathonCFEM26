@@ -251,5 +251,15 @@ if __name__ == "__main__":
         OUT_DIR.mkdir(parents=True, exist_ok=True)
         extract().to_csv(OUT_CSV, index=False)
         print(f"wrote {OUT_CSV}")
+    elif cmd == "extract-new":
+        # A new quarter: read only filings with report_date >= argv[2] and replace their rows in the saved file.
+        since = sys.argv[2]
+        t = target_filings()
+        t = t[t["report_date"] >= since]
+        new = extract(t)
+        old = pd.read_csv(OUT_CSV, dtype=str)
+        old = old[~old["accession"].isin(set(t["accession"]))]
+        pd.concat([old, new], ignore_index=True).to_csv(OUT_CSV, index=False)
+        print(f"added {len(new):,} rows for {len(t)} filings reported on or after {since} -> {OUT_CSV}")
     else:
-        sys.exit("usage: maturity_html.py download | extract")
+        sys.exit("usage: maturity_html.py download | extract | extract-new YYYY-MM-DD")

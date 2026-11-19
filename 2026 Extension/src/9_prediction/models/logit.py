@@ -10,7 +10,7 @@ from sklearn.metrics import roc_auc_score
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from features import UNITS
+from features import PREDICTOR_CAPS, UNITS
 from frames import design
 
 
@@ -47,10 +47,10 @@ def logit_cluster(X: np.ndarray, y: np.ndarray, groups: np.ndarray, max_iter: in
     return {"beta": beta, "cov": cov, "fit": 1 - ll / ll0, "fitted": p}
 
 
-def coefficient_table(d: pd.DataFrame, cols: list[str], label: dict) -> pd.DataFrame:
+def coefficient_table(d: pd.DataFrame, cols: list[str], label: dict, caps: dict = PREDICTOR_CAPS) -> pd.DataFrame:
     """In-sample logit on frame `d`, predictors expressed per UNITS step; standard errors clustered
     by borrower. One row per term."""
-    X = design(d, cols) / np.array([UNITS.get(c, 1.0) for c in cols])
+    X = design(d, cols, caps) / np.array([UNITS.get(c, 1.0) for c in cols])
     y = d["y"].to_numpy(dtype=float)
     r = logit_cluster(X, y, d["borrower"].to_numpy())
     se = np.sqrt(np.diag(r["cov"]))
@@ -66,8 +66,8 @@ def coefficient_table(d: pd.DataFrame, cols: list[str], label: dict) -> pd.DataF
     return out
 
 
-def fit_predict(train: pd.DataFrame, test: pd.DataFrame, cols: list[str]) -> np.ndarray:
+def fit_predict(train: pd.DataFrame, test: pd.DataFrame, cols: list[str], caps: dict = PREDICTOR_CAPS) -> np.ndarray:
     """Fit the unpenalized logit on `train` and return the predicted probabilities for `test`."""
     model = make_pipeline(StandardScaler(), LogisticRegression(penalty=None, max_iter=5000))
-    model.fit(design(train, cols), train["y"].to_numpy(dtype=float))
-    return model.predict_proba(design(test, cols))[:, 1]
+    model.fit(design(train, cols, caps), train["y"].to_numpy(dtype=float))
+    return model.predict_proba(design(test, cols, caps))[:, 1]

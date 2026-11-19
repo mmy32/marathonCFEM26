@@ -3,6 +3,7 @@ data/ixbrl/combined/wide_all.csv. Resumes where it stopped. mode in main(): "ful
 company, 2024) or "retry_failed". Calls the SEC (hours for "full")."""
 from __future__ import annotations
 
+import os
 import sys
 import time
 import logging
@@ -96,7 +97,7 @@ def load_and_filter_metadata(
         df = df[df["cik"].astype(str).str.lstrip("0").isin(want)]
 
     if (date_from or date_to) and "filingDate" in df.columns:
-        fd = pd.to_datetime(df["filingDate"], errors="coerce")
+        fd = pd.to_datetime(df["filingDate"].astype(str).str[:10], errors="coerce")  # some rows carry a time part
         mask = pd.Series(True, index=df.index)
         if date_from:
             mask &= fd >= pd.to_datetime(date_from)
@@ -244,7 +245,7 @@ def run_ixbrl_parse(
 
 
 def main():
-    user_agent = "Your Name your.email@domain.com"  # the SEC requires a real name and contact email
+    user_agent = os.environ["SEC_USER_AGENT"]  # the SEC requires a real name and contact email, e.g. set SEC_USER_AGENT="Name email" in your shell
     mode = "full"  # "test" | "full" | "retry_failed"
 
     if mode == "test":
@@ -263,6 +264,7 @@ def main():
     elif mode == "full":
         run_ixbrl_parse(
             user_agent=user_agent,
+            date_from="2026-10-01",  # 2026Q3 10-Qs only (filed Oct-Nov 2026); drop this line to parse every unparsed filing
             append_if_exists=True,
             resume_parsed_only=True,
             resume_failed_only=False,

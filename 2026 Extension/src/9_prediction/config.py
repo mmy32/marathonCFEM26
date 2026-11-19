@@ -4,32 +4,33 @@ here imports from the rest of the model."""
 from __future__ import annotations
 
 # ---- outcome and sample
-OUTCOME = "y_na"            # the one classification outcome: an accruing borrower enters non-accrual at t + 1 or t + 2
-HORIZON = 2                 # the outcome window: non-accrual at t + 1 or t + 2
+OUTCOME = "y_event"         # the one classification outcome: an accruing borrower has a credit event at t + 1 or t + 2
+                            # (non-accrual, or a lender's concession: PIK switch, debt-for-equity, write-down)
+HORIZON = 2                 # the outcome window: a credit event at t + 1 or t + 2
 WINDOW_TEXT = "within the next two quarters"
 MIN_PRIOR_FV = 1_000_000    # sample: the borrower's debt fair value at t is at least $1m
 MIN_PRICED_SHARE = 0.5      # sample: priceable par is at least half of the borrower's funded par at t
 MAX_CLO_SHARE = 0.5         # sample: CLO / structured tranches under half of par (CLO vehicles are not operating borrowers)
 
 # ---- definitions of the signs
-MAX_PRICE = 1.5             # FV / PAR above this is par left in local currency (cleaning issue): no price
 DD_WINDOW = 4               # rolling max drawdown over the preceding four quarters
 LOW_MARK = 0.90             # PIK-switch hypotheses: mark below 90% of par ...
 MARKDOWN = 0.05             # ... or marked down at least five points in the quarter
 JUNIOR_LIENS = {"2L", "SUB", "UNSEC"}
-# Debt reported without par is marked at FV / cost (the tranche panel holds only rows with par).
-# OTHER_UNKNOWN rows without par are mostly equity and warrants, and CLO rows are not operating debt.
-NO_PAR_DEBT = {"SENIOR_SECURED_1L", "UNITRANCHE", "SENIOR_SECURED_2L", "SUBORDINATED_MEZZ", "SENIOR_UNSECURED",
-               "SENIOR_SECURED_UNSPEC"}
 
-# ---- time split. Signs at t are scored against entries at t + 1 or t + 2. Three stages in time
+# ---- time split. Signs at t are scored against credit events at t + 1 or t + 2. Three stages, in time
 # order; a stage's training windows all close before the next stage's first signal quarter:
-TRAIN_END = "2025Q1"        # development: signs up to 2025Q1 (windows close by 2025Q3) choose the signs
-TEST_QS = ["2025Q3", "2025Q4"]    # test: one fit on the development quarters, scored on signals from the
-                                  # second half of 2025 (entries in 2025Q4-2026Q2)
+TRAIN_END = "2025Q2"        # development: signs up to 2025Q2 (windows close by 2025Q4) choose the signs
+TEST_QS = ["2025Q4"]        # test: one fit on the development quarters, scored on one quarter of
+                            # signals, so it looks two quarters ahead like every other stage
+                            # (events in 2026Q1-2026Q2, the first half of 2026). Was 2025Q3-Q4 until
+                            # 2026-11-16 and 2025Q3 (with development up to 2025Q1) until 2026-11-18;
+                            # the rule keeps the same signs either way.
 SCORE_Q = "2026Q2"          # scorecard quarter (window 2026Q3-2026Q4)
 RESERVED_Q = "2026Q3"       # reserved: nothing is fitted or chosen on it. Once filed, signals from
-                            # 2026Q1 (window 2026Q2-2026Q3) are the blind test
+                            # 2026Q1 (window 2026Q2-2026Q3) are the blind test: the only test no
+                            # choice has seen (the 2025Q4 test was seen in the rolling check before
+                            # this split was chosen). Change nothing after running it
 
 # ---- tests and intervals
 MIN_TRAIN_QUARTERS = 3      # rolling: a test quarter needs at least three labelled training quarters
