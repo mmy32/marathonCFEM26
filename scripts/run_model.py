@@ -7,7 +7,7 @@ interest to PIK, swaps its debt for equity or writes down its cost; borrowers th
 BDC's books before then without an event have no label, and a mark never enters the outcome),
 counts every term change and puts every loan exit in one of four buckets (repaid, refinanced,
 impaired, unresolved) at two cutoffs, chooses the signs on the development quarters, tests the
-scorecard out of sample on signals from 2025Q3, and applies it to the latest quarter. Reads
+scorecard out of sample on signals from 2025Q4 (events in 2026Q1-Q2), and applies it to the latest quarter. Reads
 FINAL_DATASET.csv; writes data/model/ (the panel and the out-of-sample predictions) and
 outputs/model/. About 6 minutes; `--cached` reuses the saved panel (skips the 2-minute panel
 build). See docs/14_early_warning_model.md."""
@@ -37,15 +37,17 @@ warnings.filterwarnings("ignore")
 
 # Signs at t are scored against credit events at t + 1 or t + 2. Three stages, in time order; a stage's
 # training windows all close before the next stage's first signal quarter:
-TRAIN_END = "2025Q1"              # development: signs up to 2025Q1 (windows close by 2025Q3) choose the signs
-TEST_QS = ["2025Q3"]              # test: one fit on the development quarters, scored on one quarter of
+TRAIN_END = "2025Q2"              # development: signs up to 2025Q2 (windows close by 2025Q4) choose the signs
+TEST_QS = ["2025Q4"]              # test: one fit on the development quarters, scored on one quarter of
                                   # signals, so it looks two quarters ahead like every other stage
-                                  # (events in 2025Q4-2026Q1). Was 2025Q3-Q4 until 2026-11-16.
+                                  # (events in 2026Q1-2026Q2, the first half of 2026). Was 2025Q3-Q4 until
+                                  # 2026-11-16 and 2025Q3 (with development up to 2025Q1) until 2026-11-18;
+                                  # the rule keeps the same signs either way.
 SCORE_Q = "2026Q2"                # scorecard quarter (window 2026Q3-2026Q4)
 RESERVED_Q = "2026Q3"             # reserved: nothing is fitted or chosen on it. Once filed, signals from
                                   # 2026Q1 (window 2026Q2-2026Q3) are the blind test: the only test no
-                                  # choice has seen (the 2025Q3 test was seen before the sign rule, the
-                                  # caps and the outcome were settled). Change nothing after running it
+                                  # choice has seen (the 2025Q4 test was seen in the rolling check before
+                                  # this split was chosen). Change nothing after running it
 CONTEXT = ["price", "d_price", "pik_switch", "max_drawdown", "dispersion", "crowding", "fv_debt", "sector"]
 
 

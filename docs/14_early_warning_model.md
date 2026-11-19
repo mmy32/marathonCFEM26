@@ -254,6 +254,25 @@ events).
 - The mark alone scores 0.727, above the baseline: the quarter's change adds nothing by itself.
   It stays because the sponsor's baseline is the mark and its recent change.
 
+**The fitted scorecard** (`coefficients.csv`, spec "scorecard"; `odds_ratios.png`). This fit
+uses all 45,427 labelled borrower-quarters with outcomes through 2026Q2 (7,722 borrowers, 2,995
+events). Coefficients are per point of par (0.01 of the mark), so they read directly off a
+schedule. The CSV reports them per 10 points (the mark) and per 5 points (the two changes);
+divide by 10 and by 5. Standard errors are clustered by borrower. The mark and the moves are
+capped (Method).
+
+| Term | Coefficient | SE | z | p | Odds ratio |
+|---|---|---|---|---|---|
+| Intercept | 4.13 | 0.55 | 7.5 | <0.001 | |
+| Mark, per point of par | -0.073 | 0.006 | -13.0 | <0.001 | 0.93 |
+| Change in the mark this quarter, per point | -0.012 | 0.007 | -1.8 | 0.067 | 0.99 |
+| Fall over the past year, per point | 0.061 | 0.008 | 7.6 | <0.001 | 1.06 |
+| Switched to PIK this quarter (0/1) | 1.87 | 0.085 | 22.1 | <0.001 | 6.48 |
+
+McFadden pseudo R² 0.11; ROC-AUC 0.744 on the rows it was fitted on. Per 10 points lower the
+mark multiplies the odds by 2.07 (= 1 / 0.482), and per 5 points of fall over the year by 1.36.
+The 30-second table rounds these.
+
 ## 4. Out-of-sample performance (`oos_performance.csv`, `oos_score_deciles.png`)
 
 Fitted once on outcomes through 2025Q3 (signals up to 2025Q1, 2,074 events); tested on the 5,067
@@ -276,6 +295,10 @@ scorecard's 0.23 is about 3.6 times random.
 | 9 | 14.0% [11.1, 17.1] | 6.9% | 2.02 [1.59, 2.48] |
 | 1-8 | 2.8% | 4.4% | 0.64 [0.54, 0.76] |
 | All | 6.3% [5.7, 7.0] | 6.9% | **0.92 [0.84, 1.02]** |
+
+Deciles 1-8 one by one (about 507 borrowers each), events and realized rate, from decile 8 down
+to 1: 23 (4.5%), 17 (3.4%), 11 (2.2%), 8 (1.6%), 11 (2.2%), 15 (3.0%), 12 (2.4%), 17 (3.4%).
+Each is predicted at 3.8% to 5.1%.
 
 Realized ÷ predicted is 1 when the model predicts the right number of events; its interval, like
 the others, resamples borrowers with the predictions held fixed (`oos_deciles.csv`).
@@ -431,9 +454,16 @@ changes and loan exits; `model_fit.py`: logit and metrics; `model_analysis.py`: 
   before the quarter it scores. Choosing signs: rolling, each of signals 2024Q2-2025Q1 scored by
   a fit on the windows closed by then; the four rounds' predictions are pooled into one ROC-AUC
   per model. Test: fit on outcomes through 2025Q3, scored on the borrowers of 2025Q3 (events
-  2025Q4-2026Q1). Final test (once 2026Q3 is loaded): fit on outcomes through 2026Q1, scored on
-  the borrowers of 2026Q1 (events 2026Q2-Q3). Scorecard: fit on outcomes through 2026Q2 (signals
-  2023Q2-2025Q4), scored on the borrowers of 2026Q2.
+  2025Q4-2026Q1). Blind test (not in the data used; needs 2026Q3): fit on outcomes through
+  2026Q1, scored on the borrowers of 2026Q1 (events 2026Q2-Q3). Scorecard: fit on outcomes through
+  2026Q2 (signals 2023Q2-2025Q4), scored on the borrowers of 2026Q2.
+
+  | Stage | Fitted on (signal quarters) | Rows fitted | Events fitted | Scored |
+  |---|---|---|---|---|
+  | Choosing signs, first round | 2023Q2-2023Q4 | 9,664 | 680 | borrowers of 2024Q2 |
+  | Choosing signs, last round | 2023Q2-2024Q3 | 21,385 | 1,524 | borrowers of 2025Q1 |
+  | Test | 2023Q2-2025Q1 | 30,366 | 2,074 | borrowers of 2025Q3 (5,067; 321 events) |
+  | Scorecard | 2023Q2-2025Q4 | 45,427 | 2,995 | borrowers of 2026Q2 (6,267) |
 - **Intervals:** borrower-resampled bootstrap for every performance measure and rate (AUC,
   recall, event rates), since a borrower appears in several quarters and one event can fall in
   two overlapping windows; borrower-clustered standard errors for coefficients.
