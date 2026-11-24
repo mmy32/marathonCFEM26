@@ -6,8 +6,7 @@ accruing in both quarters with no concession, missing otherwise: it left every B
 the window closed without an event (exited; exit_class repaid / refinanced / impaired /
 unresolved, credit_events.py), its status is unknown, or the window runs past the data. A mark
 never enters this outcome. Robustness: y_na (non-accrual alone, the outcome until 2026-11-16),
-y_na_first, y_na_same_lender, y_all_terms. Markdown (continuous): y_dprice and y_valret, the
-same-loan change in the mark and val_ret from t to t + 1."""
+y_na_first, y_na_same_lender, y_all_terms."""
 from __future__ import annotations
 
 import numpy as np
@@ -70,7 +69,7 @@ def build_credit_events(t: pd.DataFrame, rows: pl.DataFrame, d: pd.DataFrame, ls
 def add_targets(b: pd.DataFrame, rows: pl.DataFrame, tr: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     """Add the outcomes to the borrower-quarter signs `b` (features.build_features): the
     non-accrual status and debt fair value of every debt row, the restructurings at t and in the
-    window, the outcomes over t + 1 .. t + HORIZON, the exits and the markdown outcomes. tr: the
+    window, the outcomes over t + 1 .. t + HORIZON and the exits. tr: the
     tranche-quarter panel. Returns (the frame, build_credit_events' loan-level frames).
 
     y_event is the outcome; event_q is the first quarter of the event; win_pik, win_spread,
@@ -142,11 +141,6 @@ def add_targets(b: pd.DataFrame, rows: pl.DataFrame, tr: pd.DataFrame) -> tuple[
         b[col] = ""
         b.loc[ex.index, col] = CE.borrower_exit_class(ev["exits"][k], ex)
 
-    # markdown outcomes: the same-loan change in the mark (d_price) and val_ret over t -> t + 1, read
-    # from the borrower's next quarter; missing if it left the books or its loans cannot be linked
-    nxt = b[["borrower", "qsort", "d_price", "val_ret"]].assign(qsort=b["qsort"] - 1).rename(
-        columns={"d_price": "y_dprice", "val_ret": "y_valret"})
-    b = b.merge(nxt, on=["borrower", "qsort"], how="left")
     b["na_status_next"] = b["na_status_1"]
     b["has_next"] = b["held_1"]
 

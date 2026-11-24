@@ -1,5 +1,5 @@
 """Which inputs go in which model (src/9_prediction): the baseline, the candidate signs, the scorecard, the
-specifications compared in the analysis, the robustness variants and the one-input baselines."""
+specifications compared in the analysis and the robustness variants."""
 from __future__ import annotations
 
 from config import OUTCOME
@@ -23,10 +23,6 @@ CANDIDATES = {"pik_switch": ["pik_switch"], "dispersion": ["dispersion", "has_di
 SCORECARD = BASELINE + CANDIDATES["pik_switch"] + CANDIDATES["max_drawdown"] + CANDIDATES["pik_past_year"]
 SIGN_NAMES = {"pik_switch": "PIK switch", "dispersion": "valuation gap", "crowding": "crowding",
               "max_drawdown": "fall over the past year", "pik_past_year": "PIK switch in the past year"}
-# The four inputs of the one-input baselines, and the markdown outcomes (next quarter)
-INPUTS = {"mark level": ["price"], "rolling max drawdown": ["max_drawdown"], "PIK switch": ["pik_switch"],
-          "valuation dispersion": ["dispersion", "has_dispersion"]}
-MARKDOWN_OUTCOMES = {"price change (y_dprice)": "y_dprice", "val_ret (y_valret)": "y_valret"}
 
 
 def specs() -> dict:

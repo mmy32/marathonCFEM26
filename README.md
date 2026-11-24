@@ -24,7 +24,7 @@ Use Python 3.11 (the pinned pandas 2.0.2 does not install on 3.12 or later):
 pip install -r requirements.txt
 ```
 
-The data is not in the repo; it is shared separately. Put `FINAL_DATASET.csv` (259 MB) in
+The data is not in the repo; it is shared separately. Put `FINAL_DATASET.csv` (291 MB) in
 `data/final_dataset/`, then run from the project root:
 
 ```
@@ -101,7 +101,7 @@ Shared input files, each at the path shown:
 
 | File | What it is |
 |---|---|
-| `data/reference/` (10 files) | CDLI / CDLI-S, FX, base rates, `bdc_type.csv`, hand-made `case_studies.csv` |
+| `data/reference/` (9 files) | CDLI / CDLI-S, FX, base rates, `bdc_type.csv`, hand-made `case_studies.csv` |
 | `data/universe/`, `cache/all_metadata.csv` | BDC universe and filing metadata |
 | `data/ixbrl/combined/wide_all.csv` (1.5 GB) | Parsed filings |
 | `data/parsed/nonaccrual/`, `data/parsed/maturity_html/` | Non-accrual footnotes and HTML maturities |
@@ -121,7 +121,6 @@ python tests/test_tranches.py
 python tests/test_pik_metrics.py
 python tests/test_position_matching.py
 python tests/test_nonaccrual_bdc_type.py
-python tests/test_radar.py      # about 2 minutes: our data against Private Credit Radar 1.0, within a factor of two
 ```
 
 ## Docs

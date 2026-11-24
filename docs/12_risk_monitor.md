@@ -48,8 +48,8 @@ by 2+ families; only those borrowers, 25% of all), cents per dollar owed:
 | Quarter | Median, borrowers | 90th pct, borrowers | Median, dollars | 90th pct, dollars | 95th pct, dollars |
 |---|---|---|---|---|---|
 | 2023Q1 | 1.1 | 5.6 | 2.0 | 5.6 | 7.0 |
-| 2024Q4 | 0.5 | 2.8 | 0.9 | 3.9 | 6.1 |
-| 2025Q4 | 0.5 | 3.0 | 0.7 | 3.6 | 5.8 |
+| 2024Q4 | 0.5 | 2.8 | 0.9 | 3.8 | 6.1 |
+| 2025Q4 | 0.5 | 3.0 | 0.7 | 3.5 | 5.8 |
 | 2026Q2 | 0.6 | 4.0 | 1.2 | 6.3 | 9.3 |
 
 By dollars the 2026Q2 tail is the widest in the panel; by borrowers it is up from the 2024 low.

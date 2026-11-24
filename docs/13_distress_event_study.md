@@ -35,25 +35,25 @@ Code: `src/8_risk_monitor/distress_event_study.py`. Reads only `FINAL_DATASET.cs
 | Non-accrual | `na_cost_share`: share of the borrower's debt cost flagged non-accrual (filings where the flag is known; 86% of fair value) |
 | Size | `par`, `fv`, `cost`, `log_borrower_par` |
 
-## Case studies (2026-10-23 notes)
+## Case studies
 
 **WebPT** (healthcare software). This case has the widest lender disagreement in the set. In
 2026Q2 Golub marks it 67-68 and has it on non-accrual, while Goldman Sachs, Ares and Monroe mark
-it 80-81 and keep it accruing. Dispersion has risen every quarter since late 2024 (std of family
-marks 0.02 to 0.11). PIK appeared in 2026Q1, with none before, and is now 67% of the coupon, all
-acquired after origination. It has four lender families and seven BDCs; Ares added $79m in
-2026Q2. The price slid from 0.98 to 0.84.
+it 80-81 and keep it accruing. Dispersion has widened since late 2024 (std of family marks 0.02
+to 0.11, with a dip in 2026Q1). PIK appeared in 2026Q1, with none before, and is now 67% of the
+coupon. It has four lender families and seven BDCs; Ares added $79m in 2026Q2. The price slid
+from 0.98 to 0.84.
 
-**BVI Medical** (healthcare). Lenders crowded in quickly: one lender family in 2024, five (seven
-BDCs) by 2026Q2, and BDC exposure up from $21m to $464m. It is 7% of CCS IX Portfolio Holdings'
-book, 3.5% of APS BDC's and 2.8% of Diameter's. Marks range from 77 (APS) and 84 (Ares) to 93
-(Crescent, CCS) and have widened for four quarters. Every tranche carries a 5% PIK component. It
-is not yet on non-accrual; its price fell from 0.99 to 0.86 in two quarters.
+**BVI Medical** (healthcare). Lenders crowded in quickly: one lender family in 2024Q3, four
+(seven BDCs) by 2026Q2, and BDC exposure up from $23m to $464m. It is 7% of CCS IX Portfolio
+Holdings' book, 3.5% of APS BDC's and 2.8% of Diameter's. Marks range from 77 (APS) and 84 (Ares)
+to 93 (Crescent, CCS) and have widened for four quarters. Every tranche carries a 5% PIK
+component. It is not yet on non-accrual; its price fell from 0.97 to 0.86 in two quarters.
 
 **Medallia** (software; the benchmark case). It had seven lender families, was up to 6% of a
 lender's book, and showed rising dispersion and growing acquired PIK for four quarters before
 its 2026Q1 markdown. Lenders then declined to extend PIK relief, it moved to non-accrual, and
 lenders are taking control from Thoma Bravo.
 
-Also on watch: **LogRhythm** (7 families; dispersion jumped in 2025Q4; PIK appeared in 2026Q2;
+Also on watch: **LogRhythm** (6 families; dispersion jumped in 2025Q4; PIK appeared in 2026Q2;
 price 0.87) and **Premier Imaging** (price 0.78).

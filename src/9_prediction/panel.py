@@ -43,7 +43,7 @@ def build_model_panel(tr: pd.DataFrame, rows: pl.DataFrame) -> tuple[pd.DataFram
     b["cal_q"] = q_label(b["qsort"])
     b["outcome_q"] = window_label(b["qsort"])
     first = ["borrower", "cal_q", "outcome_q", "qsort", "sector", "in_sample", "na_risk_set",
-             "y_event", "exited", "exit_class", "exit_class_second", "y_na", "y_all_terms", "y_dprice", "y_valret",
+             "y_event", "exited", "exit_class", "exit_class_second", "y_na", "y_all_terms",
              "y_na_first", "y_na_same_lender",
              "price", "fall_1q", "pik_switch", "pik_past_year", "dispersion", "has_dispersion", "crowding", "max_drawdown",
              "d_pik_pp", "dispersion_std", "price_rel", "fall_1q_adj", "junior_share", "recent_markdown", "d_price"]

@@ -7,7 +7,6 @@ from __future__ import annotations
 OUTCOME = "y_event"         # the one classification outcome: an accruing borrower has a credit event at t + 1 or t + 2
                             # (non-accrual, or a lender's concession: PIK switch, debt-for-equity, write-down)
 HORIZON = 2                 # the outcome window: a credit event at t + 1 or t + 2
-WINDOW_TEXT = "within the next two quarters"
 MIN_PRIOR_FV = 1_000_000    # sample: the borrower's debt fair value at t is at least $1m
 MIN_PRICED_SHARE = 0.5      # sample: priceable par is at least half of the borrower's funded par at t
 MAX_CLO_SHARE = 0.5         # sample: CLO / structured tranches under half of par (CLO vehicles are not operating borrowers)

@@ -1,7 +1,6 @@
 """Evaluation of the early-warning model (src/9_prediction): the time-ordered splits (one fit, or a rolling
 fit that only ever sees closed windows), and the metrics with their intervals: ROC-AUC and PR-AUC
-with borrower-resampled bootstrap intervals (also for rates and ratios), score deciles, and R2 /
-RMSE for the markdown outcomes."""
+with borrower-resampled bootstrap intervals (also for rates and ratios), and score deciles."""
 from __future__ import annotations
 
 import numpy as np
@@ -221,11 +220,3 @@ def performance(p: pd.DataFrame, probabilities: bool = True) -> dict:
         out["realized_to_predicted"] = events / p["pred"].sum()
         out["ratio_lo"], out["ratio_hi"] = ratio_ci(p["y"], p["pred"], p["borrower"])
     return out
-
-
-def regression_scores(y: pd.Series, pred: np.ndarray, benchmark: float) -> dict:
-    """R2 and RMSE of `pred` against `y`, with the RMSE and R2 of always predicting `benchmark` (the
-    training mean): R2 = 1 - SSE / SST about the benchmark, so it is out of sample when `benchmark`
-    comes from the training rows."""
-    sse, sse0 = ((y - pred) ** 2).sum(), ((y - benchmark) ** 2).sum()
-    return {"r2": 1 - sse / sse0, "rmse": np.sqrt(sse / len(y)), "rmse_benchmark": np.sqrt(sse0 / len(y))}
