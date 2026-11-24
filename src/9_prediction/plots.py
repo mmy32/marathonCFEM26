@@ -14,8 +14,6 @@ import pandas as pd
 from charts import BLUE, GRID, INK, MUTED, ORANGE, SURFACE, _spread, _style
 from specs import SCORECARD
 
-EVENT_NOTE = ("Event: within the next two quarters a BDC flags the borrower's debt non-accrual, or a lender switches "
-              "its interest to PIK, swaps its debt for equity or writes down its cost")
 COUNT_WORDS = {2: "Two", 3: "Three", 4: "Four", 5: "Five", 6: "Six"}
 
 SCORECARD_UNITS = {"price": "Mark 10 points lower", "fall_1q": "Mark fell 5 points\nthis quarter",
@@ -39,10 +37,6 @@ def _title(fig, title: str, subtitle: str | None = None):
     fig.text(0.02, 0.97, title, ha="left", va="top", fontsize=13, color=INK, weight="bold")
     if subtitle:
         fig.text(0.02, 0.915, subtitle, ha="left", va="top", fontsize=9, color=MUTED)
-
-
-def _note(fig, text: str):
-    fig.text(0.02, 0.02, text, ha="left", va="bottom", fontsize=7.5, color=MUTED)
 
 
 def _rate_bars(ax, x, rate, lo, hi, color=BLUE, width=0.62):
@@ -75,9 +69,6 @@ def event_rate_by_predictor(t: pd.DataFrame, path, window: str):
     _title(fig, "Borrowers with a credit event within two quarters, by warning sign",
            f"Accruing borrowers, all BDCs' loans pooled; signs from {window}. "
            f"Dashed line: average event rate, {base:.2f}%. Whiskers: 95% intervals")
-    _note(fig, EVENT_NOTE + " (exits unlabelled).\nUnder each bar: events / borrower-quarters. "
-               "The valuation gap needs a loan held by 2+ manager families ('single lender' otherwise). "
-               "Points = cents per dollar of par.")
     fig.subplots_adjust(left=0.06, right=0.98, top=0.86, bottom=0.13, hspace=0.62, wspace=0.2)
     fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)
@@ -118,7 +109,6 @@ def odds_ratios(coefs: pd.DataFrame, path, window: str):
     _title(fig, f"{n} warning signs, each multiplying the odds of a credit event",
            f"Logistic regression on the {n.lower()} together; accruing borrowers, signs from {window}; "
            "95% intervals clustered by borrower")
-    _note(fig, EVENT_NOTE + ".")
     fig.subplots_adjust(left=0.22, right=0.97, top=0.83, bottom=0.2)
     fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)
@@ -164,9 +154,6 @@ def predictor_correlations(co: pd.DataFrame, path, window: str):
     _title(fig, f"The signs overlap little: the largest VIF is {co['vif'].max():.2f}",
            f"Pearson correlations of the scorecard's signs on the {int(co['n_obs'].iloc[0]):,} borrower-quarters "
            f"it is fitted on ({window}), capped as in the fit")
-    _note(fig, "Blue: positive correlation; orange: negative. VIF = 1 / (1 − R²) of each sign on the other "
-               f"{COUNT_WORDS.get(n - 1, str(n - 1)).lower()}, the factor by which the overlap inflates its coefficient's variance\n(1 = none; 5–10 is "
-               "the usual warning line). The quarter's change is entered as a fall, so a fall is positive.")
     fig.subplots_adjust(left=0.2, right=0.97, top=0.84, bottom=0.17)
     fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)
@@ -195,8 +182,6 @@ def score_deciles(dec: pd.DataFrame, path, events: str, fitted: str):
     axes[0].set_ylim(bottom=0)
     _title(fig, f"Out of sample: credit events in {events}, by score decile",
            f"Fitted on {fitted} only. Bars: realized rate; whiskers: 95% intervals")
-    _note(fig, EVENT_NOTE + ".\nUnder each decile: its events. The mark alone is a logistic regression on the mark "
-               "level, fitted and tested like the scorecard.")
     fig.subplots_adjust(left=0.07, right=0.98, top=0.83, bottom=0.17, wspace=0.06)
     fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)
@@ -237,9 +222,6 @@ def capture_gap(t: pd.DataFrame, path, mark_at: float = 0.20, xmax: float = 0.50
         ax.set_xlabel("Watchlist: the riskiest x% of each quarter's borrowers", color=MUTED, fontsize=9)
     _title(fig, "The scorecard's watchlists catch more credit events than the mark alone",
            "Above zero: the scorecard's list catches more of the events. Shaded: 95% intervals, borrowers resampled")
-    _note(fig, EVENT_NOTE + ".\nBoth out of sample by time: each train quarter scored by a fit on the windows "
-               "closed by then, the test by one fit on the train quarters.\nMark alone: a logistic regression "
-               "on the mark level, fitted and scored like the scorecard.")
     fig.subplots_adjust(left=0.08, right=0.98, top=0.81, bottom=0.22, wspace=0.08)
     fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)
@@ -295,8 +277,6 @@ def list_disagreement(dis: pd.DataFrame, bm: pd.DataFrame, path):
     a2.set_xlabel("Gain, with a paired 95% interval (clear of zero: significant)", color=MUTED, fontsize=9)
     _title(fig, "Where the two watchlists differ, the scorecard's picks have more credit events",
            "Mark alone: a logistic regression on the mark level, fitted and scored like the scorecard")
-    _note(fig, EVENT_NOTE + ".\nIntervals: 500 borrower resamples. Train: signals 2024Q2-2025Q2, each quarter scored by "
-               "a fit on earlier quarters only (out of sample); test: one fit on the train quarters.")
     fig.subplots_adjust(left=0.06, right=0.98, top=0.8, bottom=0.2, wspace=0.22)
     fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)
@@ -320,8 +300,6 @@ def event_profile(p: pd.DataFrame, path, window: str):
     ax.set_xlabel("Quarters before the credit event", color=MUTED, fontsize=9)
     _title(fig, "Marks fall before non-accrual; before a concession they barely move",
            "Borrowers entering non-accrual (shaded: middle half), borrowers with a concession only, and borrowers with no event")
-    _note(fig, f"Events in {window} from the labelled risk set (borrower-quarters in brackets). Concession: a switch to PIK, "
-               "a debt-for-equity swap or a cost write-down.\nMark = all BDCs' fair value / par on priceable loans.")
     fig.subplots_adjust(left=0.09, right=0.97, top=0.82, bottom=0.2)
     fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)
