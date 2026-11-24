@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score, roc_auc_score
 
-from config import HORIZON, MIN_TRAIN_QUARTERS, N_BOOT, SEED
+from config import HALF_LIFE, HORIZON, MIN_TRAIN_QUARTERS, N_BOOT, SEED
 from features import PREDICTOR_CAPS
 from models.logit import fit_predict
 
@@ -18,7 +18,7 @@ def _predictions(test: pd.DataFrame, pred: np.ndarray) -> pd.DataFrame:
 
 
 def split_predictions(d: pd.DataFrame, cols: list[str], train_end: int, test_qs: list[int],
-                      caps: dict = PREDICTOR_CAPS) -> pd.DataFrame:
+                      caps: dict = PREDICTOR_CAPS, half_life: float | None = HALF_LIFE) -> pd.DataFrame:
     """One fit on the labelled quarters <= train_end, scored on the quarters `test_qs`. A training
     quarter's window closes HORIZON quarters later, so every test quarter is at least train_end +
     HORIZON: the outcomes fitted on are all filed when the test quarter is scored. `d` may hold
@@ -28,12 +28,12 @@ def split_predictions(d: pd.DataFrame, cols: list[str], train_end: int, test_qs:
         raise ValueError("training windows must close by the first test quarter")
     train = d[(d["qsort"] <= train_end) & d["y"].notna()]
     test = d[d["qsort"].isin(test_qs)]
-    return _predictions(test, fit_predict(train, test, cols, caps)).assign(
-        train_auc=roc_auc_score(train["y"], fit_predict(train, train, cols, caps)))
+    return _predictions(test, fit_predict(train, test, cols, caps, half_life)).assign(
+        train_auc=roc_auc_score(train["y"], fit_predict(train, train, cols, caps, half_life)))
 
 
-def rolling_predictions(d: pd.DataFrame, cols: list[str],
-                        min_train_quarters: int = MIN_TRAIN_QUARTERS, caps: dict = PREDICTOR_CAPS) -> pd.DataFrame:
+def rolling_predictions(d: pd.DataFrame, cols: list[str], min_train_quarters: int = MIN_TRAIN_QUARTERS,
+                        caps: dict = PREDICTOR_CAPS, half_life: float | None = HALF_LIFE) -> pd.DataFrame:
     """Out-of-sample scores for every quarter: quarter q is scored by a logit fitted on the labelled
     quarters up to q - HORIZON (their windows close by q, so their outcomes are filed when q is
     scored).
@@ -45,9 +45,9 @@ def rolling_predictions(d: pd.DataFrame, cols: list[str],
         train = d[d["qsort"] <= q - HORIZON]
         if train["qsort"].nunique() >= min_train_quarters:
             test = d[d["qsort"] == q]
-            out.append(_predictions(test, fit_predict(train, test, cols, caps)).assign(
+            out.append(_predictions(test, fit_predict(train, test, cols, caps, half_life)).assign(
                 train_last_q=train["qsort"].max(), train_events=int(train["y"].sum()),
-                train_auc=roc_auc_score(train["y"], fit_predict(train, train, cols, caps))))
+                train_auc=roc_auc_score(train["y"], fit_predict(train, train, cols, caps, half_life))))
     return pd.concat(out, ignore_index=True) if out else pd.DataFrame()
 
 
@@ -116,6 +116,39 @@ def recall_at(p: pd.DataFrame, share: float) -> tuple[float, float, float]:
     return (caught.sum() / y.sum(), *ratio_ci(caught, y, p["borrower"]))
 
 
+SHARES = np.round(np.arange(1, 101) / 100, 2)      # watchlist sizes: the riskiest 1%, 2%, ..., 100%
+
+
+def capture_gap(p: pd.DataFrame, base: pd.DataFrame, shares: np.ndarray = SHARES) -> pd.DataFrame:
+    """Events caught by reviewing the riskiest `share` of each quarter's borrowers, ranked by `p` and
+    by `base` on the rows they share, one row per share. gap_share is p's extra share of all events
+    caught (p minus base), with a borrower-resampled 95% interval: both lists are scored on the same
+    resamples and held fixed, so the interval is for the difference. A list is drawn as in recall_at.
+    caught_share and caught_base_share are each list's share of all events caught (recall), with
+    intervals from the same resamples."""
+    j = p[["borrower", "qsort", "y", "pred"]].merge(base[["borrower", "qsort", "pred"]], on=["borrower", "qsort"],
+                                                    suffixes=("", "_base"), validate="one_to_one")
+    s = np.asarray(shares, float)
+    y = j["y"].to_numpy(float)
+    a = y[:, None] * (quarter_rank(j).to_numpy()[:, None] <= s)
+    b = y[:, None] * (quarter_rank(j.assign(pred=j["pred_base"])).to_numpy()[:, None] <= s)
+    codes, uniq = pd.factorize(j["borrower"])
+    ga, gb = np.zeros((len(uniq), len(s))), np.zeros((len(uniq), len(s)))
+    np.add.at(ga, codes, a)
+    np.add.at(gb, codes, b)
+    gy = np.bincount(codes, weights=y, minlength=len(uniq))
+    boots = np.array([[(c @ ga) / (c @ gy), (c @ gb) / (c @ gy)] for c in _boot_counts(len(uniq))])
+    lo, hi = np.nanpercentile(boots[:, 0] - boots[:, 1], [2.5, 97.5], axis=0)
+    (a_lo, b_lo), (a_hi, b_hi) = np.nanpercentile(boots, [2.5, 97.5], axis=0)
+    events = y.sum()
+    return pd.DataFrame({"share": s, "n": len(j), "events": int(events), "caught": a.sum(0), "caught_base": b.sum(0),
+                         "gap_events": (a - b).sum(0), "gap_share": (a - b).sum(0) / events,
+                         "gap_lo": lo, "gap_hi": hi,
+                         "caught_share": a.sum(0) / events, "caught_share_lo": a_lo, "caught_share_hi": a_hi,
+                         "caught_base_share": b.sum(0) / events, "caught_base_share_lo": b_lo,
+                         "caught_base_share_hi": b_hi})
+
+
 def auc_gain(p: pd.DataFrame, base: pd.DataFrame) -> tuple[float, float, float]:
     """ROC-AUC of `p` minus that of `base` on the rows they share, with a borrower-resampled 95%
     interval (both scored on the same resamples, so the interval is for the difference)."""
@@ -124,6 +157,16 @@ def auc_gain(p: pd.DataFrame, base: pd.DataFrame) -> tuple[float, float, float]:
     y, a, b = j["y"].to_numpy(), j["pred"].to_numpy(), j["pred_base"].to_numpy()
     vals = [_auc(y, a, w) - _auc(y, b, w) for w in _boot_weights(j["borrower"].to_numpy())]
     return (roc_auc_score(y, a) - roc_auc_score(y, b), *np.nanpercentile(vals, [2.5, 97.5]))
+
+
+def pr_auc_gain(p: pd.DataFrame, base: pd.DataFrame) -> tuple[float, float, float]:
+    """PR-AUC (average precision) of `p` minus that of `base` on the rows they share, with a
+    borrower-resampled 95% interval for the difference, as in auc_gain."""
+    j = p.merge(base[["borrower", "qsort", "pred"]], on=["borrower", "qsort"], suffixes=("", "_base"),
+                validate="one_to_one")
+    y, a, b = j["y"].to_numpy(), j["pred"].to_numpy(), j["pred_base"].to_numpy()
+    vals = [_ap(y, a, w) - _ap(y, b, w) for w in _boot_weights(j["borrower"].to_numpy())]
+    return (average_precision_score(y, a) - average_precision_score(y, b), *np.nanpercentile(vals, [2.5, 97.5]))
 
 
 def quarter_rank(p: pd.DataFrame) -> pd.Series:

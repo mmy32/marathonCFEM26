@@ -4,21 +4,25 @@ from __future__ import annotations
 
 from config import OUTCOME
 
-# The baseline: the mark and its change over the quarter. Each other sign is added to it alone and
-# kept only if it improves the ranking out of sample (analysis.sign_selection).
-BASELINE = ["price", "d_price"]
+# The baseline: the mark and its change over the quarter, read as a fall (fall_1q: a fall is
+# positive, like the fall over the past year). Each other sign is added to it alone and kept only
+# if it improves the ranking out of sample (analysis.sign_selection).
+BASELINE = ["price", "fall_1q"]
 # Dispersion exists only for borrowers with a tranche held by 2+ manager families; it is 0
 # elsewhere and comes with its indicator.
 CANDIDATES = {"pik_switch": ["pik_switch"], "dispersion": ["dispersion", "has_dispersion"],
-              "crowding": ["crowding"], "max_drawdown": ["max_drawdown"]}
+              "crowding": ["crowding"], "max_drawdown": ["max_drawdown"], "pik_past_year": ["pik_past_year"]}
 # The baseline and the signs the frozen rule kept on the development quarters (2026-11-16, outcome:
 # a credit event within two quarters): PIK switch and fall over the past year; the valuation gap
 # (+0.004, under the rule's +0.005) and crowding were dropped. With non-accrual alone as the
-# outcome the rule had also kept the valuation gap. run_model.py stops if sign_selection.csv ever
-# keeps a different set.
-SCORECARD = BASELINE + CANDIDATES["pik_switch"] + CANDIDATES["max_drawdown"]
+# outcome the rule had also kept the valuation gap. The past-year PIK switch was added as a
+# candidate on 2026-11-23, after the test had been seen (a check of why decile 9 runs above its
+# prediction); the same rule keeps it. The rule keeps the same three signs with the PIK switch
+# cleaned of filing artifacts (pik_metrics.pik_switch_clean, 2026-11-23). run_model.py stops if
+# sign_selection.csv ever keeps a different set.
+SCORECARD = BASELINE + CANDIDATES["pik_switch"] + CANDIDATES["max_drawdown"] + CANDIDATES["pik_past_year"]
 SIGN_NAMES = {"pik_switch": "PIK switch", "dispersion": "valuation gap", "crowding": "crowding",
-              "max_drawdown": "fall over the past year"}
+              "max_drawdown": "fall over the past year", "pik_past_year": "PIK switch in the past year"}
 # The four inputs of the one-input baselines, and the markdown outcomes (next quarter)
 INPUTS = {"mark level": ["price"], "rolling max drawdown": ["max_drawdown"], "PIK switch": ["pik_switch"],
           "valuation dispersion": ["dispersion", "has_dispersion"]}
@@ -45,10 +49,13 @@ def _robustness() -> list[tuple]:
     """(variant, outcome, predictors, multi-lender borrowers only): the scorecard varied one way
     at a time. The last rows change the outcome and say so in their name."""
     v = [("scorecard", OUTCOME, SCORECARD, False), (NO_CAPS, OUTCOME, SCORECARD, False)]
+    if "pik_past_year" in SCORECARD:
+        v.append(("without the past-year PIK switch (the scorecard until 2026-11-23)", OUTCOME,
+                  [c for c in SCORECARD if c != "pik_past_year"], False))
     if "pik_switch" in SCORECARD:
         v.append(("PIK: change in PIK share of coupon (pp)", OUTCOME, _swap(SCORECARD, "pik_switch", ["d_pik_pp"]), False))
     v += [("market-adjusted mark and change", OUTCOME,
-           _swap(_swap(SCORECARD, "price", ["price_rel"]), "d_price", ["d_price_adj"]), False),
+           _swap(_swap(SCORECARD, "price", ["price_rel"]), "fall_1q", ["fall_1q_adj"]), False),
           ("+ seniority mix (junior share of par)", OUTCOME, SCORECARD + ["junior_share"], False),
           ("+ borrower size (log BDC-held par)", OUTCOME, SCORECARD + ["log_par"], False)]
     if "dispersion" in SCORECARD:

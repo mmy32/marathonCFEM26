@@ -25,7 +25,7 @@ Loan-level cleaned dataset (`ixbrl_cleaned_out.csv`)
 > Notes:
 > - `cache/` stores raw SEC downloads + download metadata/failures.
 > - `data/ixbrl/` stores parsed iXBRL artifacts.
-> - The rest of `data/` has one folder per dataset stage: `reference/` (FX, SOFR, CDLI inputs), `universe/`, `parsed/`, `cleaned/`, `enriched/`, `final_dataset/`, `data_center/`. Each has a constant in `paths.py` (`UNIVERSE_DIR`, `PARSED_DIR`, `FINAL_DIR`, ...). Results (tables, plots, logs) go in `outputs/`.
+> - The rest of `data/` has one folder per dataset stage: `reference/` (FX, SOFR, CDLI inputs), `universe/`, `parsed/`, `cleaned/`, `enriched/`, `final_dataset/`, `model/`. Each has a constant in `paths.py` (`UNIVERSE_DIR`, `PARSED_DIR`, `FINAL_DIR`, ...). Results (tables, plots, logs) go in `outputs/`.
 > - Modules live in `src/` (one folder per stage, e.g. `src/1_data_processing/`) and entry points in `scripts/` (see the top-level `README.md`). `paths.py` lives in `src/1_data_processing/` and sets `ROOT = Path(__file__).resolve().parents[2]`, i.e. the project root. Each module and script adds `src/1_data_processing/` to `sys.path` so `from paths import ...` works — if `paths.py` moves, update `ROOT`, since a mismatched `ROOT` silently writes `data/`/`cache/` to the wrong location instead of erroring.
 
 ## Core reusable logic (no execution), in `src/1_data_processing/`

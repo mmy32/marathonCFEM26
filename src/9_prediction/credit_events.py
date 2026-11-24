@@ -3,7 +3,9 @@ next (the sponsor's definitions of 2026-11-16).
 
 Restructuring: a change in terms on the same loan held by the same BDC (a tranche chain,
 tranches.link_tranche_chains) between consecutive filings:
-  pik         cash interest switches to PIK
+  pik         cash interest switches to PIK (pik_metrics' pik_switch_clean at the primary cutoff:
+              PIK starts, or the PIK rate rises with the PIK share up 10+ points; a one-filing gap
+              in the PIK split is not a switch)
   spread      the spread steps up, and the all-in rate rises with it
   maturity    the maturity is pushed out
   write_down  cost falls while the loan stays in the schedule
@@ -44,7 +46,7 @@ EVENT_TYPES = ["pik", "spread", "maturity", "equity", "write_down"]
 # those where the lender gives something up (cash interest deferred into PIK, debt swapped for
 # equity, cost written down; the last two are the realized losses a schedule shows while the
 # borrower stays on the books). A spread step-up pays the lender more, and a maturity extension is
-# mostly a routine amend-and-extend of a loan marked at par (3,858 of the 8,516 events all five
+# mostly a routine amend-and-extend of a loan marked at par (3,876 of the 8,345 events all five
 # would give are an extension alone), so those two are counted beside the outcome. Chosen by the
 # user on 2026-11-16 after the counts of all five had been seen; the cutoffs did not move.
 CONCESSIONS = ["pik", "equity", "write_down"]
@@ -75,6 +77,7 @@ def loans(t: pd.DataFrame) -> pd.DataFrame:
     g = t.groupby("chain_id", sort=False)
     for c in ["spread", "maturity", "COST", "PAR", "FV", "IR_Final", "PIK_Final"]:
         t[c + "_p"] = g[c].shift()
+    t["PIK_Final_pp"] = g["PIK_Final"].shift(2)
     t["linked"] = t["link_rule"] > 0
     return t.reset_index(drop=True)
 
@@ -94,8 +97,10 @@ def equity_holdings(rows: pl.DataFrame) -> pd.DataFrame:
 
 def term_changes(L: pd.DataFrame, cut: dict) -> pd.DataFrame:
     """Per loan and filing (linked rows of `loans`): pik, spread, maturity and write_down as 0 / 1."""
-    pik = (L["is_distress_amendment"].fillna(False).astype(bool) if cut["pik"] == "toggle"
-           else (L["PIK_Final"].fillna(0) >= MIN_PIK_RATE) & (L["PIK_Final_p"].fillna(0) < MIN_PIK_RATE))
+    # a one-filing gap in the PIK split (PIK two filings back, the total coupon unchanged) is no switch
+    split_gap = (L["PIK_Final_pp"].fillna(0) >= MIN_PIK_RATE) & ((L["IR_Final"] - L["IR_Final_p"]).abs() < MIN_PIK_RATE)
+    pik = (L["pik_switch_clean"].fillna(False).astype(bool) if cut["pik"] == "toggle"
+           else (L["PIK_Final"].fillna(0) >= MIN_PIK_RATE) & (L["PIK_Final_p"].fillna(0) < MIN_PIK_RATE) & ~split_gap)
     step = L["spread"] - L["spread_p"]
     spread = (step >= cut["spread_step"] - 1e-9) & (L["IR_Final"] - L["IR_Final_p"] >= step - RATE_SLACK)
     maturity = (L["maturity"] - L["maturity_p"]).dt.days >= cut["extension_days"]

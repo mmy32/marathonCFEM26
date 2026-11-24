@@ -11,7 +11,7 @@ import polars as pl
 
 import credit_events as CE
 from common import norm_name
-from config import DD_WINDOW, JUNIOR_LIENS, MARKDOWN
+from config import DD_WINDOW, JUNIOR_LIENS, MARKDOWN, PIK_LOOKBACK
 
 # per input: unit = the step coefficients are reported per (in the input's own units, 0.10 = ten
 # points of par); cap = fixed (low, high) bounds applied before fitting (a mark below 70 counts as
@@ -19,18 +19,22 @@ from config import DD_WINDOW, JUNIOR_LIENS, MARKDOWN
 # six or more lender families as five: beyond them risk keeps rising far more slowly than the
 # logistic's straight line); risk = +1 if a higher value means more risk (equal-weighted ranking);
 # zero_if_missing = structurally missing (0 where has_dispersion == 0); buckets = (edges, labels)
-# for event rates, in points of par (0.01 = one point).
+# for event rates, in points of par (0.01 = one point), right-closed unless buckets_closed = "left".
+# The model reads the mark's move over the quarter as a fall (fall_1q = -d_price, a fall is
+# positive), like the fall over the past year; d_price, the signed change, stays in the panel for
+# the drawdown and the markdown outcomes.
 FEATURES = {
     "price": {"unit": 0.10, "cap": (0.70, None), "risk": -1,
               "buckets": ([-np.inf, 0.80, 0.90, 0.95, 0.98, np.inf],
                           ["below 80", "80-90", "90-95", "95-98", "98 and up"])},
     "price_rel": {"unit": 0.10},
-    "d_price": {"unit": 0.05, "cap": (-0.20, 0.20), "risk": -1,
-                "buckets": ([-np.inf, -0.05, -0.01, 0.01, np.inf], ["fell 5+", "fell 1-5", "within 1", "rose 1+"])},
-    "d_price_adj": {"unit": 0.05},
+    "fall_1q": {"unit": 0.05, "cap": (-0.20, 0.20), "risk": 1, "buckets_closed": "left",
+                "buckets": ([-np.inf, -0.01, 0.01, 0.05, np.inf], ["rose 1+", "within 1", "fell 1-5", "fell 5+"])},
+    "fall_1q_adj": {"unit": 0.05},
     "max_drawdown": {"unit": 0.05, "cap": (None, 0.20), "risk": 1,
                      "buckets": ([-np.inf, 0.01, 0.05, 0.10, np.inf], ["under 1", "1-5", "5-10", "over 10"])},
     "pik_switch": {"risk": 1},
+    "pik_past_year": {"risk": 1},
     "dispersion": {"unit": 0.01, "risk": 1, "zero_if_missing": True,
                    "buckets": ([-np.inf, 0.005, 0.01, 0.02, 0.05, np.inf],
                                ["under 0.5", "0.5-1", "1-2", "2-5", "over 5"])},
@@ -44,6 +48,7 @@ UNITS = {k: v["unit"] for k, v in FEATURES.items() if "unit" in v}
 RISK_SIGN = {k: v["risk"] for k, v in FEATURES.items() if "risk" in v}
 STRUCTURAL_ZERO = {k for k, v in FEATURES.items() if v.get("zero_if_missing")}
 BUCKETS = {k: v["buckets"] for k, v in FEATURES.items() if "buckets" in v}
+BUCKETS_LEFT_CLOSED = {k for k, v in FEATURES.items() if v.get("buckets_closed") == "left"}
 
 
 def _wmean(df: pd.DataFrame, col: str, w: str, keys: list[str]) -> pd.Series:
@@ -75,7 +80,7 @@ def borrower_marks(t: pd.DataFrame) -> pd.DataFrame:
     t = t.assign(_junior=t["PAR_px"].where(t["lien_group"].isin(JUNIOR_LIENS), 0.0),
                  _clo=t["PAR"].where(t["lien_group"] == "CLO", 0.0),
                  _seasoned=t["link_rule"] > 0,
-                 _switch=t["is_distress_amendment"].fillna(False).astype(bool))
+                 _switch=t["pik_switch_clean"].fillna(False).astype(bool))
     b = t.groupby(keys).agg(par=("PAR", "sum"), fv_px=("FV_px", "sum"), par_px=("PAR_px", "sum"),
                             junior_par=("_junior", "sum"), clo_par=("_clo", "sum"),
                             n_families=("family", "nunique"), seasoned=("_seasoned", "max"),
@@ -144,13 +149,23 @@ def rolling_max_drawdown(d: pd.DataFrame, col: str = "d_price", window: int = DD
                          "qsort": np.tile(w.columns.to_numpy(), w.shape[0]), "dd": dd.ravel()})
 
 
+def past_pik_switch(b: pd.DataFrame, quarters: int = PIK_LOOKBACK) -> pd.Series:
+    """1 if the borrower had a PIK switch in any of the `quarters` quarters before t (not t itself),
+    else 0: a quarter it was not held, or its first quarter (switch undefined), counts as no switch."""
+    s = b.loc[b["pik_switch"] == 1, ["borrower", "qsort"]]
+    hits = pd.concat([s.assign(qsort=s["qsort"] + k) for k in range(1, quarters + 1)]).drop_duplicates()
+    flag = b[["borrower", "qsort"]].merge(hits.assign(_hit=1.0), on=["borrower", "qsort"], how="left")["_hit"]
+    return pd.Series(flag.fillna(0.0).to_numpy(), index=b.index)
+
+
 def build_features(tr: pd.DataFrame, rows: pl.DataFrame) -> pd.DataFrame:
     """tr: monitor_panel.build_monitor_panel's tranche-quarter panel; rows: its FINAL_DATASET rows.
-    One row per borrower x quarter with the signs at t: price (mark level), d_price (its change
-    over the quarter, same loans), max_drawdown, pik_switch (alternative d_pik_pp), dispersion
-    (the valuation gap: highest minus lowest lender family's mark; alternative dispersion_std;
-    has_dispersion = 1 when defined), crowding, plus market-adjusted
-    versions (price_rel, d_price_adj), val_ret and controls."""
+    One row per borrower x quarter with the signs at t: price (mark level), fall_1q (its fall over
+    the quarter, same loans, a fall is positive; d_price is the signed change), max_drawdown,
+    pik_switch (alternative d_pik_pp), pik_past_year (a PIK switch in the three quarters before t),
+    dispersion (the valuation gap: highest minus lowest lender
+    family's mark; alternative dispersion_std; has_dispersion = 1 when defined), crowding, plus
+    market-adjusted versions (price_rel, fall_1q_adj), val_ret and controls."""
     t = named_tranches(tr)
     b = borrower_marks(t)
     # the mark: FV / par on loans with par, FV / cost on debt without par
@@ -161,13 +176,15 @@ def build_features(tr: pd.DataFrame, rows: pl.DataFrame) -> pd.DataFrame:
     ch = chain_changes(t)
     b = b.merge(ch, on=["borrower", "qsort"], how="left")
 
-    # market-adjusted changes and level: the quarter's median borrower subtracted
-    b["d_price_adj"] = b["d_price"] - b.groupby("qsort")["d_price"].transform("median")
+    b["fall_1q"] = -b["d_price"]
+    # market-adjusted fall and level: the quarter's median borrower subtracted
+    b["fall_1q_adj"] = b["fall_1q"] - b.groupby("qsort")["fall_1q"].transform("median")
     b["price_rel"] = b["price"] - b.groupby("qsort")["price"].transform("median")
     dd = rolling_max_drawdown(b, "d_price").rename(columns={"dd": "max_drawdown"})
     b = b.merge(dd, on=["borrower", "qsort"], how="left")
     b["recent_markdown"] = (b["d_price"] <= -MARKDOWN).astype(float).where(b["d_price"].notna())
 
     b["crowding"] = b["n_families"].astype(float)
+    b["pik_past_year"] = past_pik_switch(b)
 
     return b

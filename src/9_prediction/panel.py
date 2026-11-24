@@ -19,7 +19,7 @@ import polars as pl
 
 import credit_events as CE
 from common import q_label, window_label
-from config import MAX_CLO_SHARE, MIN_PRICED_SHARE, MIN_PRIOR_FV
+from config import HORIZON, MAX_CLO_SHARE, MIN_PRICED_SHARE, MIN_PRIOR_FV
 from features import build_features
 from targets import add_targets
 
@@ -45,8 +45,8 @@ def build_model_panel(tr: pd.DataFrame, rows: pl.DataFrame) -> tuple[pd.DataFram
     first = ["borrower", "cal_q", "outcome_q", "qsort", "sector", "in_sample", "na_risk_set",
              "y_event", "exited", "exit_class", "exit_class_second", "y_na", "y_all_terms", "y_dprice", "y_valret",
              "y_na_first", "y_na_same_lender",
-             "price", "d_price", "pik_switch", "dispersion", "has_dispersion", "crowding", "max_drawdown",
-             "d_pik_pp", "dispersion_std", "price_rel", "d_price_adj", "junior_share", "recent_markdown"]
+             "price", "fall_1q", "pik_switch", "pik_past_year", "dispersion", "has_dispersion", "crowding", "max_drawdown",
+             "d_pik_pp", "dispersion_std", "price_rel", "fall_1q_adj", "junior_share", "recent_markdown", "d_price"]
     b = b[first + [c for c in b.columns if c not in first]].sort_values(["qsort", "borrower"]).reset_index(drop=True)
     return b, ev
 
@@ -103,6 +103,47 @@ def event_counts(m: pd.DataFrame) -> pd.DataFrame:
     total = t.drop(columns=["cal_q", "outcome_q", "event_rate"]).sum()
     total["event_rate"] = total["events"] / total["labelled"]
     return pd.concat([t, pd.DataFrame([{"cal_q": "all", "outcome_q": "", **total}])], ignore_index=True)
+
+
+def outcome_breakdown(m: pd.DataFrame) -> pd.DataFrame:
+    """What follows each labelled borrower-quarter in t + 1 .. t + 2, each in the first group that
+    applies: non-accrual; else a PIK switch; else a write-down; else a debt-for-equity swap (these
+    four are the credit events); else a spread step-up or a maturity extension (counted beside the
+    outcome); else none. Detail rows (level 2) split a group and do not add to it. The last rows
+    count what lies behind the event rows, which repeat an event in both quarters before it: the
+    borrowers, the non-accrual entries (borrower and first flagged quarter) and the concessions
+    (borrower and quarter of a PIK switch, swap or write-down that falls in an event row's window).
+    share is of the labelled borrower-quarters."""
+    r = m[m["na_risk_set"].astype(bool) & m["window_complete"].astype(bool) & m["y_event"].notna()]
+    ev, flag = r["y_event"] == 1, r["flag_in_window"].astype(bool)
+    w = {k: r["win_" + k] == 1 for k in CE.EVENT_TYPES}
+    conc, other = r["concession_in_window"].astype(bool), r["restr_in_window"].astype(bool)
+    pik = ev & ~flag & w["pik"]
+    wd = ev & ~flag & ~w["pik"] & w["write_down"]
+    swap = ev & ~flag & ~w["pik"] & ~w["write_down"] & w["equity"]
+    terms = ~ev & other
+    groups = [
+        (1, "non-accrual", ev & flag), (2, "non-accrual: also a concession", ev & flag & conc),
+        (1, "PIK switch, no non-accrual", pik), (2, "PIK switch: alone", pik & ~w["write_down"] & ~w["equity"]),
+        (2, "PIK switch: with a write-down", pik & w["write_down"]), (2, "PIK switch: with a swap", pik & w["equity"]),
+        (1, "write-down only", wd), (1, "debt-for-equity swap only", swap),
+        (1, "credit event", ev),
+        (1, "spread step-up or extension only (no event)", terms),
+        (2, "step-up or extension: an extension", terms & w["maturity"]),
+        (2, "step-up or extension: a step-up", terms & w["spread"]),
+        (2, "step-up or extension: both", terms & w["maturity"] & w["spread"]),
+        (1, "none of these", ~ev & ~other), (1, "all", pd.Series(True, index=r.index))]
+    out = [{"level": lv, "group": g, "unit": "borrower-quarters", "count": int(k.sum()), "share": k.sum() / len(r)}
+           for lv, g, k in groups]
+    e = r[ev]
+    entries = e.loc[flag[ev], ["borrower", "entry_q"]].drop_duplicates()
+    windows = pd.concat([e[["borrower"]].assign(qsort=e["qsort"] + k) for k in range(1, HORIZON + 1)]).drop_duplicates()
+    at = m[(m[["restr_" + k for k in CE.CONCESSIONS]] == 1).any(axis=1)][["borrower", "qsort"]].drop_duplicates()
+    for g, unit, n in [("borrowers with an event", "borrowers", e["borrower"].nunique()),
+                       ("non-accrual entries behind the event rows", "entries", len(entries)),
+                       ("concessions behind the event rows", "concessions", len(at.merge(windows)))]:
+        out.append({"level": 1, "group": g, "unit": unit, "count": int(n), "share": np.nan})
+    return pd.DataFrame(out)
 
 
 def unlabelled_exits(m: pd.DataFrame) -> pd.DataFrame:

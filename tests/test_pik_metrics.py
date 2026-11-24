@@ -64,6 +64,26 @@ class TestPIKMetrics(unittest.TestCase):
         res = classify_loan_pik_transitions(df).sort("cal_q")
         self.assertEqual(res["is_distress_amendment"].to_list(), [False, False])
 
+    def test_clean_switch_skips_filing_artifacts(self):
+        """pik_switch_clean: a real switch and a real rise count; PIK back after one filing at zero
+        with the same total coupon (the PIK split missing) does not, nor a share rise from a lower
+        coupon with the PIK rate unchanged. A real election (coupon lower at the zero filing) does."""
+        q = ["2024Q1", "2024Q2", "2024Q3"]
+        rows = {"S": ([0.0, 0.03, 0.03], [0.10, 0.11, 0.11]),      # cash, then PIK starts
+                "R": ([0.02, 0.045, 0.045], [0.10, 0.10, 0.10]),   # PIK rate and share up
+                "F": ([0.03, 0.0, 0.03], [0.11, 0.11, 0.11]),      # PIK split missing from one filing
+                "E": ([0.03, 0.0, 0.03], [0.11, 0.08, 0.11]),      # elected cash for a quarter, then PIK
+                "C": ([0.04, 0.04, 0.04], [0.11, 0.11, 0.05])}     # coupon falls, PIK unchanged
+        df = pl.DataFrame({"cik": [k for k in rows for _ in q], "tranche_id": [k for k in rows for _ in q],
+                           "cal_q": q * len(rows), "PIK_Final": sum((v[0] for v in rows.values()), []),
+                           "IR_Final": sum((v[1] for v in rows.values()), []), "PAR": [100.0] * 15, "FV": [99.0] * 15})
+        res = classify_loan_pik_transitions(df).sort(["tranche_id", "cal_q"])
+        got = {k: res.filter(pl.col("tranche_id") == k)["pik_switch_clean"].to_list() for k in rows}
+        self.assertEqual(got, {"S": [False, True, False], "R": [False, True, False], "F": [False, False, False],
+                               "E": [False, False, True], "C": [False, False, False]})
+        old = res.filter(pl.col("tranche_id").is_in(["F", "C"]))["is_distress_amendment"].to_list()
+        self.assertEqual(old, [False, False, True, False, False, True])          # the P2 flag counted both
+
 
 if __name__ == "__main__":
     unittest.main()

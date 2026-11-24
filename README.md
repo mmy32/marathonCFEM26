@@ -9,9 +9,9 @@ the dataset for two things:
   value, PIK), each BDC's exposure to flagged borrowers, case studies and data-center lending.
 - **The early-warning scorecard** (after the midterm): ranks borrowers by the chance of a credit
   event within the next two quarters (non-accrual, or a lender's concession: a switch to paying
-  interest in kind, a debt-for-equity swap, a write-down), from four signs (a low mark, a fall
-  this quarter and over the past year, a switch to paying interest in kind). A markdown is only
-  ever an input, never the outcome.
+  interest in kind, a debt-for-equity swap, a write-down), from five signs (a low mark, a fall
+  this quarter and over the past year, a switch to paying interest in kind this quarter or in the
+  three quarters before). A markdown is only ever an input, never the outcome.
   Start with [docs/14](docs/14_early_warning_model.md).
 
 All analysis reads one file: `data/final_dataset/FINAL_DATASET.csv`.
@@ -34,7 +34,6 @@ python scripts/run_distress_event_study.py                  # case studies, abou
 python src/2_index_construction/index_construction.py       # loan index vs CDLI
 python src/1_data_processing/bdc_growth.py                  # BDC growth
 python src/1_data_processing/dataset_overview.py            # dataset summary
-python src/6_data_center/classify_data_center_borrowers.py  # data-center tags, then the two plot_data_center_*.py
 ```
 
 `plot_data_coverage.py` (filing coverage) also needs `cache/all_metadata.csv` and
@@ -49,7 +48,6 @@ python src/6_data_center/classify_data_center_borrowers.py  # data-center tags, 
 │   ├── 3_concentration_crowding/  lender families per borrower (used by 8 and 9)
 │   ├── 4_val_dispersion/          disagreement between lenders' marks (used by 8 and 9)
 │   ├── 5_pik/                     PIK switches (used by 8 and 9)
-│   ├── 6_data_center/             data-center borrowers
 │   ├── 8_risk_monitor/            warning signs, BDC exposure, borrower panel, case studies
 │   └── 9_prediction/               early-warning model
 ├── scripts/                       run_*.py entry points
@@ -73,7 +71,6 @@ python src/6_data_center/classify_data_center_borrowers.py  # data-center tags, 
 | 8 Index vs CDLI | `src/2_index_construction/index_construction.py` | `index_construction_plots/index_vs_cdli_panels.png`, `index_vs_cdli_stats.csv` |
 | 9-10, 13, 24 Case studies | `scripts/run_distress_event_study.py` | `risk_monitor/distress/case_studies/` |
 | 11-15 Warning signs, BDC exposure | `scripts/run_risk_monitor.py` | `risk_monitor/signals/` |
-| 17-18 Data-center lending | `src/6_data_center/plot_data_center_timeseries.py`, `plot_data_center_sectors.py` | `data_center_plots/` |
 | Early-warning model | `scripts/run_model.py` | `model/` |
 
 Not produced by code: slide 2 (the Federal Reserve's chart), slide 7's "~96% private" (a separate
@@ -112,8 +109,8 @@ Shared input files, each at the path shown:
 | `data/enriched/borrower_name_cleaned.csv`, `_seniority_sector_llm_checkpoint.csv` | Borrower lookup and cached LLM sector answers |
 | `data/final_dataset/labels_by_identifier.csv` (+ `labels_validated.json`, `AUDIT_SUMMARY.md`) | Validated borrower, seniority and sector labels |
 
-The LLM steps (`get_seniority_debttype.py`, `screen_data_center_borrowers.py`) need
-`ANTHROPIC_API_KEY`, but their answers are cached, so nothing above needs a key. Never commit a
+The LLM step (`get_seniority_debttype.py`) needs
+`ANTHROPIC_API_KEY`, but its answers are cached, so nothing above needs a key. Never commit a
 key; `claude_api_key.txt` is git-ignored.
 
 ## Tests
@@ -135,13 +132,12 @@ python tests/test_radar.py      # about 2 minutes: our data against Private Cred
 4. [Index construction](docs/4_index_construction.md)
 6. [Building FINAL_DATASET.csv](docs/6_final_dataset.md)
 7. [Crowding](docs/7_concentration_crowding.md)
-10. [Data-center lending](docs/10_data_center.md)
 11. [Tranche matching and manager families](docs/11_tranche_matching.md)
 12. [Risk monitor](docs/12_risk_monitor.md): warning signs and BDC exposure
 13. [Borrower panel and case studies](docs/13_distress_event_study.md)
 14. [Early-warning model](docs/14_early_warning_model.md)
 
-(Numbers 5, 8 and 9 were retired.)
+(Numbers 5, 8, 9 and 10 were retired.)
 
 ## History
 
@@ -159,3 +155,9 @@ steps:
   versions (other outcomes, ridge, lasso, trees, a neural network) are in the git history; the
   version with non-accrual alone as the outcome is in
   `ORIE 5220/miscellaneous/model_before_credit_event_outcome_2026-11-16/`.
+- 2026-11-23: a PIK switch in the past year added as a fifth sign (after the test had been seen);
+  pairwise interactions and recency weighting tested and left out; two filing artifacts removed
+  from the model's PIK switch (`pik_metrics.pik_switch_clean`; the risk monitor keeps
+  `is_distress_amendment`); the scorecard is benchmarked against the mark alone. Files not
+  covered by the poster or the sponsor's agenda moved out: the data-center study (`src/6_data_center/`,
+  docs/10) and two superseded model scripts (`run_simple_models.py`, `run_calibration_eval.py`).

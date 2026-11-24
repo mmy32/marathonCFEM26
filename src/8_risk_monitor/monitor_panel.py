@@ -43,7 +43,7 @@ def _add_pik(tr: pd.DataFrame) -> pd.DataFrame:
         tr[["cik", "chain_id", "cal_q", "PIK_Final", "IR_Final", "PAR", "pik_at_origination"]]
         .assign(tranche_id=tr["chain_id"].astype(str), cik=tr["cik"].astype(str))
     )).to_pandas()
-    p = p[["chain_id", "cal_q", "pik_share", "is_distress_amendment", "pik_acquired"]]
+    p = p[["chain_id", "cal_q", "pik_share", "is_distress_amendment", "pik_switch_clean", "pik_acquired"]]
     return tr.merge(p, on=["chain_id", "cal_q"], how="left")
 
 

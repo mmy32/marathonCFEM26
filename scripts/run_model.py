@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Early-warning scorecard: ranks borrowers by the chance of a credit event within the next two
 quarters. Builds the borrower-quarter panel (signs at t: the mark and its change over the
-quarter, then the candidates PIK switch, fall over the past year, valuation gap and crowding;
+quarter, then the candidates PIK switch, PIK switch in the past year, fall over the past year,
+valuation gap and crowding;
 outcome: at t + 1 or t + 2 any BDC flags the borrower non-accrual, or a lender switches its
 interest to PIK, swaps its debt for equity or writes down its cost; borrowers that leave every
 BDC's books before then without an event have no label, and a mark never enters the outcome),
@@ -32,13 +33,13 @@ from common import q_next, q_sort, window_label  # noqa: E402
 from config import HORIZON, RESERVED_Q, SCORE_Q, TEST_QS, TRAIN_END  # noqa: E402
 from evaluation import decile_table, performance, split_predictions  # noqa: E402
 from frames import model_frame  # noqa: E402
-from panel import build_model_panel, event_counts, filing_lags, restructuring_vs_nonaccrual, \
+from panel import build_model_panel, event_counts, filing_lags, outcome_breakdown, restructuring_vs_nonaccrual, \
     sample_waterfall, unlabelled_exits  # noqa: E402
 from specs import BASELINE, CANDIDATES, SCORECARD, SIGN_NAMES  # noqa: E402
 
 warnings.filterwarnings("ignore")
 
-CONTEXT = ["price", "d_price", "pik_switch", "max_drawdown", "dispersion", "crowding", "fv_debt", "sector"]
+CONTEXT = ["price", "fall_1q", "pik_switch", "max_drawdown", "dispersion", "crowding", "fv_debt", "sector"]
 
 
 def load_panel(cached: bool) -> tuple[pd.DataFrame, dict]:
@@ -92,6 +93,9 @@ def main(cached: bool = False):
     ec = event_counts(m[m["qsort"] <= score_q])
     ec.to_csv(out / "event_counts.csv", index=False)
     print(ec.round(4).to_string(index=False))
+    ob = outcome_breakdown(m[m["qsort"] <= score_q])
+    ob.to_csv(out / "outcome_breakdown.csv", index=False)
+    print(ob.round(4).to_string(index=False))
     xu = unlabelled_exits(m[m["qsort"] <= score_q])
     xu.to_csv(out / "exits_unlabelled.csv", index=False)
     print(xu.round(3).to_string(index=False))
@@ -126,6 +130,10 @@ def main(cached: bool = False):
     C.odds_ratios(coefs, out / "odds_ratios.png", window)
     print(coefs[coefs["term"] != "const"][["spec", "term", "per", "coef", "se_cluster", "p_value", "odds_ratio",
                                            "n_obs", "n_events"]].round(4).to_string(index=False))
+    co = A.collinearity(m, fit_end)
+    co.to_csv(out / "predictor_correlations.csv", index=False)
+    C.predictor_correlations(co, out / "predictor_correlations.png", window)
+    print(co.round(3).to_string(index=False))
 
     print(f"Sign selection: rolling out of sample, signs up to {TRAIN_END} ...")
     roll = A.rolling(m, fit_end)
@@ -150,6 +158,18 @@ def main(cached: bool = False):
     C.score_deciles(dec, out / "oos_score_deciles.png", test_events, f"signs up to {TRAIN_END}")
     print(perf.round(4).to_string(index=False))
     print(dec.round(4).to_string(index=False))
+    win = A.oos_windows(m, roll, train_end, preds)      # development and test, every benchmark on the same rows
+    cap = A.capture_vs_mark(win)                         # watchlists: scorecard against the mark alone
+    cap.to_csv(out / "oos_capture.csv", index=False)
+    C.capture_gap(cap, out / "oos_capture_gap.png")
+    print(cap[cap["share"].isin([0.05, 0.10, 0.20, 0.30])].round(4).to_string(index=False))
+    bm = A.benchmark_comparison(win)
+    bm.to_csv(out / "oos_benchmarks.csv", index=False)
+    print(bm.round(4).to_string(index=False))
+    dis = A.list_disagreement(win)
+    dis.to_csv(out / "oos_list_disagreement.csv", index=False)
+    C.list_disagreement(dis, bm, out / "oos_list_disagreement.png")
+    print(dis.round(4).to_string(index=False))
     rb = A.ranks_by_outcome(m, train_end, test_qs)      # incl. the exits the test leaves unlabelled
     rb.to_csv(out / "oos_ranks_by_outcome.csv", index=False)
     print(rb.round(3).to_string(index=False))
