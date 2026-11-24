@@ -36,7 +36,7 @@ these: a borrower that switched to PIK is likely to switch again (weakness 1).
 ```
 python scripts/run_model.py            # about 6 minutes
 python scripts/run_model.py --cached   # reuse the saved panel
-python tests/test_model.py             # 42 tests (and tests/test_pik_metrics.py, 3)
+python tests/test_model.py             # 41 tests (and tests/test_pik_metrics.py, 3)
 python scripts/check_look_ahead.py     # look-ahead check (section 6), about 8 minutes
 ```
 
@@ -540,13 +540,11 @@ touched exits and the equity swaps only, never a sign or a fitted label.
 
 Code in `src/9_prediction/`, one job per file: `config.py` (constants), `features.py` (the signs and the
 `FEATURES` registry of units, caps and buckets), `targets.py` (the outcomes: credit event, exits,
-restructurings, next-quarter markdown), `credit_events.py` (term changes and loan exits), `panel.py`
-(joins them, sample rules, event and exit counts), `specs.py` (which signs go in which model),
-`frames.py` (the rows a model sees), `models/` (one file per kind of estimator: `logit.py`,
-`linear.py`, and `ranking.py`, equal-weight scores that `run_model.py` no longer uses; lasso, trees
-and a neural net go here), `evaluation.py` (time splits and
-metrics), `analysis.py` (tables, including the one-input baselines) and `plots.py`. Outputs in
-`outputs/model/`.
+restructurings), `credit_events.py` (term changes and loan exits), `panel.py` (joins them, sample
+rules, event and exit counts), `specs.py` (which signs go in which model), `frames.py` (the rows a
+model sees), `models/` (one file per kind of estimator: `logit.py`, and `ranking.py`, equal-weight
+scores that `run_model.py` no longer uses; lasso, trees and a neural net go here), `evaluation.py`
+(time splits and metrics), `analysis.py` (tables) and `plots.py`. Outputs in `outputs/model/`.
 
 - **Unit:** a borrower in a quarter, every BDC's loans pooled. Kept if it is not a CLO vehicle,
   has a mark on at least half its par, holds $1m+ of debt, and its loans were priced the quarter

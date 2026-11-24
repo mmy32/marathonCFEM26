@@ -25,9 +25,6 @@ def _style(ax, title, ylabel):
         ax.spines[s].set_color(GRID)
 
 
-AQUA = "#1baf7a"
-
-
 CASE_COLORS = [BLUE, "#1baf7a", "#eda100", "#6250d6", "#e87ba4", "#008300"]
 CASE_NAMES = {"WEBPT": "WebPT", "BVI MEDICAL": "BVI Medical", "LOGRHYTHM": "LogRhythm"}
 # Borrowers drawn with a par-weighted average across the lender families shown (midterm slide 10):

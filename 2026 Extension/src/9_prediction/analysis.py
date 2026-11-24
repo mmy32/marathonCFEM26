@@ -1,10 +1,9 @@
 """Tables for the early-warning scorecard (src/9_prediction): the signs one by one (event rates by
 bucket, the PIK-switch hypotheses, the mark path before an event), the in-sample coefficients,
-the sign selection, the out-of-sample test, robustness, the scorecard itself and the one-input
-baselines for each outcome. One outcome throughout (config.OUTCOME): an accruing borrower has a
-credit event within the next two quarters, i.e. non-accrual or a lender's concession (PIK switch,
-debt-for-equity, write-down). Any other outcome appears only as a labelled robustness row; the
-markdown outcomes (next-quarter change in the mark and val_ret) are compared on one-input baselines."""
+the sign selection, the out-of-sample test, robustness and the scorecard itself. One outcome
+throughout (config.OUTCOME): an accruing borrower has a credit event within the next two quarters,
+i.e. non-accrual or a lender's concession (PIK switch, debt-for-equity, write-down). Any other
+outcome appears only as a labelled robustness row."""
 from __future__ import annotations
 
 import numpy as np
@@ -14,13 +13,11 @@ from sklearn.metrics import average_precision_score, roc_auc_score
 import credit_events as CE
 from config import HORIZON, LOW_MARK, MARKDOWN, MIN_GAIN, OUTCOME
 from models.logit import coefficient_table, table_probabilities
-from models.linear import fit_linear
 from frames import design, model_frame
 from evaluation import _boot_counts, auc_ci, auc_gain, capture_gap, decile_table, performance, \
-    pr_auc_ci, pr_auc_gain, quarter_rank, ratio_ci, regression_scores, rolling_predictions, score_decile, \
-    split_predictions
-from features import BUCKETS, BUCKETS_LEFT_CLOSED, PREDICTOR_CAPS, UNITS
-from specs import BASELINE, INPUTS, MARKDOWN_OUTCOMES, NO_CAPS, ROBUSTNESS, SCORECARD, SIGN_NAMES, CANDIDATES, specs
+    pr_auc_ci, pr_auc_gain, quarter_rank, ratio_ci, rolling_predictions, score_decile, split_predictions
+from features import BUCKETS, BUCKETS_LEFT_CLOSED, PREDICTOR_CAPS
+from specs import BASELINE, NO_CAPS, ROBUSTNESS, SCORECARD, SIGN_NAMES, CANDIDATES, specs
 
 
 def labelled_risk_set(m: pd.DataFrame, fit_end: int) -> pd.DataFrame:
@@ -468,30 +465,3 @@ def scorecard(m: pd.DataFrame, score_q: int, context: list[str]) -> pd.DataFrame
     p["decile"] = score_decile(p.rename(columns={"probability": "pred"}))
     first = ["rank", "borrower", "cal_q", "outcome_q", "probability", "decile"]
     return p[first + [c for c in context if c in p] + ["y"]]
-
-
-def simple_models(m: pd.DataFrame, train_end: int, test_qs: list[int]) -> pd.DataFrame:
-    """One simple model per input per outcome, fitted on signals up to train_end and scored on
-    test_qs, as in the scorecard's test. Credit event within two quarters: logistic regression,
-    ROC-AUC. Markdown over the next quarter: linear regression, in- and out-of-sample R2 and the
-    out-of-sample RMSE against the training mean. `coef` is per `per` units of the input (the first
-    column of the input); the logit's score is roc_auc [95% interval]."""
-    out = []
-    for name, cols in INPUTS.items():
-        d = model_frame(m, cols)
-        p = split_predictions(d, cols, train_end, test_qs)
-        auc, lo, hi = auc_ci(p)
-        out.append({"input": name, "outcome": "credit event within 2 quarters (logit)",
-                    "n_train": int((d["qsort"] <= train_end).sum()), "n_test": len(p),
-                    "roc_auc": auc, "roc_auc_lo": lo, "roc_auc_hi": hi})
-        for label, y in MARKDOWN_OUTCOMES.items():
-            d = model_frame(m, cols, outcome=y)
-            tr, te = d[d["qsort"] <= train_end], d[d["qsort"].isin(test_qs)]
-            pred_te, pred_tr, coef = fit_linear(tr, te, cols)
-            test = regression_scores(te["y"], pred_te, tr["y"].mean())
-            out.append({"input": name, "outcome": label + " (linear)", "n_train": len(tr), "n_test": len(te),
-                        "coef": coef, "per": UNITS.get(cols[0], 1.0),
-                        "r2_in_sample": regression_scores(tr["y"], pred_tr, tr["y"].mean())["r2"],
-                        "r2_out_of_sample": test["r2"], "rmse_out_of_sample": test["rmse"],
-                        "rmse_train_mean": test["rmse_benchmark"]})
-    return pd.DataFrame(out)

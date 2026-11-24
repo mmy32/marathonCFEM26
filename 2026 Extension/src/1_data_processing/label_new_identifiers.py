@@ -54,8 +54,6 @@ LABEL_COLS = ["id", "investment_identifier", "rows_in_file", "n_bdcs", "borrower
               "borrower_confidence", "borrower_action", "borrower_reason", "seniority_prev", "instrument_seniority",
               "seniority_confidence", "seniority_evidence", "seniority_action", "sector_prev", "sector",
               "sector_confidence", "sector_evidence_type", "sector_evidence", "sector_action"]
-JSON_COLS = ["id", "borrower_canonical", "borrower_confidence", "instrument_seniority", "seniority_confidence",
-             "seniority_evidence", "sector", "sector_confidence", "sector_evidence_type", "sector_evidence"]
 
 
 def _client():

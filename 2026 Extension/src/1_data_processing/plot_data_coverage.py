@@ -18,7 +18,11 @@ GREY, GOLD, GREEN, PALE, RED = "#8c8c8c", "#c9a35c", "#2c5545", "#b7bcb0", "#9c3
 
 
 def load_metadata() -> pd.DataFrame:
+    """Filing metadata for reporting periods up to Q_TO. Filings for later quarters that are already in
+    the cache (2026Q3) are left out, so the charts match the panel; some rows carry a time part."""
     m = pd.read_csv(METADATA_CSV, dtype=str)
+    m["reportDate"] = m["reportDate"].str[:10]
+    m = m[m["reportDate"] <= str(pd.Period(Q_TO).end_time.date())].copy()
     m["year"] = m["filingDate"].str[:4].astype(int)
     m["kind"] = "Non-XBRL"
     m.loc[m["isXBRL"] == "1", "kind"] = "XBRL (non-inline)"

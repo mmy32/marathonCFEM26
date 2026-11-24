@@ -89,14 +89,6 @@ class TestPanel(unittest.TestCase):
         self.assertAlmostEqual(a.loc["2024Q4", "d_price"], -0.05)
         self.assertAlmostEqual(a.loc["2024Q4", "fall_1q"], 0.05)        # the model's input: a fall is positive
 
-    def test_markdown_outcomes_are_next_quarter_same_loan_changes(self):
-        # signals at 2024Q1: the next quarter's change in the mark (-0.01) and val_ret (FV -$0.2m on
-        # $20m of prior fair value, cost unchanged); nothing after the last quarter
-        a = self.m.loc["ACME"]
-        self.assertAlmostEqual(a.loc["2024Q1", "y_dprice"], -0.01)
-        self.assertAlmostEqual(a.loc["2024Q1", "y_valret"], -0.01)
-        self.assertTrue(np.isnan(a.loc["2024Q4", "y_dprice"]) and np.isnan(a.loc["2024Q4", "y_valret"]))
-
     def test_rolling_max_drawdown(self):
         a = self.m.loc["ACME"]
         self.assertTrue(np.isnan(a.loc["2024Q1", "max_drawdown"]))     # no earlier quarter

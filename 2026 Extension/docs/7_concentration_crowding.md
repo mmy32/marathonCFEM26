@@ -20,9 +20,9 @@ fair value > 0). One row per quarter and borrower:
 | | `C1_pct` ... `C4_pct` | Within-quarter percentiles |
 
 **On the current data.** The median borrower has one lender family and the 90th percentile three.
-The most widely held borrowers in 2026Q2 are Integrity Marketing (21 families, 39 BDCs), MRI
-Software (19, 35), Galway Borrower (19, 35), World Insurance Associates (17, 30) and Flexera
-Software (17, 32). Big borrowers have more lenders (rank correlation of BDC-held par and families
+The most widely held borrowers in 2026Q2 are Integrity Marketing (18 families, 39 BDCs), MRI
+Software (18, 35), Galway Borrower (17, 35), Asurion (17, 21) and Flexera Software (16, 32). Big
+borrowers have more lenders (rank correlation of BDC-held par and families
 about 0.5), so the risk monitor ranks crowding within size fifths.
 
 **Limitations.**

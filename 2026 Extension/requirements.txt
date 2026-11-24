@@ -1,6 +1,6 @@
 # Tested with Python 3.11. Exact pins so outputs (including plots) reproduce byte for byte.
 pandas==2.0.2
-openpyxl==3.1.5  # pandas.read_excel: borrower lookup (step 7) and Search.xlsx rates
+openpyxl==3.1.5  # pandas.read_excel: the borrower lookup (step 7)
 numpy==1.26.4
 requests==2.34.2
 beautifulsoup4==4.15.0
@@ -11,4 +11,4 @@ polars==1.44.1
 pyarrow==25.0.1  # polars .to_pandas(): tranche panel, risk monitor, models
 scipy==1.10.0  # src/9_prediction: p-values of the clustered coefficients
 scikit-learn==1.2.1  # src/9_prediction: the logistic regression and the metrics
-anthropic==0.86.0  # LLM steps: get_seniority_debttype.py, screen_data_center_borrowers.py
+anthropic==0.86.0  # LLM step: get_seniority_debttype.py (its answers are cached)

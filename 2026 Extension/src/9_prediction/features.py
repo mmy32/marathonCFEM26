@@ -99,28 +99,20 @@ def borrower_marks(t: pd.DataFrame) -> pd.DataFrame:
 
 def chain_changes(t: pd.DataFrame) -> pd.DataFrame:
     """Per borrower x quarter t, over the same loans (chains) held at t - 1 and t:
-    d_price = par-weighted change in FV / PAR (weights: priced par at t - 1), val_ret = change in
-    fair value net of the change in cost over prior fair value plus new cost, d_pik_pp =
+    d_price = par-weighted change in FV / PAR (weights: priced par at t - 1), d_pik_pp =
     par-weighted change in the PIK share of the coupon (percentage points). Draws, repayments and
     loans entering or leaving do not move them."""
     keys = ["borrower", "qsort"]
-    c = t[["chain_id", "qsort", "borrower", "FV", "COST", "FV_px", "PAR_px", "PAR", "pik_share"]].copy()
+    c = t[["chain_id", "qsort", "borrower", "FV_px", "PAR_px", "PAR", "pik_share"]].copy()
     c["cprice"] = (c["FV_px"] / c["PAR_px"]).where(c["PAR_px"] > 0)
     c["cprice"] = c["cprice"].where(c["cprice"] <= CE.MAX_MARK)
-    prev = c[["chain_id", "qsort", "cprice", "PAR_px", "PAR", "pik_share", "FV", "COST"]].assign(qsort=c["qsort"] + 1)
+    prev = c[["chain_id", "qsort", "cprice", "PAR_px", "PAR", "pik_share"]].assign(qsort=c["qsort"] + 1)
     m = c.merge(prev, on=["chain_id", "qsort"], suffixes=("", "_prev"))     # consecutive quarters only
     px = m[m["cprice"].notna() & m["cprice_prev"].notna()]
     w = px["PAR_px_prev"]
     out = (w * (px["cprice"] - px["cprice_prev"])).groupby([px[k] for k in keys]).sum() \
         / w.groupby([px[k] for k in keys]).sum()
     out = out.rename("d_price").to_frame()
-    # val_ret: change in fair value net of the change in cost (draws, paydowns, capitalised PIK), over
-    # prior fair value plus new cost, summed over the same loans and capped at +-100%
-    vr = m[m[["FV", "COST", "FV_prev", "COST_prev"]].notna().all(axis=1)]
-    dcost = vr["COST"] - vr["COST_prev"]
-    num = (vr["FV"] - vr["FV_prev"] - dcost).groupby([vr[k] for k in keys]).sum()
-    den = (vr["FV_prev"] + dcost.clip(lower=0)).groupby([vr[k] for k in keys]).sum()
-    out = out.join((num / den).where(den > 0).clip(-1, 1).rename("val_ret"), how="outer")
     pk = m[m["pik_share"].notna() & m["pik_share_prev"].notna() & (m["PAR_prev"] > 0)]
     wk = pk["PAR_prev"]
     out = out.join((100 * (wk * (pk["pik_share"] - pk["pik_share_prev"])).groupby([pk[k] for k in keys]).sum()
@@ -165,7 +157,7 @@ def build_features(tr: pd.DataFrame, rows: pl.DataFrame) -> pd.DataFrame:
     pik_switch (alternative d_pik_pp), pik_past_year (a PIK switch in the three quarters before t),
     dispersion (the valuation gap: highest minus lowest lender
     family's mark; alternative dispersion_std; has_dispersion = 1 when defined), crowding, plus
-    market-adjusted versions (price_rel, fall_1q_adj), val_ret and controls."""
+    market-adjusted versions (price_rel, fall_1q_adj) and controls."""
     t = named_tranches(tr)
     b = borrower_marks(t)
     # the mark: FV / par on loans with par, FV / cost on debt without par
