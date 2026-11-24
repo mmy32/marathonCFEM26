@@ -50,8 +50,15 @@ def classify_loan_pik_transitions(
 
     PIK below min_pik_rate counts as none. Adds q_incept, PAR_incept, PIK_prev, PAR_prev,
     delta_pik, pik_share (P1, PIK / total coupon), pik_share_prev, P1_pct (within-quarter
-    percentile of pik_share), pik_acquired (PIK now, P3 = False), pik_transition_state and
-    is_distress_amendment (P2).
+    percentile of pik_share), pik_acquired (PIK now, P3 = False), pik_transition_state,
+    is_distress_amendment (P2) and pik_switch_clean.
+
+    pik_switch_clean is P2 without two filing artifacts (the early-warning model's PIK switch,
+    src/9_prediction): a rise in the PIK share counts only if the PIK rate itself rose by
+    min_pik_rate or more (not when the total coupon fell, as when the cash part goes missing);
+    and PIK that comes back after one filing at zero, with the total coupon within min_pik_rate
+    of that filing's, is the PIK split missing from that filing, so it is compared with the
+    filing before it instead.
     """
     group_cols = [cik_col, id_col]
     has_orig = origination_col in df.columns
@@ -66,6 +73,9 @@ def classify_loan_pik_transitions(
             pl.col(final_pik_col).shift(1).over(group_cols).alias("PIK_prev"),
             pl.col(par_col).shift(1).over(group_cols).alias("PAR_prev"),
             pl.col("pik_share").shift(1).over(group_cols).alias("pik_share_prev"),
+            pl.col(ir_col).shift(1).over(group_cols).alias("IR_prev"),
+            pl.col(final_pik_col).shift(2).over(group_cols).alias("PIK_prev2"),
+            pl.col("pik_share").shift(2).over(group_cols).alias("pik_share_prev2"),
         ]).with_columns([
             (pl.col(quarter_col) == pl.col("q_incept")).alias("is_inception"),
             (pl.col(final_pik_col).fill_null(0) - pl.col("PIK_prev").fill_null(0)).alias("delta_pik"),
@@ -82,6 +92,16 @@ def classify_loan_pik_transitions(
     share_up = (pl.col("pik_share") - pl.col("pik_share_prev").fill_null(0)) >= min_share_rise
     cash_at_orig = (pl.col(origination_col) == False).fill_null(False) if has_orig else pl.lit(False)
     toggle = ~is_incept & curr_pik & (~prev_pik | share_up)
+    # the model's PIK switch: the PIK rate itself rises; a one-filing gap in the PIK split is skipped
+    pik = pl.col(final_pik_col).fill_null(0)
+    pik_up = (pik - pl.col("PIK_prev").fill_null(0)) >= min_pik_rate
+    split_gap = (~prev_pik & (pl.col("PIK_prev2").fill_null(0) >= min_pik_rate)
+                 & ((pl.col(ir_col) - pl.col("IR_prev")).abs() < min_pik_rate).fill_null(False))
+    up_from_prev2 = (((pl.col("pik_share") - pl.col("pik_share_prev2").fill_null(0)) >= min_share_rise)
+                     & ((pik - pl.col("PIK_prev2").fill_null(0)) >= min_pik_rate))
+    switch_clean = (~is_incept & curr_pik
+                    & pl.when(prev_pik).then(share_up & pik_up).when(split_gap).then(up_from_prev2).otherwise(True)
+                    ).fill_null(False)
 
     transition_expr = (
         pl.when(is_incept & curr_pik & cash_at_orig).then(pl.lit("acquired_pik"))
@@ -95,7 +115,8 @@ def classify_loan_pik_transitions(
     )
 
     return (
-        df_tracked.with_columns([transition_expr, toggle.alias("is_distress_amendment")])
+        df_tracked.with_columns([transition_expr, toggle.alias("is_distress_amendment"),
+                                 switch_clean.alias("pik_switch_clean")])
         # acquired PIK: cash-pay at origination (P3 = False), or this chain toggled to PIK earlier
         .with_columns(
             (curr_pik & (cash_at_orig

@@ -1,51 +1,53 @@
 cut,what,column,rows_full,rows_cut,rows_differ,max_abs_diff
-2025Q1,"signs and flags, quarters <= 2025Q1",(rows),59202,59202,0,
-2025Q1,"signs and flags, quarters <= 2025Q1",price,59202,59202,0,0.0
-2025Q1,"signs and flags, quarters <= 2025Q1",d_price,59202,59202,0,0.0
-2025Q1,"signs and flags, quarters <= 2025Q1",pik_switch,59202,59202,0,0.0
-2025Q1,"signs and flags, quarters <= 2025Q1",max_drawdown,59202,59202,0,0.0
-2025Q1,"signs and flags, quarters <= 2025Q1",dispersion,59202,59202,0,0.0
-2025Q1,"signs and flags, quarters <= 2025Q1",has_dispersion,59202,59202,0,0.0
-2025Q1,"signs and flags, quarters <= 2025Q1",crowding,59202,59202,0,0.0
-2025Q1,"signs and flags, quarters <= 2025Q1",fv_debt,59202,59202,0,0.0
-2025Q1,"signs and flags, quarters <= 2025Q1",priced_share,59202,59202,0,0.0
-2025Q1,"signs and flags, quarters <= 2025Q1",na_status,59202,59202,0,0.0
-2025Q1,"signs and flags, quarters <= 2025Q1",na_ever,59202,59202,0,0.0
-2025Q1,"signs and flags, quarters <= 2025Q1",in_sample,59202,59202,0,0.0
-2025Q1,"signs and flags, quarters <= 2025Q1",na_risk_set,59202,59202,0,0.0
-2025Q1,"signs and flags, quarters <= 2025Q1",restr_pik,59202,59202,0,0.0
-2025Q1,"signs and flags, quarters <= 2025Q1",restr_spread,59202,59202,0,0.0
-2025Q1,"signs and flags, quarters <= 2025Q1",restr_maturity,59202,59202,0,0.0
-2025Q1,"signs and flags, quarters <= 2025Q1",restr_equity,59202,59202,0,0.0
-2025Q1,"signs and flags, quarters <= 2025Q1",restr_write_down,59202,59202,0,0.0
-2025Q1,"outcomes, windows closed by 2025Q1",(rows),43690,43690,0,
-2025Q1,"outcomes, windows closed by 2025Q1",y_event,43690,43690,0,0.0
-2025Q1,"outcomes, windows closed by 2025Q1",y_na,43690,43690,0,0.0
-2025Q1,"outcomes, windows closed by 2025Q1",y_all_terms,43690,43690,0,0.0
-2025Q1,"outcomes, windows closed by 2025Q1",event_q,43690,43690,0,0.0
-2025Q1,scorecard scores for 2025Q1,pred,5167,5167,0,0.0
-2025Q3,"signs and flags, quarters <= 2025Q3",(rows),76345,76345,0,
-2025Q3,"signs and flags, quarters <= 2025Q3",price,76345,76345,0,0.0
-2025Q3,"signs and flags, quarters <= 2025Q3",d_price,76345,76345,0,0.0
-2025Q3,"signs and flags, quarters <= 2025Q3",pik_switch,76345,76345,0,0.0
-2025Q3,"signs and flags, quarters <= 2025Q3",max_drawdown,76345,76345,0,0.0
-2025Q3,"signs and flags, quarters <= 2025Q3",dispersion,76345,76345,0,0.0
-2025Q3,"signs and flags, quarters <= 2025Q3",has_dispersion,76345,76345,0,0.0
-2025Q3,"signs and flags, quarters <= 2025Q3",crowding,76345,76345,0,0.0
-2025Q3,"signs and flags, quarters <= 2025Q3",fv_debt,76345,76345,0,0.0
-2025Q3,"signs and flags, quarters <= 2025Q3",priced_share,76345,76345,0,0.0
-2025Q3,"signs and flags, quarters <= 2025Q3",na_status,76345,76345,0,0.0
-2025Q3,"signs and flags, quarters <= 2025Q3",na_ever,76345,76345,0,0.0
-2025Q3,"signs and flags, quarters <= 2025Q3",in_sample,76345,76345,0,0.0
-2025Q3,"signs and flags, quarters <= 2025Q3",na_risk_set,76345,76345,0,0.0
-2025Q3,"signs and flags, quarters <= 2025Q3",restr_pik,76345,76345,0,0.0
-2025Q3,"signs and flags, quarters <= 2025Q3",restr_spread,76345,76345,0,0.0
-2025Q3,"signs and flags, quarters <= 2025Q3",restr_maturity,76345,76345,0,0.0
-2025Q3,"signs and flags, quarters <= 2025Q3",restr_equity,76345,76345,1,1.0
-2025Q3,"signs and flags, quarters <= 2025Q3",restr_write_down,76345,76345,0,0.0
-2025Q3,"outcomes, windows closed by 2025Q3",(rows),59202,59202,0,
-2025Q3,"outcomes, windows closed by 2025Q3",y_event,59202,59202,0,0.0
-2025Q3,"outcomes, windows closed by 2025Q3",y_na,59202,59202,0,0.0
-2025Q3,"outcomes, windows closed by 2025Q3",y_all_terms,59202,59202,0,0.0
-2025Q3,"outcomes, windows closed by 2025Q3",event_q,59202,59202,1,0.0
-2025Q3,scorecard scores for 2025Q3,pred,5782,5782,0,0.0
+2025Q2,"signs and flags, quarters <= 2025Q2",(rows),67625,67625,0,
+2025Q2,"signs and flags, quarters <= 2025Q2",price,67625,67625,0,0.0
+2025Q2,"signs and flags, quarters <= 2025Q2",d_price,67625,67625,0,0.0
+2025Q2,"signs and flags, quarters <= 2025Q2",pik_switch,67625,67625,0,0.0
+2025Q2,"signs and flags, quarters <= 2025Q2",pik_past_year,67625,67625,0,0.0
+2025Q2,"signs and flags, quarters <= 2025Q2",max_drawdown,67625,67625,0,0.0
+2025Q2,"signs and flags, quarters <= 2025Q2",dispersion,67625,67625,0,0.0
+2025Q2,"signs and flags, quarters <= 2025Q2",has_dispersion,67625,67625,0,0.0
+2025Q2,"signs and flags, quarters <= 2025Q2",crowding,67625,67625,0,0.0
+2025Q2,"signs and flags, quarters <= 2025Q2",fv_debt,67625,67625,0,0.0
+2025Q2,"signs and flags, quarters <= 2025Q2",priced_share,67625,67625,0,0.0
+2025Q2,"signs and flags, quarters <= 2025Q2",na_status,67625,67625,0,0.0
+2025Q2,"signs and flags, quarters <= 2025Q2",na_ever,67625,67625,0,0.0
+2025Q2,"signs and flags, quarters <= 2025Q2",in_sample,67625,67625,0,0.0
+2025Q2,"signs and flags, quarters <= 2025Q2",na_risk_set,67625,67625,0,0.0
+2025Q2,"signs and flags, quarters <= 2025Q2",restr_pik,67625,67625,0,0.0
+2025Q2,"signs and flags, quarters <= 2025Q2",restr_spread,67625,67625,0,0.0
+2025Q2,"signs and flags, quarters <= 2025Q2",restr_maturity,67625,67625,0,0.0
+2025Q2,"signs and flags, quarters <= 2025Q2",restr_equity,67625,67625,0,0.0
+2025Q2,"signs and flags, quarters <= 2025Q2",restr_write_down,67625,67625,0,0.0
+2025Q2,"outcomes, windows closed by 2025Q2",(rows),51321,51321,0,
+2025Q2,"outcomes, windows closed by 2025Q2",y_event,51321,51321,0,0.0
+2025Q2,"outcomes, windows closed by 2025Q2",y_na,51321,51321,0,0.0
+2025Q2,"outcomes, windows closed by 2025Q2",y_all_terms,51321,51321,0,0.0
+2025Q2,"outcomes, windows closed by 2025Q2",event_q,51321,51321,0,0.0
+2025Q2,scorecard scores for 2025Q2,pred,5404,5404,0,0.0
+2025Q4,"signs and flags, quarters <= 2025Q4",(rows),85333,85333,0,
+2025Q4,"signs and flags, quarters <= 2025Q4",price,85333,85333,0,0.0
+2025Q4,"signs and flags, quarters <= 2025Q4",d_price,85333,85333,0,0.0
+2025Q4,"signs and flags, quarters <= 2025Q4",pik_switch,85333,85333,0,0.0
+2025Q4,"signs and flags, quarters <= 2025Q4",pik_past_year,85333,85333,0,0.0
+2025Q4,"signs and flags, quarters <= 2025Q4",max_drawdown,85333,85333,0,0.0
+2025Q4,"signs and flags, quarters <= 2025Q4",dispersion,85333,85333,0,0.0
+2025Q4,"signs and flags, quarters <= 2025Q4",has_dispersion,85333,85333,0,0.0
+2025Q4,"signs and flags, quarters <= 2025Q4",crowding,85333,85333,0,0.0
+2025Q4,"signs and flags, quarters <= 2025Q4",fv_debt,85333,85333,0,0.0
+2025Q4,"signs and flags, quarters <= 2025Q4",priced_share,85333,85333,0,0.0
+2025Q4,"signs and flags, quarters <= 2025Q4",na_status,85333,85333,0,0.0
+2025Q4,"signs and flags, quarters <= 2025Q4",na_ever,85333,85333,0,0.0
+2025Q4,"signs and flags, quarters <= 2025Q4",in_sample,85333,85333,0,0.0
+2025Q4,"signs and flags, quarters <= 2025Q4",na_risk_set,85333,85333,0,0.0
+2025Q4,"signs and flags, quarters <= 2025Q4",restr_pik,85333,85333,0,0.0
+2025Q4,"signs and flags, quarters <= 2025Q4",restr_spread,85333,85333,0,0.0
+2025Q4,"signs and flags, quarters <= 2025Q4",restr_maturity,85333,85333,0,0.0
+2025Q4,"signs and flags, quarters <= 2025Q4",restr_equity,85333,85333,0,0.0
+2025Q4,"signs and flags, quarters <= 2025Q4",restr_write_down,85333,85333,0,0.0
+2025Q4,"outcomes, windows closed by 2025Q4",(rows),67625,67625,0,
+2025Q4,"outcomes, windows closed by 2025Q4",y_event,67625,67625,0,0.0
+2025Q4,"outcomes, windows closed by 2025Q4",y_na,67625,67625,0,0.0
+2025Q4,"outcomes, windows closed by 2025Q4",y_all_terms,67625,67625,0,0.0
+2025Q4,"outcomes, windows closed by 2025Q4",event_q,67625,67625,0,0.0
+2025Q4,scorecard scores for 2025Q4,pred,5838,5838,0,0.0

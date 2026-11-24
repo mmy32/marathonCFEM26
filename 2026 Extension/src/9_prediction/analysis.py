@@ -13,13 +13,13 @@ from sklearn.metrics import average_precision_score, roc_auc_score
 
 import credit_events as CE
 from config import HORIZON, LOW_MARK, MARKDOWN, MIN_GAIN, OUTCOME
-from models.logit import coefficient_table
-from models.ranking import equal_weight_score
+from models.logit import coefficient_table, table_probabilities
 from models.linear import fit_linear
-from frames import model_frame
-from evaluation import _predictions, auc_ci, auc_gain, decile_table, performance, quarter_rank, ratio_ci, \
-    regression_scores, rolling_predictions, score_decile, split_predictions
-from features import BUCKETS, PREDICTOR_CAPS, UNITS
+from frames import design, model_frame
+from evaluation import _boot_counts, auc_ci, auc_gain, capture_gap, decile_table, performance, \
+    pr_auc_ci, pr_auc_gain, quarter_rank, ratio_ci, regression_scores, rolling_predictions, score_decile, \
+    split_predictions
+from features import BUCKETS, BUCKETS_LEFT_CLOSED, PREDICTOR_CAPS, UNITS
 from specs import BASELINE, INPUTS, MARKDOWN_OUTCOMES, NO_CAPS, ROBUSTNESS, SCORECARD, SIGN_NAMES, CANDIDATES, specs
 
 
@@ -30,7 +30,8 @@ def labelled_risk_set(m: pd.DataFrame, fit_end: int) -> pd.DataFrame:
 def predictor_summary(m: pd.DataFrame, fit_end: int) -> pd.DataFrame:
     """Each sign on the labelled risk set: all borrowers, then by outcome."""
     d = labelled_risk_set(m, fit_end)
-    cols = ["price", "d_price", "pik_switch", "dispersion", "crowding", "max_drawdown", "d_pik_pp", "dispersion_std"]
+    cols = ["price", "fall_1q", "pik_switch", "pik_past_year", "dispersion", "crowding", "max_drawdown", "d_pik_pp",
+            "dispersion_std"]
     out = []
     for group, g in [("all", d), ("no event in t+1..t+2", d[d[OUTCOME] == 0]), ("event in t+1..t+2", d[d[OUTCOME] == 1])]:
         for c in cols:
@@ -45,13 +46,14 @@ def event_rates(m: pd.DataFrame, fit_end: int) -> pd.DataFrame:
     d = labelled_risk_set(m, fit_end)
     parts = []
     for col, (bins, labels) in BUCKETS.items():
-        b = pd.cut(d[col], bins=bins, labels=labels, right=True).astype(object)
+        b = pd.cut(d[col], bins=bins, labels=labels, right=col not in BUCKETS_LEFT_CLOSED).astype(object)
         if col == "dispersion":
             b = b.where(d["has_dispersion"] == 1, "single lender")
         parts.append(d.assign(predictor=col, bucket=b))
-    parts.append(d.assign(predictor="pik_switch", bucket=np.where(d["pik_switch"] == 1, "switched", "no switch")))
     order = {(col, lab): i for col in BUCKETS for i, lab in enumerate(["single lender"] + BUCKETS[col][1])}
-    order.update({("pik_switch", "no switch"): 0, ("pik_switch", "switched"): 1})
+    for col in ["pik_switch", "pik_past_year"]:                     # the 0/1 signs
+        parts.append(d.assign(predictor=col, bucket=np.where(d[col] == 1, "switched", "no switch")))
+        order.update({(col, "no switch"): 0, (col, "switched"): 1})
     groups = pd.concat(parts).groupby(["predictor", "bucket"])
     t = groups[OUTCOME].agg(n="size", events="sum", rate="mean").reset_index()
     ci = {k: ratio_ci(g[OUTCOME], np.ones(len(g)), g["borrower"]) for k, g in groups}
@@ -108,12 +110,38 @@ def event_profile(m: pd.DataFrame, fit_end: int, horizon: int = 4) -> pd.DataFra
 
 def coefficients(m: pd.DataFrame, fit_end: int) -> pd.DataFrame:
     """In-sample logits of every spec on predictor quarters <= fit_end, standard errors clustered
-    by borrower."""
+    by borrower, with the ROC-AUC and PR-AUC on the rows fitted on. For the scorecard, both also get
+    a borrower-resampled 95% interval (the fit held fixed)."""
     out = []
     for spec, cols in specs().items():
         d = model_frame(m, cols)
-        out.append(coefficient_table(d[d["qsort"] <= fit_end], cols, {"spec": spec, "scorecard": cols == SCORECARD}))
+        d = d[d["qsort"] <= fit_end]
+        c = coefficient_table(d, cols, {"spec": spec, "scorecard": cols == SCORECARD})
+        if cols == SCORECARD:
+            p = d[["borrower", "y"]].assign(pred=table_probabilities(d, cols, c))
+            _, c["auc_in_sample_lo"], c["auc_in_sample_hi"] = auc_ci(p)
+            _, c["pr_auc_in_sample_lo"], c["pr_auc_in_sample_hi"] = pr_auc_ci(p)
+        out.append(c)
     return pd.concat(out, ignore_index=True)
+
+
+def collinearity(m: pd.DataFrame, fit_end: int) -> pd.DataFrame:
+    """Multicollinearity of the scorecard's signs on the rows it is fitted on, capped as in the fit:
+    Pearson correlations (one column per sign), Spearman's largest off the diagonal, and each
+    sign's R² on the other three with VIF = 1 / (1 - R²), the factor by which the overlap
+    inflates its coefficient's variance (1 = none; 5-10 is the usual warning line)."""
+    d = model_frame(m, SCORECARD)
+    X = pd.DataFrame(design(d[d["qsort"] <= fit_end], SCORECARD), columns=SCORECARD)
+    r = X.corr()
+    vif = np.diag(np.linalg.inv(r.to_numpy()))
+    rho = X.corr("spearman").to_numpy()
+    np.fill_diagonal(rho, 0.0)
+    out = r.rename_axis("predictor").reset_index()
+    out["spearman_max_abs"] = np.abs(rho).max(axis=1)
+    out["r2_on_others"] = 1 - 1 / vif
+    out["vif"] = vif
+    out["n_obs"] = len(X)
+    return out
 
 
 def rolling(m: pd.DataFrame, last_q: int) -> pd.DataFrame:
@@ -131,13 +159,14 @@ def sign_selection(roll: pd.DataFrame, dev_end: int) -> pd.DataFrame:
     dev_end, so the test quarters play no part): ROC-AUC of the baseline, and of the baseline with
     each sign added alone, with the gain over the baseline (borrower-resampled 95% intervals). A
     sign is kept if it adds at least MIN_GAIN; whether the gain's interval clears zero is reported
-    next to it."""
+    next to it. PR-AUC and its gain over the baseline are reported beside, not used by the rule."""
     r = roll[roll["qsort"] <= dev_end]
     base = r[r["spec"] == "baseline"]
     out = []
     for spec, cols in specs().items():
         p = r[r["spec"] == spec]
         auc, lo, hi = auc_ci(p)
+        ap, ap_lo, ap_hi = pr_auc_ci(p)
         row = {"spec": spec, "test_quarters": f"{p['cal_q'].min()} to {p['cal_q'].max()}", "n": len(p),
                "events": int(p["y"].sum()), "roc_auc": auc, "roc_auc_lo": lo, "roc_auc_hi": hi}
         if spec != "baseline":
@@ -145,52 +174,151 @@ def sign_selection(roll: pd.DataFrame, dev_end: int) -> pd.DataFrame:
             if spec.startswith("baseline + "):
                 row["kept"] = row["gain_vs_baseline"] >= MIN_GAIN
                 row["gain_interval_above_zero"] = row["gain_lo"] > 0
+        row.update({"pr_auc": ap, "pr_auc_lo": ap_lo, "pr_auc_hi": ap_hi})
+        if spec != "baseline":
+            row["pr_gain_vs_baseline"], row["pr_gain_lo"], row["pr_gain_hi"] = pr_auc_gain(p, base)
         out.append(row)
     return pd.DataFrame(out)
 
 
 def by_quarter(roll: pd.DataFrame) -> pd.DataFrame:
     """Events and ROC-AUC of each rolling test quarter: mark alone, the baseline and the scorecard,
-    with the scorecard's ROC-AUC on the quarters it was fitted on (the overfitting check)."""
+    with the scorecard's ROC-AUC on the quarters it was fitted on (the overfitting check), and its
+    calibration in that quarter: realized / predicted events with a borrower-resampled 95%
+    interval."""
     shown = ["mark alone", "baseline", "scorecard"]
     r = roll[roll["spec"].isin(shown)]
     t = r.groupby(["cal_q", "outcome_q", "spec"]).apply(lambda x: roc_auc_score(x["y"], x["pred"])).unstack("spec")
-    n = r[r["spec"] == "scorecard"].groupby(["cal_q", "outcome_q"]).agg(
+    card = r[r["spec"] == "scorecard"]
+    n = card.groupby(["cal_q", "outcome_q"]).agg(
         n=("y", "size"), events=("y", "sum"), train_events=("train_events", "first"),
-        scorecard_train_auc=("train_auc", "first"))
+        scorecard_train_auc=("train_auc", "first"), expected=("pred", "sum"))
+    ci = {k: ratio_ci(g["y"], g["pred"], g["borrower"]) for k, g in card.groupby(["cal_q", "outcome_q"])}
+    n["scorecard_realized_to_predicted"] = n["events"] / n.pop("expected")
+    n["ratio_lo"], n["ratio_hi"] = [ci[k][0] for k in n.index], [ci[k][1] for k in n.index]
     return n.join(t[shown]).reset_index()
 
 
 def oos_test(m: pd.DataFrame, train_end: int, test_qs: list[int]) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """The out-of-sample test: every model fitted once on quarters <= train_end and scored on
-    `test_qs`. The scorecard against the mark alone, the baseline and the equal-weighted ranking
-    of the scorecard's signs. train_roc_auc is each model's ROC-AUC on the quarters it was fitted
-    on. Returns (one row per model, the decile tables of the scorecard and the equal-weighted
-    ranking, the predictions)."""
-    runs = [("mark alone", ["price"], True), ("baseline: mark and its change", BASELINE, True),
-            ("scorecard", SCORECARD, True), ("equal-weighted ranking, same signs", SCORECARD, False)]
+    `test_qs`. The scorecard against the mark alone (the benchmark) and the mark with its change.
+    train_roc_auc is each model's ROC-AUC on the quarters it was fitted on. Returns (one row per
+    model, the decile tables of the scorecard and the mark alone, the predictions)."""
+    runs = [("mark alone", ["price"]), ("baseline: mark and its change", BASELINE), ("scorecard", SCORECARD)]
     preds = {}
-    for label, cols, logit in runs:
-        d = model_frame(m, cols, labelled=False)
-        if logit:
-            p = split_predictions(d, cols, train_end, test_qs)
-        else:                                       # nothing fitted: the signs' ranks averaged
-            d = d[d["qsort"].isin(test_qs)]
-            p = _predictions(d, equal_weight_score(d, cols).to_numpy())
+    for label, cols in runs:
+        p = split_predictions(model_frame(m, cols, labelled=False), cols, train_end, test_qs)
         preds[label] = p[p["y"].notna()]
     card = preds["scorecard"]
     rows, deciles = [], []
-    for label, cols, logit in runs:
+    for label, cols in runs:
         p = preds[label]
-        row = {"model": label, "outcome": OUTCOME, **performance(p, logit),
-               "train_roc_auc": p["train_auc"].iloc[0] if logit else np.nan}
+        row = {"model": label, "outcome": OUTCOME, **performance(p), "train_roc_auc": p["train_auc"].iloc[0]}
         if label != "scorecard":
             row["auc_minus_scorecard"], row["diff_lo"], row["diff_hi"] = auc_gain(p, card)
         rows.append(row)
-        if cols == SCORECARD:
-            deciles.append(decile_table(p, logit).assign(model=label))
+        if label in (BENCHMARK, "scorecard"):
+            deciles.append(decile_table(p).assign(model=label))
     out = pd.concat([p.assign(model=k) for k, p in preds.items()], ignore_index=True)
     return pd.DataFrame(rows), pd.concat(deciles, ignore_index=True), out
+
+
+# The benchmark the scorecard is compared with on the same rows (column "mark" of oos_windows): the
+# mark alone, a logit on the mark level fitted and scored exactly as the scorecard is.
+BENCHMARK = "mark alone"
+BENCHMARKS = {BENCHMARK: "mark"}
+
+
+def oos_windows(m: pd.DataFrame, roll: pd.DataFrame, train_end: int, test_preds: pd.DataFrame) -> dict:
+    """The two out-of-sample windows, one row per labelled borrower-quarter with the scorecard's
+    score (pred) and the mark alone's (mark): the development quarters (each scored by a fit on the
+    windows closed by then, as in sign_selection) and the test (`test_preds` from oos_test)."""
+    keys = ["borrower", "qsort"]
+    out = {}
+    for w, card, mark in [("development", roll[(roll["spec"] == "scorecard") & (roll["qsort"] <= train_end)],
+                           roll[(roll["spec"] == BENCHMARK) & (roll["qsort"] <= train_end)]),
+                          ("test", test_preds[test_preds["model"] == "scorecard"],
+                           test_preds[test_preds["model"] == BENCHMARK])]:
+        out[w] = (card[keys + ["cal_q", "y", "pred"]].merge(mark[keys + ["pred"]].rename(columns={"pred": "mark"}),
+                                                           on=keys, validate="one_to_one")
+                  .merge(m[keys + ["y_na"]], on=keys, validate="one_to_one"))
+    return out
+
+
+def _quarters(p: pd.DataFrame) -> dict:
+    return {"quarters": f"{p['cal_q'].min()} to {p['cal_q'].max()}", "n_quarters": p["qsort"].nunique()}
+
+
+def capture_vs_mark(windows: dict) -> pd.DataFrame:
+    """The scorecard's watchlists against the mark alone's: events caught in the riskiest 1%, 2%, ...,
+    100% of each quarter's borrowers, and the scorecard's extra share of the events with a 95%
+    interval (evaluation.capture_gap), in each window of oos_windows."""
+    return pd.concat([capture_gap(p, p.assign(pred=p["mark"])).assign(window=w, **_quarters(p))
+                      for w, p in windows.items()], ignore_index=True)
+
+
+def benchmark_comparison(windows: dict, shares: tuple = (0.10, 0.20)) -> pd.DataFrame:
+    """The scorecard and each benchmark, in each window: ROC-AUC, PR-AUC, events caught on the
+    riskiest 10% and 20% lists, and the scorecard's gain over the benchmark on each (ROC-AUC, PR-AUC,
+    and the extra share of events caught on each list), with borrower-resampled 95% intervals; the
+    gains' intervals are paired (both scored on the same resamples)."""
+    rows = []
+    for w, p in windows.items():
+        for name, col in {"scorecard": "pred", **BENCHMARKS}.items():
+            b = p.assign(pred=p[col])
+            auc, lo, hi = auc_ci(b)
+            ap, ap_lo, ap_hi = pr_auc_ci(b)
+            row = {"window": w, **_quarters(p), "model": name, "n": len(b), "events": int(b["y"].sum()),
+                   "roc_auc": auc, "roc_auc_lo": lo, "roc_auc_hi": hi, "pr_auc": ap, "pr_auc_lo": ap_lo,
+                   "pr_auc_hi": ap_hi}
+            if name != "scorecard":
+                row["card_auc_gain"], row["card_auc_gain_lo"], row["card_auc_gain_hi"] = auc_gain(p, b)
+                row["card_pr_gain"], row["card_pr_gain_lo"], row["card_pr_gain_hi"] = pr_auc_gain(p, b)
+            cg = capture_gap(p, b, np.array(shares)).set_index("share")
+            for s in shares:
+                k = f"{round(s * 100)}pct"
+                row[f"caught_{k}"] = int(cg.loc[s, "caught_base"])
+                if name != "scorecard":
+                    row[f"card_gain_{k}"], row[f"card_gain_{k}_lo"], row[f"card_gain_{k}_hi"] = \
+                        cg.loc[s, ["gap_share", "gap_lo", "gap_hi"]]
+            rows.append(row)
+    return pd.DataFrame(rows)
+
+
+DISAGREEMENT_GROUPS = ["scorecard only", "mark alone only", "both", "neither"]
+
+
+def list_disagreement(windows: dict, shares: tuple = (0.10, 0.20)) -> pd.DataFrame:
+    """Who each watchlist adds: on the riskiest `share` of each quarter's borrowers, by the scorecard
+    and by the mark alone, every borrower-quarter is in one group (on both lists, on the
+    scorecard's only, on the mark's only, on neither). Per group: borrowers, credit events, the event
+    rate with a 95% interval, events with a non-accrual. One more row per list: the event rate of
+    the scorecard-only picks minus that of the mark-only picks, with a paired interval (both rates
+    on the same borrower resamples)."""
+    rows = []
+    for w, p in windows.items():
+        y, na = p["y"].to_numpy(float), (p["y_na"] == 1).to_numpy(float)
+        codes, uniq = pd.factorize(p["borrower"])
+        for s in shares:
+            a = (quarter_rank(p) <= s).to_numpy()
+            b = (quarter_rank(p.assign(pred=p["mark"])) <= s).to_numpy()
+            groups = dict(zip(DISAGREEMENT_GROUPS, [a & ~b, ~a & b, a & b, ~a & ~b]))
+            for g, k in groups.items():
+                lo, hi = ratio_ci(y[k], np.ones(k.sum()), p["borrower"].to_numpy()[k])
+                rows.append({"window": w, **_quarters(p), "list": s, "group": g, "n": int(k.sum()),
+                             "events": int(y[k].sum()), "event_rate": y[k].mean() if k.any() else np.nan,
+                             "rate_lo": lo, "rate_hi": hi,
+                             "events_with_non_accrual": int((y * na)[k].sum())})
+            cols = np.column_stack([y * groups["scorecard only"], groups["scorecard only"],
+                                    y * groups["mark alone only"], groups["mark alone only"]])
+            G = np.zeros((len(uniq), 4))
+            np.add.at(G, codes, cols)
+            diff = lambda t: t[0] / t[1] - t[2] / t[3] if t[1] > 0 and t[3] > 0 else np.nan
+            vals = [diff(c @ G) for c in _boot_counts(len(uniq))]
+            lo, hi = np.nanpercentile(vals, [2.5, 97.5])
+            rows.append({"window": w, **_quarters(p), "list": s, "group": "difference: scorecard only - mark alone only",
+                         "event_rate": diff(G.sum(0)), "rate_lo": lo, "rate_hi": hi})
+    return pd.DataFrame(rows)
 
 
 def ranks_by_outcome(m: pd.DataFrame, train_end: int, test_qs: list[int]) -> pd.DataFrame:

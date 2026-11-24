@@ -6,10 +6,11 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import average_precision_score, roc_auc_score
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
+from config import HALF_LIFE
 from features import PREDICTOR_CAPS, UNITS
 from frames import design
 
@@ -61,13 +62,32 @@ def coefficient_table(d: pd.DataFrame, cols: list[str], label: dict, caps: dict 
     out["odds_ratio"] = np.exp(out["coef"])
     out["or_ci_low"], out["or_ci_high"] = np.exp(out["ci_low"]), np.exp(out["ci_high"])
     for k, v in {**label, "n_obs": len(d), "n_borrowers": d["borrower"].nunique(), "n_events": int(y.sum()),
-                 "pseudo_r2": r["fit"], "auc_in_sample": roc_auc_score(y, r["fitted"])}.items():
+                 "pseudo_r2": r["fit"], "auc_in_sample": roc_auc_score(y, r["fitted"]),
+                 "pr_auc_in_sample": average_precision_score(y, r["fitted"])}.items():
         out[k] = v
     return out
 
 
-def fit_predict(train: pd.DataFrame, test: pd.DataFrame, cols: list[str], caps: dict = PREDICTOR_CAPS) -> np.ndarray:
-    """Fit the unpenalized logit on `train` and return the predicted probabilities for `test`."""
+def table_probabilities(d: pd.DataFrame, cols: list[str], table: pd.DataFrame,
+                        caps: dict = PREDICTOR_CAPS) -> np.ndarray:
+    """The probabilities a coefficient_table (one spec's rows) gives the rows of `d`."""
+    beta = table.set_index("term").loc[["const"] + cols, "coef"].to_numpy()
+    X = design(d, cols, caps) / np.array([UNITS.get(c, 1.0) for c in cols])
+    return 1 / (1 + np.exp(-(beta[0] + X @ beta[1:])))
+
+
+def recency_weights(qsort: pd.Series, half_life: float | None = HALF_LIFE) -> np.ndarray:
+    """Weight of each training row: 0.5 ** (age / half_life), age = quarters before the last
+    training quarter (the last weighs 1); all ones when half_life is None."""
+    q = qsort.to_numpy(dtype=float)
+    return np.ones(len(q)) if half_life is None else 0.5 ** ((q.max() - q) / half_life)
+
+
+def fit_predict(train: pd.DataFrame, test: pd.DataFrame, cols: list[str], caps: dict = PREDICTOR_CAPS,
+                half_life: float | None = HALF_LIFE) -> np.ndarray:
+    """Fit the unpenalized logit on `train` (rows weighted by recency_weights) and return the
+    predicted probabilities for `test`."""
     model = make_pipeline(StandardScaler(), LogisticRegression(penalty=None, max_iter=5000))
-    model.fit(design(train, cols, caps), train["y"].to_numpy(dtype=float))
+    model.fit(design(train, cols, caps), train["y"].to_numpy(dtype=float),
+              logisticregression__sample_weight=recency_weights(train["qsort"], half_life))
     return model.predict_proba(design(test, cols, caps))[:, 1]

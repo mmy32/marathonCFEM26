@@ -18,18 +18,20 @@ EVENT_NOTE = ("Event: within the next two quarters a BDC flags the borrower's de
               "its interest to PIK, swaps its debt for equity or writes down its cost")
 COUNT_WORDS = {2: "Two", 3: "Three", 4: "Four", 5: "Five", 6: "Six"}
 
-SCORECARD_UNITS = {"price": "Mark 10 points lower", "d_price": "Mark fell 5 points\nthis quarter",
+SCORECARD_UNITS = {"price": "Mark 10 points lower", "fall_1q": "Mark fell 5 points\nthis quarter",
                    "pik_switch": "Switched to PIK\nthis quarter",
+                   "pik_past_year": "Switched to PIK in the\nthree quarters before",
                    "max_drawdown": "Mark fell 5 more points\nover the past year",
                    "dispersion": "Lenders' marks 1 point\nfurther apart"}
-NAMES = {"price": "Mark level (FV / PAR)", "d_price": "Change in the mark this quarter",
+NAMES = {"price": "Mark level (FV / PAR)", "fall_1q": "Fall in the mark this quarter",
          "max_drawdown": "Fall in the mark over the past year", "pik_switch": "PIK switch",
-         "dispersion": "Valuation gap", "crowding": "Crowding"}
+         "pik_past_year": "PIK switch in the past year", "dispersion": "Valuation gap", "crowding": "Crowding"}
 NAMES = {k: v if k in SCORECARD else v + " (tested, not kept)" for k, v in NAMES.items()}
 SHORT = {"single lender": "1 lender", "under 0.5": "< 0.5", "over 5": "> 5", "under 1": "< 1",
          "over 10": "> 10"}     # bucket labels that fit under a bar
-XLABELS = {"price": "Mark, cents per dollar of par", "d_price": "Same loans, points of par",
+XLABELS = {"price": "Mark, cents per dollar of par", "fall_1q": "Same loans, points of par (a fall is positive)",
            "max_drawdown": "Largest fall over four quarters, same loans, points", "pik_switch": "",
+           "pik_past_year": "A switch in any of the three quarters before t",
            "dispersion": "Highest minus lowest lender family's mark, points", "crowding": "Manager families lending"}
 
 
@@ -52,7 +54,9 @@ def _rate_bars(ax, x, rate, lo, hi, color=BLUE, width=0.62):
 def event_rate_by_predictor(t: pd.DataFrame, path, window: str):
     """Event rate within two quarters by bucket of each sign, with borrower-resampled 95% intervals."""
     base = t["base_rate"].iloc[0] * 100
-    fig, axes = plt.subplots(2, 3, figsize=(14, 7.4), facecolor=SURFACE)
+    fig, axes = plt.subplots(2, 4, figsize=(18, 7.4), facecolor=SURFACE)
+    for ax in axes.ravel()[len(NAMES):]:
+        ax.set_visible(False)
     for ax, col in zip(axes.ravel(), NAMES):
         d = t[t["predictor"] == col]
         _style(ax, NAMES[col], "Event rate within two quarters (%)")
@@ -81,11 +85,12 @@ def event_rate_by_predictor(t: pd.DataFrame, path, window: str):
 
 def odds_ratios(coefs: pd.DataFrame, path, window: str):
     """The scorecard in one picture: odds ratios (95% CI, borrower-clustered) of its signs. The
-    mark and its change are shown per fall, so every sign reads as 'times the odds'. If the
+    mark is shown per 10 points lower (the quarter's move is already a fall), so every sign reads
+    as 'times the odds'. If the
     valuation gap is in the scorecard, its indicator (held by 2+ lender families) is in
     coefficients.csv, not drawn."""
     c = coefs[coefs["scorecard"] & coefs["term"].isin(SCORECARD_UNITS)].set_index("term")
-    fall = ["price", "d_price"]             # flip: per 10 points lower, per 5-point fall
+    fall = ["price"]                        # flip: per 10 points lower (the quarter's fall is already positive)
     c.loc[fall, ["odds_ratio", "or_ci_low", "or_ci_high"]] = 1 / c.loc[fall, ["odds_ratio", "or_ci_high", "or_ci_low"]].to_numpy()
     terms = [t for t in SCORECARD_UNITS if t in c.index][::-1]
     d = c.reindex(terms)
@@ -119,10 +124,58 @@ def odds_ratios(coefs: pd.DataFrame, path, window: str):
     plt.close(fig)
 
 
+SIGN_LABELS = {"price": "Mark level", "fall_1q": "1Q mark change\n(a fall is +)", "pik_switch": "PIK switch",
+               "max_drawdown": "1Y rolling max\ndrawdown", "pik_past_year": "PIK switch,\npast year",
+               "dispersion": "Valuation gap"}
+NEUTRAL = "#efeeea"         # the diverging scale's midpoint (r = 0)
+
+
+def _blend(a: str, b: str, t: float) -> str:
+    ca, cb = (np.array([int(h[i:i + 2], 16) for i in (1, 3, 5)]) for h in (a, b))
+    return "#" + "".join(f"{int(round(v)):02x}" for v in ca + (cb - ca) * t)
+
+
+def predictor_correlations(co: pd.DataFrame, path, window: str):
+    """Correlation matrix of the scorecard's signs (analysis.collinearity), with each sign's VIF
+    beside its row. Diverging scale: orange negative, blue positive, gray midpoint at 0; the
+    diagonal is gray. Every cell carries its value, so color is never the only cue."""
+    terms = list(co["predictor"])
+    r = co.set_index("predictor")[terms]
+    n = len(terms)
+    fig, ax = plt.subplots(figsize=(8.6, 5.6), facecolor=SURFACE)
+    ax.set_facecolor(SURFACE)
+    for i, a in enumerate(terms):
+        for j, b in enumerate(terms):
+            v = r.loc[a, b]
+            color = GRID if i == j else _blend(NEUTRAL, BLUE if v > 0 else ORANGE, min(abs(v), 1.0))
+            ax.add_patch(plt.Rectangle((j, i), 1, 1, facecolor=color, edgecolor=SURFACE, linewidth=3))
+            ax.text(j + 0.5, i + 0.5, "1" if i == j else f"{v:+.2f}".replace("-", "−"), ha="center",
+                    va="center", fontsize=12, color=MUTED if i == j else INK)
+        ax.text(n + 0.6, i + 0.5, f"{co['vif'].iloc[i]:.2f}", ha="center", va="center", fontsize=12, color=INK,
+                weight="bold")
+    ax.text(n + 0.6, -0.12, "VIF", ha="center", va="bottom", fontsize=10, color=MUTED)
+    ax.set_xlim(0, n + 1.2)
+    ax.set_ylim(n, -0.45)
+    ax.set_xticks(np.arange(n) + 0.5, [SIGN_LABELS.get(t, t) for t in terms], fontsize=9, color=INK)
+    ax.set_yticks(np.arange(n) + 0.5, [SIGN_LABELS.get(t, t) for t in terms], fontsize=9, color=INK)
+    ax.tick_params(length=0)
+    for s in ax.spines.values():
+        s.set_visible(False)
+    _title(fig, f"The signs overlap little: the largest VIF is {co['vif'].max():.2f}",
+           f"Pearson correlations of the scorecard's signs on the {int(co['n_obs'].iloc[0]):,} borrower-quarters "
+           f"it is fitted on ({window}), capped as in the fit")
+    _note(fig, "Blue: positive correlation; orange: negative. VIF = 1 / (1 − R²) of each sign on the other "
+               f"{COUNT_WORDS.get(n - 1, str(n - 1)).lower()}, the factor by which the overlap inflates its coefficient's variance\n(1 = none; 5–10 is "
+               "the usual warning line). The quarter's change is entered as a fall, so a fall is positive.")
+    fig.subplots_adjust(left=0.2, right=0.97, top=0.84, bottom=0.17)
+    fig.savefig(path, dpi=200, facecolor=SURFACE)
+    plt.close(fig)
+
+
 def score_deciles(dec: pd.DataFrame, path, events: str, fitted: str):
     """Out of sample: realized event rate by score decile (bars, borrower-resampled 95% intervals) for the
-    scorecard, with its predicted rate (dots), next to the equal-weighted ranking of the same signs."""
-    models = list(dec["model"].unique())
+    scorecard and for the mark alone, each with its predicted rate (dots)."""
+    models = ["scorecard"] + [k for k in dec["model"].unique() if k != "scorecard"]
     fig, axes = plt.subplots(1, 2, figsize=(12, 5.0), facecolor=SURFACE, sharey=True)
     for ax, model, color in zip(axes, models, [BLUE, ORANGE]):
         d = dec[dec["model"] == model].sort_values("decile")
@@ -131,7 +184,7 @@ def score_deciles(dec: pd.DataFrame, path, events: str, fitted: str):
         _rate_bars(ax, x, d["event_rate"], d["rate_ci_low"], d["rate_ci_high"], color=color, width=0.7)
         if d["predicted_rate"].notna().any():
             ax.scatter(x, d["predicted_rate"] * 100, s=45, color=SURFACE, edgecolor=INK, linewidth=1.5, zorder=5,
-                       label="predicted by the scorecard")
+                       label="predicted")
             ax.legend(frameon=False, fontsize=8.5, loc="upper left", labelcolor=INK)
         tops = np.fmax(d["rate_ci_high"], d["predicted_rate"].fillna(0))
         for xi, r, top in zip(x, d["event_rate"], tops):
@@ -142,9 +195,109 @@ def score_deciles(dec: pd.DataFrame, path, events: str, fitted: str):
     axes[0].set_ylim(bottom=0)
     _title(fig, f"Out of sample: credit events in {events}, by score decile",
            f"Fitted on {fitted} only. Bars: realized rate; whiskers: 95% intervals")
-    _note(fig, EVENT_NOTE + ".\nUnder each decile: its events. The equal-weighted ranking averages the same signs' "
-               "ranks within the quarter; nothing is fitted.")
+    _note(fig, EVENT_NOTE + ".\nUnder each decile: its events. The mark alone is a logistic regression on the mark "
+               "level, fitted and tested like the scorecard.")
     fig.subplots_adjust(left=0.07, right=0.98, top=0.83, bottom=0.17, wspace=0.06)
+    fig.savefig(path, dpi=200, facecolor=SURFACE)
+    plt.close(fig)
+
+
+def capture_gap(t: pd.DataFrame, path, mark_at: float = 0.20, xmax: float = 0.50):
+    """The scorecard's watchlists against the mark alone's
+    (analysis.capture_vs_mark): its extra share of all events caught in the riskiest x% of each
+    quarter's borrowers, with the 95% interval, one panel per window on one y scale. The list at
+    `mark_at` is labelled in points and in events."""
+    windows = [w for w in ("development", "test") if w in set(t["window"])]
+    fig, axes = plt.subplots(1, len(windows), figsize=(12, 5.0), facecolor=SURFACE, sharey=True)
+    axes = np.atleast_1d(axes)
+    for ax, w in zip(axes, windows):
+        d = t[(t["window"] == w) & (t["share"] <= xmax + 1e-9)]
+        n_q, events = int(d["n_quarters"].iloc[0]), int(d["events"].iloc[0])
+        label = (f"{WINDOW_NAMES[w]}: {n_q} quarters, {events:,} events" if w == "development"
+                 else f"Test: {d['quarters'].iloc[0].split(' to ')[0]}, {events:,} events")
+        _style(ax, label, "Scorecard minus mark alone:\nextra share of events caught (points)" if ax is axes[0] else "")
+        x = d["share"] * 100
+        ax.fill_between(x, d["gap_lo"] * 100, d["gap_hi"] * 100, color=BLUE, alpha=0.16, linewidth=0, zorder=2)
+        ax.plot(x, d["gap_share"] * 100, color=BLUE, linewidth=2, zorder=3)
+        ax.axhline(0, color=MUTED, linewidth=1, zorder=2)
+        r = d.loc[np.isclose(d["share"], mark_at)].iloc[0]
+        ax.axvline(mark_at * 100, color=GRID, linewidth=1, zorder=1)
+        ax.scatter([mark_at * 100], [r["gap_share"] * 100], s=60, color=BLUE, edgecolor=SURFACE, linewidth=2, zorder=4)
+        ax.annotate(f"Riskiest {mark_at:.0%}: +{r['gap_share'] * 100:.1f} points "
+                    f"[{r['gap_lo'] * 100:.1f}, {r['gap_hi'] * 100:.1f}]\n"
+                    f"{int(r['caught'])} of {events:,} events caught, against {int(r['caught_base'])}",
+                    (mark_at * 100, r["gap_share"] * 100), xytext=(0.5, 0.97), textcoords="axes fraction",
+                    ha="left", va="top", fontsize=8.5, color=INK, zorder=5,
+                    arrowprops=dict(arrowstyle="-", color=MUTED, linewidth=0.8, shrinkA=2, shrinkB=5))
+        ax.set_xlim(0, xmax * 100)
+        lo, hi = t["gap_lo"].min() * 100, t.loc[t["share"] <= xmax + 1e-9, "gap_hi"].max() * 100
+        ax.set_ylim(min(lo, 0) - 1, hi + 3.5)             # room above the bands for the label
+        ax.set_xticks(np.arange(0, xmax * 100 + 1, 10), [f"{v:.0f}%" for v in np.arange(0, xmax * 100 + 1, 10)])
+        ax.tick_params(axis="x", length=0)
+        ax.set_xlabel("Watchlist: the riskiest x% of each quarter's borrowers", color=MUTED, fontsize=9)
+    _title(fig, "The scorecard's watchlists catch more credit events than the mark alone",
+           "Above zero: the scorecard's list catches more of the events. Shaded: 95% intervals, borrowers resampled")
+    _note(fig, EVENT_NOTE + ".\nBoth out of sample by time: each train quarter scored by a fit on the windows "
+               "closed by then, the test by one fit on the train quarters.\nMark alone: a logistic regression "
+               "on the mark level, fitted and scored like the scorecard.")
+    fig.subplots_adjust(left=0.08, right=0.98, top=0.81, bottom=0.22, wspace=0.08)
+    fig.savefig(path, dpi=200, facecolor=SURFACE)
+    plt.close(fig)
+
+
+WINDOW_NAMES = {"development": "Train", "test": "Test"}     # the development quarters are scored rolling, out of sample
+
+
+def list_disagreement(dis: pd.DataFrame, bm: pd.DataFrame, path):
+    """The scorecard against the mark alone: left, the credit event rate of the borrowers that only
+    one watchlist picks, for the riskiest 10% and 20% in each window (analysis.list_disagreement),
+    with 95% intervals; right, the scorecard's gain in ROC-AUC and PR-AUC over the mark alone
+    (analysis.benchmark_comparison), with paired 95% intervals: an interval clear of zero is a gain
+    that the resampling does not explain away."""
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 5.2), facecolor=SURFACE, gridspec_kw={"width_ratios": [1.35, 1]})
+    _style(a1, "Borrowers only one list picks", "Credit event rate within two quarters (%)")
+    pairs = [(w, s) for w in ("development", "test") for s in sorted(dis["list"].unique())]
+    for i, (w, s) in enumerate(pairs):
+        d = dis[(dis["window"] == w) & (dis["list"] == s)].set_index("group")
+        for dx, g, color in [(-0.2, "scorecard only", BLUE), (0.2, "mark alone only", ORANGE)]:
+            r = d.loc[g]
+            a1.bar(i + dx, r["event_rate"] * 100, 0.38, color=color, edgecolor=SURFACE, linewidth=2, zorder=3)
+            a1.vlines(i + dx, r["rate_lo"] * 100, r["rate_hi"] * 100, color=INK, linewidth=1, zorder=4)
+            a1.text(i + dx, r["rate_hi"] * 100 + 0.5, f"{r['event_rate'] * 100:.0f}%", ha="center", va="bottom",
+                    fontsize=8.5, color=INK)
+    a1.set_xticks(range(len(pairs)), [f"{WINDOW_NAMES[w]}\nriskiest {s:.0%}\n({int(dis[(dis['window'] == w) & (dis['list'] == s) & (dis['group'] == 'scorecard only')]['n'].iloc[0]):,} each)"
+                                      for w, s in pairs], fontsize=8.5)
+    a1.tick_params(axis="x", length=0)
+    from matplotlib.patches import Patch
+    a1.legend(handles=[Patch(color=BLUE, label="on the scorecard's list only"),
+                       Patch(color=ORANGE, label="on the mark alone's list only")],
+              frameon=False, fontsize=8.5, loc="upper right", labelcolor=INK)
+    a1.set_ylim(0, dis.loc[dis["group"].isin(["scorecard only", "mark alone only"]), "rate_hi"].max() * 100 * 1.25)
+    _style(a2, "Scorecard minus mark alone", "")
+    a2.yaxis.grid(False)
+    a2.xaxis.grid(True, color=GRID, linewidth=0.8)
+    card = bm[bm["model"] == "scorecard"].set_index("window")
+    ranks = bm[bm["model"] == "mark alone"].set_index("window")
+    rows = [(metric, col, w) for metric, col in [("ROC-AUC", "auc"), ("PR-AUC", "pr")] for w in ("development", "test")]
+    y = np.arange(len(rows))[::-1]
+    for yi, (metric, col, w) in zip(y, rows):
+        g, lo, hi = ranks.loc[w, [f"card_{col}_gain", f"card_{col}_gain_lo", f"card_{col}_gain_hi"]]
+        a2.hlines(yi, lo, hi, color=BLUE, linewidth=2, alpha=0.5)
+        a2.scatter([g], [yi], s=50, color=BLUE, edgecolor=SURFACE, linewidth=2, zorder=3)
+        key = "roc_auc" if col == "auc" else "pr_auc"
+        a2.text(hi + 0.004, yi, f"{g:+.3f} [{lo:+.3f}, {hi:+.3f}]\n{card.loc[w, key]:.3f} vs {ranks.loc[w, key]:.3f}",
+                va="center", fontsize=8, color=INK)
+    a2.axvline(0, color=MUTED, linewidth=1)
+    a2.set_yticks(y, [f"{metric}, {WINDOW_NAMES[w].lower()}" for metric, _, w in rows], fontsize=9, color=INK)
+    lo_all = min(ranks[["card_auc_gain_lo", "card_pr_gain_lo"]].min().min(), 0)
+    hi_all = ranks[["card_auc_gain_hi", "card_pr_gain_hi"]].max().max()
+    a2.set_xlim(lo_all - 0.01, hi_all + (hi_all - lo_all) * 0.9)
+    a2.set_xlabel("Gain, with a paired 95% interval (clear of zero: significant)", color=MUTED, fontsize=9)
+    _title(fig, "Where the two watchlists differ, the scorecard's picks have more credit events",
+           "Mark alone: a logistic regression on the mark level, fitted and scored like the scorecard")
+    _note(fig, EVENT_NOTE + ".\nIntervals: 500 borrower resamples. Train: signals 2024Q2-2025Q2, each quarter scored by "
+               "a fit on earlier quarters only (out of sample); test: one fit on the train quarters.")
+    fig.subplots_adjust(left=0.06, right=0.98, top=0.8, bottom=0.2, wspace=0.22)
     fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)
 

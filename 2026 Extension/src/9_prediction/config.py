@@ -14,6 +14,7 @@ MAX_CLO_SHARE = 0.5         # sample: CLO / structured tranches under half of pa
 
 # ---- definitions of the signs
 DD_WINDOW = 4               # rolling max drawdown over the preceding four quarters
+PIK_LOOKBACK = 3            # past-year PIK switch: a switch in any of the three quarters before t (with t, a year)
 LOW_MARK = 0.90             # PIK-switch hypotheses: mark below 90% of par ...
 MARKDOWN = 0.05             # ... or marked down at least five points in the quarter
 JUNIOR_LIENS = {"2L", "SUB", "UNSEC"}
@@ -31,6 +32,13 @@ RESERVED_Q = "2026Q3"       # reserved: nothing is fitted or chosen on it. Once 
                             # 2026Q1 (window 2026Q2-2026Q3) are the blind test: the only test no
                             # choice has seen (the 2025Q4 test was seen in the rolling check before
                             # this split was chosen). Change nothing after running it
+
+# ---- fitting
+HALF_LIFE = None            # recency weighting of the training rows: a quarter's rows weigh 0.5 ** (age / HALF_LIFE),
+                            # age in quarters before the last training quarter; None = every quarter the same.
+                            # Half-lives of 8, 4 and 2 were tested on the development quarters on 2026-11-23
+                            # under the sign rule (+MIN_GAIN ROC-AUC): none changed the ranking (best +0.0001),
+                            # so none is used; they only lift calibration a little (0.89 -> 0.91 at 2)
 
 # ---- tests and intervals
 MIN_TRAIN_QUARTERS = 3      # rolling: a test quarter needs at least three labelled training quarters

@@ -1,0 +1,19 @@
+level,group,unit,count,share
+1,non-accrual,borrower-quarters,776,0.017085360752108147
+2,non-accrual: also a concession,borrower-quarters,200,0.0044034434928113785
+1,"PIK switch, no non-accrual",borrower-quarters,1929,0.042471212488165745
+2,PIK switch: alone,borrower-quarters,1914,0.04214095422620489
+2,PIK switch: with a write-down,borrower-quarters,14,0.0003082410444967965
+2,PIK switch: with a swap,borrower-quarters,1,2.2017217464056893e-05
+1,write-down only,borrower-quarters,72,0.0015852396574120963
+1,debt-for-equity swap only,borrower-quarters,11,0.0002421893921046258
+1,credit event,borrower-quarters,2788,0.061384002289790615
+1,spread step-up or extension only (no event),borrower-quarters,5332,0.11739580351835135
+2,step-up or extension: an extension,borrower-quarters,4186,0.09216407230454216
+2,step-up or extension: a step-up,borrower-quarters,1627,0.035822012814020567
+2,step-up or extension: both,borrower-quarters,481,0.010590281600211365
+1,none of these,borrower-quarters,37299,0.821220194191858
+1,all,borrower-quarters,45419,1.0
+1,borrowers with an event,borrowers,1140,
+1,non-accrual entries behind the event rows,entries,447,
+1,concessions behind the event rows,concessions,1405,

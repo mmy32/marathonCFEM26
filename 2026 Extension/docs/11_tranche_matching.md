@@ -49,8 +49,7 @@ valuation designee, so its marks are a separate opinion. BDCs with no filing in 
 not be checked this way; their names show no affiliation.
 
 The 196 BDCs in FINAL_DATASET form 96 families (102 before the merge). The largest: Golub (8
-BDCs), Blue Owl, Goldman Sachs and Morgan Stanley (7 each), New Mountain and TCW (6 each). The map is shared with the
-data-center charts (`data_center_analysis.manager()`).
+BDCs), Blue Owl, Goldman Sachs and Morgan Stanley (7 each), New Mountain and TCW (6 each).
 
 ---
 

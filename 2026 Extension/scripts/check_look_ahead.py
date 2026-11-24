@@ -7,7 +7,8 @@ built from all the data. Nothing known at T may change when later quarters are a
   - every outcome whose window had closed by T (signal quarters <= T - 2);
   - the scorecard's scores for quarter T, fitted on the windows closed by T.
 
-Cuts: 2025Q1 (the end of the development quarters) and 2025Q3 (the out-of-sample test quarter).
+Cuts: the end of the development quarters and the out-of-sample test quarter (config.TRAIN_END
+and config.TEST_QS: 2025Q2 and 2025Q4).
 Writes outputs/model/look_ahead_check.csv (one row per cut and column: rows compared, rows that
 differ, largest difference). About 8 minutes. Covers everything from FINAL_DATASET on; the
 cleaning before it (borrower names, seniority, sector labels) is labelled once over all quarters
@@ -29,7 +30,7 @@ from paths import FINAL_DIR, MODEL_DATA_DIR, MODEL_DIR, add_code_dirs_to_path  #
 add_code_dirs_to_path()
 
 from common import q_sort  # noqa: E402
-from config import HORIZON  # noqa: E402
+from config import HORIZON, TEST_QS, TRAIN_END  # noqa: E402
 from evaluation import split_predictions  # noqa: E402
 from frames import model_frame  # noqa: E402
 from panel import build_model_panel  # noqa: E402
@@ -37,9 +38,9 @@ from specs import SCORECARD  # noqa: E402
 
 warnings.filterwarnings("ignore")
 
-CUTS = ["2025Q1", "2025Q3"]
+CUTS = [TRAIN_END, TEST_QS[0]]
 KEYS = ["borrower", "qsort"]
-KNOWN_AT_T = ["price", "d_price", "pik_switch", "max_drawdown", "dispersion", "has_dispersion", "crowding",
+KNOWN_AT_T = ["price", "d_price", "pik_switch", "pik_past_year", "max_drawdown", "dispersion", "has_dispersion", "crowding",
               "fv_debt", "priced_share", "na_status", "na_ever", "in_sample", "na_risk_set",
               "restr_pik", "restr_spread", "restr_maturity", "restr_equity", "restr_write_down"]
 CLOSED_BY_T = ["y_event", "y_na", "y_all_terms", "event_q"]      # signal quarters <= T - HORIZON
