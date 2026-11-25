@@ -25,18 +25,20 @@ beats it by **+0.022** [0.002, 0.041] in ROC-AUC and **+0.062** [0.032, 0.095] i
 five development quarters, each scored out of sample, it scores 0.783 against 0.723.
 
 **Two kinds of event, found unequally.** The same scorecard finds the non-accruals well (ROC-AUC
-0.84; 57 of 87 in the riskiest tenth) and the concessions less well (0.71; 61 of 196): most
-concessions are PIK switches on loans still marked near par. The second PIK sign mostly helps with
-these: a borrower that switched to PIK is likely to switch again (weakness 1).
+0.84; 57 of 87 in the riskiest tenth), but no better than the mark alone (also 0.84), and the
+concessions less well (0.71, against 0.68 for the mark alone; 61 of 196 in the riskiest tenth):
+most concessions are PIK switches on loans still marked near par. The gain over the mark is on
+these, and it comes from the two PIK signs: a borrower that switched to PIK is likely to switch
+again (weakness 1).
 
 **Deliverables:** `scorecard_2026Q2.csv` (every accruing borrower ranked), `oos_performance.csv`
 (the performance table) and `scripts/run_model.py`, which rebuilds both from `FINAL_DATASET.csv`
 (itself built from the filings by `src/1_data_processing`).
 
 ```
-python scripts/run_model.py            # about 6 minutes
-python scripts/run_model.py --cached   # reuse the saved panel
-python tests/test_model.py             # 41 tests (and tests/test_pik_metrics.py, 3)
+python scripts/run_model.py            # about 15 minutes
+python scripts/run_model.py --cached   # reuse the saved panel (2 minutes less)
+python tests/test_model.py             # 43 tests (and tests/test_pik_metrics.py, 3)
 python scripts/check_look_ahead.py     # look-ahead check (section 6), about 8 minutes
 ```
 
@@ -367,12 +369,33 @@ fitted and scored exactly as the scorecard is, so the gain is what the other fou
 | After development (2025Q3-Q4, rolling) | 585 | **+0.025 [0.008, 0.043]** | **+0.046 [0.025, 0.069]** | **+3.9 pts [0.7, 7.7]** |
 | All seven quarters (rolling) | 1,928 | **+0.048 [0.036, 0.063]** | **+0.059 [0.042, 0.076]** | **+7.3 pts [4.6, 9.9]** |
 
+Across all seven quarters the scorecard scores 0.775 and the mark alone 0.727. Five of the seven
+chose the signs.
+
 **Quarter by quarter** (each scored by a fit on the windows closed by then; DeLong intervals), the
 ROC-AUC gain over the mark alone is +0.052, +0.051, +0.057, +0.080, +0.061 in the five development
 quarters, then +0.028 (2025Q3) and +0.022 (2025Q4, the test); every one clears zero. It is smaller
 in the latest quarters: the gain comes mostly from the PIK signs, and in 2025Q4 PIK was a weaker
 sign (borrowers with a PIK sign had events at 24%, against about 30% before) while non-accrual was
 a larger share of events. One quarter can detect a ROC-AUC gain of about 0.023 with 80% power.
+
+**By kind of event** (`oos_auc_by_event.csv`). Each row ranks one kind of event against the 4,886
+borrowers of the test quarter with no event, the other events left out:
+
+| Events (test, 2025Q4) | Events | Scorecard | Mark alone | Gain [95% CI] |
+|---|---|---|---|---|
+| All | 283 | 0.753 | 0.731 | +0.022 [0.002, 0.041] |
+| Non-accrual | 87 | 0.842 | 0.842 | +0.000 [-0.015, 0.018] |
+| Concession only | 196 | 0.714 | 0.682 | **+0.032 [0.004, 0.061]** |
+| First at t + 1 | 160 | 0.780 | 0.766 | +0.014 [-0.010, 0.042] |
+| First at t + 2 (none at t + 1) | 123 | 0.718 | 0.686 | +0.033 [-0.001, 0.070] |
+
+- **On non-accrual the scorecard ties the mark alone;** its gain is on concessions, from the PIK
+  signs (weakness 1). Over all seven quarters (1,928 events) the gain is +0.016 [0.001, 0.033] on
+  non-accrual and +0.061 [0.045, 0.078] on concessions.
+- **Events two quarters ahead are harder to find,** for both models (0.72 against 0.78 at
+  t + 1). The scorecard's gain there is +0.033 [-0.001, 0.070] on the test and +0.035 [0.020,
+  0.050] over all seven quarters.
 
 | Score decile | Realized event rate [95% CI] | Predicted | Realized ÷ predicted [95% CI] |
 |---|---|---|---|
@@ -411,8 +434,12 @@ the others, resamples borrowers with the predictions held fixed (`oos_deciles.cs
   the test quarter (`rolling_by_quarter.csv`). Weighting recent quarters more lifts it a little
   but does not change the ranking (section 3).
 - **Each watch list's share of events caught,** for the scorecard and the mark alone, with
-  intervals, is in `oos_capture.csv` (for example the riskiest 20% of the test quarter: 60% [55,
-  66] against 56% [51, 62]). `oos_score_deciles.png` sets the two side by side by score decile.
+  intervals, is in `oos_capture.csv`. In the test quarter the riskiest 5% catch 29% [24, 34]
+  against 25% [20, 29] (+3.5 points [-1.4, 8.8]), the riskiest 10% 42% [36, 47] against 41% [36,
+  46] (+0.7 [-5.0, 6.1]) and the riskiest 20% 60% [55, 66] against 56% [51, 62] (+4.2 [0.0,
+  8.3]). `oos_score_deciles.png` sets the two side by side by score decile, and
+  `oos_capture_curve.png` (the poster's chart, drawn at its size on the poster, in Arial) draws
+  the test quarter's lists up to 50% against random review.
 
 **Every borrower of the test quarter, labelled or not** (`oos_ranks_by_outcome.csv`). The test
 scores the 5,169 labelled borrowers, 89% of the 5,838 accruing in 2025Q4. Ranking all of them:
@@ -438,9 +465,22 @@ scores the 5,169 labelled borrowers, 89% of the 5,838 accruing in 2025Q4. Rankin
 All 6,267 borrowers accruing in 2026Q2, ranked, with their probability and the signs behind it.
 About 410 events are expected in 2026Q3-Q4, 176 of them in the riskiest tenth. At the top: Rural
 Sourcing Holdings (94%: marked at 74, down 12 points this quarter and 25 over the year, just
-switched to PIK). Once 2026Q3 is loaded, a rerun runs the blind test: a fit on outcomes through
-2026Q1, scored on the borrowers of 2026Q1 and their events in 2026Q2-Q3
-(`reserved_test_2026Q3.csv`); this list itself is scored once 2026Q4 is filed.
+switched to PIK). This list itself is scored once 2026Q4 is filed.
+
+**The blind test is scored now** (`blind_test_2026Q1_scores.csv`). Every borrower accruing in
+2026Q1 (6,082) is ranked with today's coefficients: a fit on outcomes through 2026Q1, all of them
+filed, so the coefficients cannot change when 2026Q3 arrives. None of these borrowers' events
+(2026Q2-Q3) is known yet. Once 2026Q3 is loaded, a rerun scores these saved probabilities against
+those events (`reserved_test_2026Q3.csv`), and stops if a refit no longer reproduces them.
+
+**The case studies, ranked as they could have been at the time** (`case_study_ranks.csv`). Each
+quarter's scorecard, fitted on the windows closed by then, ranks every accruing borrower; the
+file gives each case borrower's rank beside its rank by the mark alone. Medallia, on non-accrual
+from 2026Q1, was in the riskiest 4% in 2024Q4 (191st of 4,852), the riskiest 1% in 2025Q1 (27th
+of 5,167, after PIK switches in 2024Q4 and 2025Q1) and 20th of 5,838 in 2025Q4; by the mark alone
+it was in the riskiest 9%, 5% and 2%. First Brands Group, which collapsed in 2025Q3 with no PIK
+switch and no non-accrual before, was 738th of 5,404 (the riskiest 14%) in 2025Q2: a sudden
+event, missed. Ranks up to 2025Q2 come from the quarters that chose the signs.
 
 ## Weaknesses and limitations
 
@@ -581,8 +621,8 @@ scores that `run_model.py` no longer uses; lasso, trees and a neural net go here
   before the quarter it scores. Choosing signs: rolling, each of signals 2024Q2-2025Q2 scored by
   a fit on the windows closed by then; the five rounds' predictions are pooled into one ROC-AUC
   per model. Test: fit on outcomes through 2025Q4, scored on the borrowers of 2025Q4 (events
-  2026Q1-Q2); 2025Q3 is a gap, since its window overlaps the last fitted outcomes. Blind test (not in the data used; needs 2026Q3): fit on outcomes through
-  2026Q1, scored on the borrowers of 2026Q1 (events 2026Q2-Q3). Scorecard: fit on outcomes through
+  2026Q1-Q2); 2025Q3 is a gap, since its window overlaps the last fitted outcomes. Blind test (its events need 2026Q3): fit on outcomes through
+  2026Q1, scored on the borrowers of 2026Q1 (events 2026Q2-Q3), the scores saved now. Scorecard: fit on outcomes through
   2026Q2 (signals 2023Q2-2025Q4), scored on the borrowers of 2026Q2.
 
   | Stage | Fitted on (signal quarters) | Rows fitted | Events fitted | Scored |
@@ -599,6 +639,10 @@ Further checks are written by the same run:
 
 - **Each sign alone:** `event_rates_by_bucket.csv` and `event_rate_by_predictor.png` (the five
   signs and the two dropped), `pik_switch_hypotheses.csv`, `coefficients.csv`, `odds_ratios.png`.
+- **Against the mark alone, by window and by kind of event:** `oos_benchmarks.csv`,
+  `oos_capture.csv` and `oos_list_disagreement.csv` (development, test, after development and all
+  seven quarters), `oos_auc_by_event.csv` (section 4).
+- **The case studies' ranks at the time:** `case_study_ranks.csv` (section 5).
 - **Alternative signs** (`robustness_summary.csv`): test ROC-AUC 0.73 to 0.76 across variants of
   the signs (0.732 without the past-year PIK switch), and 0.78 on the 121 events among borrowers
   with 2+ lender families.

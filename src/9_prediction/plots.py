@@ -1,7 +1,9 @@
 """Charts for the early-warning scorecard (src/9_prediction), in the deck's style
 (src/8_risk_monitor/charts.py): event rate by bucket of each sign, the mark path before a
-credit event, the scorecard's odds ratios, the out-of-sample event rate by score decile and
-the rolling AUC by quarter. The event throughout is the model's one outcome (config.OUTCOME)."""
+credit event, the scorecard's odds ratios, the out-of-sample event rate by score decile, the
+watchlists against the mark alone (capture_curve is the poster's chart, drawn at its size on the
+poster) and the rolling AUC by quarter. The event throughout is the model's one outcome
+(config.OUTCOME)."""
 from __future__ import annotations
 
 import matplotlib
@@ -11,7 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from charts import BLUE, GRID, INK, MUTED, ORANGE, SURFACE, _spread, _style
+from charts import BLUE, GRID, INK, MUTED, ORANGE, POSTER_FONT, SURFACE, _spread, _style
 from specs import SCORECARD
 
 COUNT_WORDS = {2: "Two", 3: "Three", 4: "Four", 5: "Five", 6: "Six"}
@@ -193,6 +195,7 @@ def capture_gap(t: pd.DataFrame, path, mark_at: float = 0.20, xmax: float = 0.50
     quarter's borrowers, with the 95% interval, one panel per window on one y scale. The list at
     `mark_at` is labelled in points and in events."""
     windows = [w for w in ("development", "test") if w in set(t["window"])]
+    t = t[t["window"].isin(windows)]
     fig, axes = plt.subplots(1, len(windows), figsize=(12, 5.0), facecolor=SURFACE, sharey=True)
     axes = np.atleast_1d(axes)
     for ax, w in zip(axes, windows):
@@ -228,6 +231,54 @@ def capture_gap(t: pd.DataFrame, path, mark_at: float = 0.20, xmax: float = 0.50
 
 
 WINDOW_NAMES = {"development": "Train", "test": "Test"}     # the development quarters are scored rolling, out of sample
+MARK_GRAY = "#9aa0a6"       # the mark alone beside the scorecard's blue on the poster chart
+
+
+@plt.rc_context({"font.family": POSTER_FONT})
+def capture_curve(t: pd.DataFrame, path, window: str = "test", mark_at: float = 0.20, xmax: float = 0.50,
+                  size: tuple = (3.25, 1.67), font: float = 7.5):
+    """The poster's chart: the share of the window's credit events caught by reviewing the riskiest
+    x% of each quarter's borrowers (analysis.capture_vs_mark), the scorecard against the mark alone,
+    with random review (x% of the events) as the dashed diagonal; the three lists at `mark_at` are
+    marked with their values. Drawn at the size it is placed on the poster (`size`, inches) with
+    every label at `font` pt in the poster's typeface (charts.POSTER_FONT), so it is inserted at
+    100% and its text matches the poster's."""
+    d = t[(t["window"] == window) & (t["share"] <= xmax + 1e-9)]
+    x = np.r_[0.0, d["share"]] * 100
+    card, mark = np.r_[0.0, d["caught_share"]] * 100, np.r_[0.0, d["caught_base_share"]] * 100
+    fig = plt.figure(figsize=size, facecolor=SURFACE)
+    ax = fig.add_axes([0.47 / size[0], 0.36 / size[1], 1 - 0.59 / size[0], 1 - 0.42 / size[1]])
+    ax.set_facecolor(SURFACE)
+    ax.plot([0, xmax * 100], [0, xmax * 100], color=MUTED, linewidth=0.8, linestyle=(0, (3, 2.5)), zorder=2)
+    ax.plot(x, mark, color=MARK_GRAY, linewidth=1.3, zorder=3, label="Mark alone")
+    ax.plot(x, card, color=BLUE, linewidth=1.6, zorder=4, label="Scorecard")
+    r = d.loc[np.isclose(d["share"], mark_at)].iloc[0]
+    c, k, at = r["caught_share"] * 100, r["caught_base_share"] * 100, mark_at * 100
+    ax.axvline(at, color=MUTED, linewidth=0.7, linestyle=(0, (2, 2)), zorder=1)
+    ax.scatter([at, at, at], [c, k, at], s=14, color=[BLUE, MARK_GRAY, MUTED], edgecolor=SURFACE, linewidth=0.6,
+               zorder=5)
+    ax.text(at - 1, c + 4, f"{c:.0f}%", ha="right", va="bottom", fontsize=font, color=INK, weight="bold")
+    ax.text(at + 1, k - 4, f"{k:.0f}%", ha="left", va="top", fontsize=font, color=MUTED)
+    ax.text(at + 1, at - 2, f"{at:.0f}%", ha="left", va="top", fontsize=font, color=MUTED)
+    ax.text(xmax * 100 - 0.5, xmax * 100 + 1.5, "Random", ha="right", va="bottom", fontsize=font, color=MUTED)
+    ax.set_xlim(0, xmax * 100)
+    ax.set_ylim(0, 85)
+    ticks = np.arange(0, xmax * 100 + 1, 10)
+    ax.set_xticks(ticks, ["0"] + [f"{v:.0f}%" for v in ticks[1:]])
+    ax.set_yticks([25, 50, 75], ["25%", "50%", "75%"])
+    ax.tick_params(colors=MUTED, labelsize=font, length=0, pad=2)
+    ax.yaxis.grid(True, color=GRID, linewidth=0.5)
+    ax.set_axisbelow(True)
+    for s in ("top", "right", "left"):
+        ax.spines[s].set_visible(False)
+    ax.spines["bottom"].set_color(GRID)
+    ax.set_xlabel("Borrowers reviewed, riskiest first", color=INK, fontsize=font, labelpad=2)
+    ax.set_ylabel("Credit events caught", color=INK, fontsize=font, labelpad=3)
+    handles, labels = ax.get_legend_handles_labels()
+    ax.legend(handles[::-1], labels[::-1], loc="lower right", frameon=False, fontsize=font, handlelength=1.6,
+              borderaxespad=0.2, labelcolor=INK)
+    fig.savefig(path, dpi=600, facecolor=SURFACE)
+    plt.close(fig)
 
 
 def list_disagreement(dis: pd.DataFrame, bm: pd.DataFrame, path):
@@ -235,7 +286,8 @@ def list_disagreement(dis: pd.DataFrame, bm: pd.DataFrame, path):
     one watchlist picks, for the riskiest 10% and 20% in each window (analysis.list_disagreement),
     with 95% intervals; right, the scorecard's gain in ROC-AUC and PR-AUC over the mark alone
     (analysis.benchmark_comparison), with paired 95% intervals: an interval clear of zero is a gain
-    that the resampling does not explain away."""
+    that the resampling does not explain away. Only the development and test windows are drawn."""
+    dis, bm = dis[dis["window"].isin(list(WINDOW_NAMES))], bm[bm["window"].isin(list(WINDOW_NAMES))]
     fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 5.2), facecolor=SURFACE, gridspec_kw={"width_ratios": [1.35, 1]})
     _style(a1, "Borrowers only one list picks", "Credit event rate within two quarters (%)")
     pairs = [(w, s) for w in ("development", "test") for s in sorted(dis["list"].unique())]

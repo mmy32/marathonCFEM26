@@ -1,6 +1,7 @@
 """Tables for the early-warning scorecard (src/9_prediction): the signs one by one (event rates by
 bucket, the PIK-switch hypotheses, the mark path before an event), the in-sample coefficients,
-the sign selection, the out-of-sample test, robustness and the scorecard itself. One outcome
+the sign selection, the out-of-sample test (against the mark alone, overall and by kind of
+event), robustness, the scorecard itself and the case studies' ranks. One outcome
 throughout (config.OUTCOME): an accruing borrower has a credit event within the next two quarters,
 i.e. non-accrual or a lender's concession (PIK switch, debt-for-equity, write-down). Any other
 outcome appears only as a labelled robustness row."""
@@ -11,6 +12,7 @@ import pandas as pd
 from sklearn.metrics import average_precision_score, roc_auc_score
 
 import credit_events as CE
+from common import norm_name
 from config import HORIZON, LOW_MARK, MARKDOWN, MIN_GAIN, OUTCOME
 from models.logit import coefficient_table, table_probabilities
 from frames import design, model_frame
@@ -227,18 +229,25 @@ BENCHMARKS = {BENCHMARK: "mark"}
 
 
 def oos_windows(m: pd.DataFrame, roll: pd.DataFrame, train_end: int, test_preds: pd.DataFrame) -> dict:
-    """The two out-of-sample windows, one row per labelled borrower-quarter with the scorecard's
-    score (pred) and the mark alone's (mark): the development quarters (each scored by a fit on the
-    windows closed by then, as in sign_selection) and the test (`test_preds` from oos_test)."""
+    """The out-of-sample windows, one row per labelled borrower-quarter with the scorecard's score
+    (pred), the mark alone's (mark) and what the event was (y_na and flag_in_window: a non-accrual
+    in the window; event_q: the quarter the event first shows): the development quarters (each
+    scored by a fit on the windows closed by then, as in sign_selection), the test (`test_preds`
+    from oos_test), and two more windows scored the same rolling way: the quarters after
+    development (the gap quarter and the test quarter, whose rolling fit is the test's fit) and
+    all the rolling quarters together."""
     keys = ["borrower", "qsort"]
+    card, mark = roll[roll["spec"] == "scorecard"], roll[roll["spec"] == BENCHMARK]
+    dev, after = (lambda r: r[r["qsort"] <= train_end]), (lambda r: r[r["qsort"] > train_end])
+    windows = {"development": (dev(card), dev(mark)),
+               "test": (test_preds[test_preds["model"] == "scorecard"], test_preds[test_preds["model"] == BENCHMARK]),
+               "after development": (after(card), after(mark)),
+               "all quarters": (card, mark)}
     out = {}
-    for w, card, mark in [("development", roll[(roll["spec"] == "scorecard") & (roll["qsort"] <= train_end)],
-                           roll[(roll["spec"] == BENCHMARK) & (roll["qsort"] <= train_end)]),
-                          ("test", test_preds[test_preds["model"] == "scorecard"],
-                           test_preds[test_preds["model"] == BENCHMARK])]:
-        out[w] = (card[keys + ["cal_q", "y", "pred"]].merge(mark[keys + ["pred"]].rename(columns={"pred": "mark"}),
-                                                           on=keys, validate="one_to_one")
-                  .merge(m[keys + ["y_na"]], on=keys, validate="one_to_one"))
+    for w, (c, k) in windows.items():
+        out[w] = (c[keys + ["cal_q", "y", "pred"]].merge(k[keys + ["pred"]].rename(columns={"pred": "mark"}),
+                                                        on=keys, validate="one_to_one")
+                  .merge(m[keys + ["y_na", "flag_in_window", "event_q"]], on=keys, validate="one_to_one"))
     return out
 
 
@@ -279,6 +288,31 @@ def benchmark_comparison(windows: dict, shares: tuple = (0.10, 0.20)) -> pd.Data
                     row[f"card_gain_{k}"], row[f"card_gain_{k}_lo"], row[f"card_gain_{k}_hi"] = \
                         cg.loc[s, ["gap_share", "gap_lo", "gap_hi"]]
             rows.append(row)
+    return pd.DataFrame(rows)
+
+
+EVENT_KINDS = ["all events", "non-accrual", "concession only", "first at t + 1", "first at t + 2"]
+
+
+def auc_by_event(windows: dict) -> pd.DataFrame:
+    """How well the one scorecard, and the mark alone, find each kind of credit event, in each
+    window of oos_windows: ROC-AUC of each kind of event against the borrowers with no event, the
+    other events left out. Kinds: all events; those with a non-accrual in the window, and those
+    with a concession only; those that first show at t + 1, and those that first show at t + 2
+    (nothing at t + 1: two quarters ahead). The scorecard's gain over the mark alone has a paired
+    borrower-resampled 95% interval (evaluation.auc_gain)."""
+    rows = []
+    for w, p in windows.items():
+        ev, none = p["y"] == 1, p["y"] == 0
+        na, first = p["flag_in_window"].astype(bool), p["event_q"] - p["qsort"]
+        kinds = dict(zip(EVENT_KINDS, [ev, ev & na, ev & ~na, ev & (first == 1), ev & (first == 2)]))
+        for kind, k in kinds.items():
+            d = p[k | none]
+            g, lo, hi = auc_gain(d, d.assign(pred=d["mark"]))
+            rows.append({"window": w, **_quarters(p), "events": kind, "n_events": int(k.sum()),
+                         "n_no_event": int(none.sum()), "scorecard_roc_auc": roc_auc_score(d["y"], d["pred"]),
+                         "mark_alone_roc_auc": roc_auc_score(d["y"], d["mark"]),
+                         "card_auc_gain": g, "card_auc_gain_lo": lo, "card_auc_gain_hi": hi})
     return pd.DataFrame(rows)
 
 
@@ -465,3 +499,23 @@ def scorecard(m: pd.DataFrame, score_q: int, context: list[str]) -> pd.DataFrame
     p["decile"] = score_decile(p.rename(columns={"probability": "pred"}))
     first = ["rank", "borrower", "cal_q", "outcome_q", "probability", "decile"]
     return p[first + [c for c in context if c in p] + ["y"]]
+
+
+def case_ranks(m: pd.DataFrame, borrowers, quarters) -> pd.DataFrame:
+    """Where the scorecard ranked each named borrower (the case studies) in each of `quarters`, as
+    it could have at the time: that quarter's scorecard (scorecard(): fitted on the windows closed
+    by then, every accruing borrower ranked, labelled or not). top_share is the rank over the
+    borrowers ranked (0.01 = the riskiest 1%). mark_rank ranks the same borrowers by the mark alone,
+    lowest first, which is the order a logit on the mark gives. A borrower is ranked only in the
+    quarters it is held and accruing."""
+    names = set(norm_name(pd.Series(list(borrowers))))
+    out = []
+    for q in quarters:
+        card = scorecard(m, q, SCORECARD)
+        card["mark_rank"] = card["price"].rank(method="first").astype(int)
+        out.append(card[card["borrower"].isin(names)].assign(borrowers=len(card)))
+    t = pd.concat(out, ignore_index=True)
+    t["top_share"], t["mark_top_share"] = t["rank"] / t["borrowers"], t["mark_rank"] / t["borrowers"]
+    cols = ["borrower", "cal_q", "outcome_q", "borrowers", "rank", "top_share", "decile", "probability", "mark_rank",
+            "mark_top_share"] + SCORECARD + ["y"]
+    return t[cols].sort_values(["borrower", "cal_q"]).reset_index(drop=True)

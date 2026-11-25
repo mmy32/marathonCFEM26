@@ -28,7 +28,7 @@ The data is not in the repo; it is shared separately. Put `FINAL_DATASET.csv` (2
 `data/final_dataset/`, then run from the project root:
 
 ```
-python scripts/run_model.py                                 # early-warning scorecard (docs/14), about 6 minutes
+python scripts/run_model.py                                 # early-warning scorecard (docs/14), about 15 minutes
 python scripts/run_risk_monitor.py                          # warning signs and BDC exposure, about 3 minutes
 python scripts/run_distress_event_study.py                  # case studies, about 3 minutes
 python src/2_index_construction/index_construction.py       # loan index vs CDLI
@@ -76,6 +76,20 @@ python src/1_data_processing/dataset_overview.py            # dataset summary
 Not produced by code: slide 2 (the Federal Reserve's chart), slide 7's "~96% private" (a separate
 LLM check) and slide 24's news sources. On slide 6, "2,021 read" is the parsed-filings total
 that `plot_data_coverage.py` prints.
+
+| Poster | Script | Output in `outputs/` |
+|---|---|---|
+| Data: filings, BDCs, holdings, borrowers | `src/1_data_processing/dataset_overview.py` | `eda_plots/dataset_overview.csv` |
+| BDC fair value, $241B (2023Q1) to $528B (2026Q2) | `src/1_data_processing/bdc_growth.py` | `eda_plots/bdc_growth.csv` |
+| Model sample, events, exits, the PIK callout | `scripts/run_model.py` | `model/sample_waterfall.csv`, `outcome_breakdown.csv`, `exits_unlabelled.csv`, `restructuring_vs_nonaccrual.csv` |
+| Medallia chart | `scripts/run_distress_event_study.py` | `risk_monitor/distress/case_studies/medallia_marks_poster.png` |
+| Medallia's rank each quarter | `scripts/run_model.py` | `model/case_study_ranks.csv` |
+| Scorecard chart and results table | `scripts/run_model.py` | `model/oos_capture_curve.png`, `oos_capture.csv`, `oos_benchmarks.csv`, `oos_auc_by_event.csv` |
+| Next step: the blind test, scored now with today's coefficients | `scripts/run_model.py` | `model/blind_test_2026Q1_scores.csv` |
+
+The two poster charts are drawn at the size they are placed on the poster, with every label at
+7.5 pt in Arial, the poster's typeface, so they are inserted at 100%. On a computer without Arial,
+matplotlib's DejaVu Sans stands in and those two PNGs differ from the committed ones.
 
 ## Rebuilding FINAL_DATASET.csv from the filings
 
