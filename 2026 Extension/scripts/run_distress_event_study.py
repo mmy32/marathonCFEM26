@@ -37,6 +37,8 @@ def write_case_studies(b, rows, case_dir):
         quarterly[quarterly["borrower"] == name.upper()].to_csv(case_dir / f"{slug}_quarterly.csv", index=False)
         lenders[lenders["borrower"] == name.upper()].to_csv(case_dir / f"{slug}_lenders.csv", index=False)
         charts.case_marks(lenders, name, case_dir / f"{slug}_marks.png")
+        if name.upper() in charts.POSTER_CASES:     # also at the size it is placed on the poster
+            charts.case_marks_poster(lenders, name, case_dir / f"{slug}_marks_poster.png")
     print(f"  case studies: {len(cases)} borrowers -> {case_dir}")
 
 

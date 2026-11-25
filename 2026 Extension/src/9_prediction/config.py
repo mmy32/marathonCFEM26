@@ -30,7 +30,9 @@ SCORE_Q = "2026Q2"          # scorecard quarter (window 2026Q3-2026Q4)
 RESERVED_Q = "2026Q3"       # reserved: nothing is fitted or chosen on it. Once filed, signals from
                             # 2026Q1 (window 2026Q2-2026Q3) are the blind test: the only test no
                             # choice has seen (the 2025Q4 test was seen in the rolling check before
-                            # this split was chosen). Change nothing after running it
+                            # this split was chosen). Their scores are saved before it is filed
+                            # (blind_test_2026Q1_scores.csv: today's coefficients). Change nothing
+                            # after running it
 
 # ---- fitting
 HALF_LIFE = None            # recency weighting of the training rows: a quarter's rows weigh 0.5 ** (age / HALF_LIFE),

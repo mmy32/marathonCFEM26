@@ -10,7 +10,7 @@ counts every term change and puts every loan exit in one of four buckets (repaid
 impaired, unresolved) at two cutoffs, chooses the signs on the development quarters, tests the
 scorecard out of sample on signals from 2025Q4 (events in 2026Q1-Q2), and applies it to the latest quarter. Reads
 FINAL_DATASET.csv; writes data/model/ (the panel and the out-of-sample predictions) and
-outputs/model/. About 6 minutes; `--cached` reuses the saved panel (skips the 2-minute panel
+outputs/model/. About 15 minutes; `--cached` reuses the saved panel (skips the 2-minute panel
 build). See docs/14_early_warning_model.md."""
 from __future__ import annotations
 
@@ -19,11 +19,12 @@ import sys
 import warnings
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "1_data_processing"))
-from paths import FINAL_DIR, METADATA_CSV, MODEL_DATA_DIR, MODEL_DIR, add_code_dirs_to_path  # noqa: E402
+from paths import FINAL_DIR, METADATA_CSV, MODEL_DATA_DIR, MODEL_DIR, REFERENCE_DIR, add_code_dirs_to_path  # noqa: E402
 add_code_dirs_to_path()
 
 import analysis as A  # noqa: E402
@@ -158,14 +159,18 @@ def main(cached: bool = False):
     C.score_deciles(dec, out / "oos_score_deciles.png", test_events, f"signs up to {TRAIN_END}")
     print(perf.round(4).to_string(index=False))
     print(dec.round(4).to_string(index=False))
-    win = A.oos_windows(m, roll, train_end, preds)      # development and test, every benchmark on the same rows
+    win = A.oos_windows(m, roll, train_end, preds)      # development, test and the rolling windows, same rows each
     cap = A.capture_vs_mark(win)                         # watchlists: scorecard against the mark alone
     cap.to_csv(out / "oos_capture.csv", index=False)
     C.capture_gap(cap, out / "oos_capture_gap.png")
+    C.capture_curve(cap, out / "oos_capture_curve.png")  # the poster's chart, at its size on the poster
     print(cap[cap["share"].isin([0.05, 0.10, 0.20, 0.30])].round(4).to_string(index=False))
     bm = A.benchmark_comparison(win)
     bm.to_csv(out / "oos_benchmarks.csv", index=False)
     print(bm.round(4).to_string(index=False))
+    ae = A.auc_by_event(win)                             # each kind of event: non-accrual, concession, t + 1, t + 2
+    ae.to_csv(out / "oos_auc_by_event.csv", index=False)
+    print(ae.round(3).to_string(index=False))
     dis = A.list_disagreement(win)
     dis.to_csv(out / "oos_list_disagreement.csv", index=False)
     C.list_disagreement(dis, bm, out / "oos_list_disagreement.png")
@@ -188,10 +193,27 @@ def main(cached: bool = False):
     print(f"Scorecard: {len(card):,} borrowers accruing in {SCORE_Q}, {card['probability'].sum():.0f} events expected "
           f"in {window_label([score_q])[0]}")
     print(card.head(15).drop(columns=["cal_q", "outcome_q", "y"]).round(3).to_string(index=False))
-    if m["qsort"].max() >= q_sort(RESERVED_Q):      # the reserved quarter is in the data: the blind test
-        blind_q = q_sort(RESERVED_Q) - HORIZON
+    cases = REFERENCE_DIR / "case_studies.csv"
+    if cases.exists():                              # the case studies' rank each quarter, as it was at the time
+        cr = A.case_ranks(m, pd.read_csv(cases)["borrower"], range(int(roll["qsort"].min()), score_q + 1))
+        cr.to_csv(out / "case_study_ranks.csv", index=False)
+        print(cr.round(3).to_string(index=False))
+    else:
+        print(f"{cases} not found: case_study_ranks.csv left as it is")
+    blind_q = q_sort(RESERVED_Q) - HORIZON          # the blind test ranks the borrowers of this quarter
+    blind = out / f"blind_test_{q_next(RESERVED_Q, -HORIZON)}_scores.csv"
+    if m["qsort"].max() < q_sort(RESERVED_Q):       # scored now, before their events are filed: today's coefficients
+        bt = A.scorecard(m, blind_q, CONTEXT)
+        bt.to_csv(blind, index=False)
+        print(f"Blind test: {len(bt):,} borrowers of {q_next(RESERVED_Q, -HORIZON)} scored now -> {blind.name}")
+    else:                                           # the reserved quarter is in the data: the blind test
         d = model_frame(m, SCORECARD)
         p = split_predictions(d, SCORECARD, blind_q - HORIZON, [blind_q])
+        saved = pd.read_csv(blind, float_precision="round_trip").set_index("borrower")["probability"]
+        saved = saved.reindex(p["borrower"]).to_numpy()
+        if np.isnan(saved).any() or np.abs(p["pred"].to_numpy() - saved).max() > 1e-9:
+            raise SystemExit(f"The refit no longer reproduces {blind.name}: data before {RESERVED_Q} changed. "
+                             "The blind test is defined by the saved scores; find what changed first.")
         print(f"Reserved test: signals in {q_next(RESERVED_Q, -HORIZON)}, events in {window_label([blind_q])[0]} ...")
         res = pd.DataFrame([{"model": "scorecard", **performance(p)}])
         res.to_csv(out / f"reserved_test_{RESERVED_Q}.csv", index=False)

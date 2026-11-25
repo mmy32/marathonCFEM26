@@ -22,6 +22,9 @@ Code: `src/8_risk_monitor/distress_event_study.py`. Reads only `FINAL_DATASET.cs
   quarter), `<name>_lenders.csv` (each BDC's family, type, par, its mark, the loan's weight in
   its book, PIK rate and non-accrual) and `<name>_marks.png`, plus all cases combined. Add a row
   to the reference file to add a case.
+- `medallia_marks_poster.png` is the Medallia chart at the size it is placed on the poster (4.0 x
+  1.62 inches, every label at 7.5 pt in Arial, `charts.POSTER_FONT`), with the legend beside the
+  plot and no title; insert it at 100%. `charts.POSTER_CASES` lists the cases drawn this way.
 
 **Borrower-quarter columns:**
 
@@ -53,7 +56,11 @@ component. It is not yet on non-accrual; its price fell from 0.97 to 0.86 in two
 **Medallia** (software; the benchmark case). It had seven lender families, was up to 6% of a
 lender's book, and showed rising dispersion and growing acquired PIK for four quarters before
 its 2026Q1 markdown. Lenders then declined to extend PIK relief, it moved to non-accrual, and
-lenders are taking control from Thoma Bravo.
+on 17 June 2026 Medallia announced a recapitalization that hands ownership from Thoma Bravo to a
+lender group led by Blackstone, Apollo and FS KKR, expected to close by the end of 2026. Before
+non-accrual the marks of the five families on the chart were up to 10 points apart (2025Q1 and
+2025Q3); in 2025Q4 they were within 2 points (78 to 79), and at non-accrual they split again. The
+scorecard's rank for it each quarter is in docs/14 (`case_study_ranks.csv`).
 
 Also on watch: **LogRhythm** (6 families; dispersion jumped in 2025Q4; PIK appeared in 2026Q2;
 price 0.87) and **Premier Imaging** (price 0.78).

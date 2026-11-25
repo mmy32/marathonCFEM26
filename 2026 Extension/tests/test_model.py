@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import polars as pl
+from sklearn.metrics import roc_auc_score
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "1_data_processing"))
 from paths import add_code_dirs_to_path
@@ -598,6 +599,51 @@ class TestFit(unittest.TestCase):
         self.assertEqual(events, (last[CFG.OUTCOME] == 1).sum())
         self.assertAlmostEqual(t.loc["all", "labelled_share"], last[CFG.OUTCOME].notna().mean())
         self.assertTrue(np.isnan(t.loc["no credit event", "roc_auc_vs_no_event"]))
+
+    def test_auc_by_event_splits_the_events(self):
+        # Each kind is its events against the same no-event rows: non-accrual and concession only
+        # split the events, and so do first at t + 1 and first at t + 2. A benchmark identical to the
+        # scorecard gains exactly nothing.
+        import analysis as A
+        p = self._scores()
+        ev = p.index[p["y"] == 1]                                       # rows 0, 1, 20, 22
+        p["flag_in_window"] = p.index.isin(ev[:2])
+        p["event_q"] = (p["qsort"] + np.where(p.index.isin(ev[1:3]), 2, 1)).where(p["y"] == 1)
+        t = A.auc_by_event({"w": p.assign(mark=p["pred"][::-1].to_numpy())}).set_index("events")
+        n = t["n_events"]
+        self.assertEqual(list(t.index), A.EVENT_KINDS)
+        self.assertEqual(n["non-accrual"] + n["concession only"], n["all events"])
+        self.assertEqual((n["first at t + 1"], n["first at t + 2"]), (2, 2))
+        self.assertTrue((t["n_no_event"] == 36).all())
+        self.assertAlmostEqual(t.loc["all events", "scorecard_roc_auc"], roc_auc_score(p["y"], p["pred"]))
+        same = A.auc_by_event({"w": p.assign(mark=p["pred"])})
+        self.assertTrue((same[["card_auc_gain", "card_auc_gain_lo", "card_auc_gain_hi"]] == 0).all().all())
+
+    def test_case_ranks_match_the_scorecard(self):
+        # A named borrower's rank in a quarter is its rank in that quarter's scorecard, among every
+        # borrower the scorecard ranks; mark_rank orders the same borrowers by the mark, lowest first.
+        import analysis as A
+        from specs import SCORECARD
+        rng = np.random.default_rng(2)
+        n_b, quarters = 60, 8
+        i = np.arange(n_b * quarters)
+        m = pd.DataFrame({"borrower": (i % n_b).astype(str), "qsort": i // n_b + 1, "na_risk_set": True,
+                          "has_dispersion": 0})
+        m["cal_q"] = m["outcome_q"] = m["qsort"].astype(str)
+        for c in ["price", "fall_1q", "max_drawdown"]:
+            m[c] = rng.normal(size=len(m))
+        m["pik_switch"] = (rng.random(len(m)) < 0.1).astype(float)
+        m["pik_past_year"] = (rng.random(len(m)) < 0.1).astype(float)
+        m[CFG.OUTCOME] = (rng.random(len(m)) < 0.3).astype(float)
+        m.loc[m["qsort"] > 6, CFG.OUTCOME] = np.nan                     # windows not closed yet: still ranked
+        t = A.case_ranks(m, [" 7", "12"], [5, 8])
+        self.assertEqual(len(t), 4)
+        for _, r in t.iterrows():
+            card = A.scorecard(m, int(r["cal_q"]), SCORECARD)
+            self.assertEqual(r["borrowers"], len(card))
+            self.assertEqual(r["rank"], card.loc[card["borrower"] == r["borrower"], "rank"].iloc[0])
+            self.assertEqual(r["mark_rank"], (card["price"] < r["price"]).sum() + 1)
+            self.assertAlmostEqual(r["top_share"], r["rank"] / len(card))
 
     def test_pr_auc_and_recall_at_budget(self):
         # 4 events, 3 of them in the top 10% (2 of 20 per quarter) and all 4 in the top 20%.
